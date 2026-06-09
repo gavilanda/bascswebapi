@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Administración de usuarios — Portal de Clientes</title>
+<style>
+  :root {
+    --borde:#e4e4e7; --txt:#18181b; --txt2:#71717a; --azul:#2563eb;
+    --bg:#f6f6f7; --rojo:#dc2626; --verde:#16a34a;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin:0; background:var(--bg); color:var(--txt); }
+  header { background:#fff; border-bottom:1px solid var(--borde); padding:16px 24px;
+    display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  .sub { color:var(--txt2); font-size:13px; }
+  main { max-width:1040px; margin:24px auto; padding:0 16px; }
+  .card { background:#fff; border:1px solid var(--borde); border-radius:10px;
+    padding:20px; margin-bottom:20px; }
+  .card h2 { font-size:15px; margin:0 0 14px; font-weight:600; }
+  label { display:block; font-size:13px; color:var(--txt2); margin:10px 0 4px; }
+  input, select { width:100%; padding:9px 10px; border:1px solid var(--borde);
+    border-radius:7px; font-size:14px; background:#fff; }
+  button { background:var(--azul); color:#fff; border:none; padding:9px 16px;
+    border-radius:7px; font-size:14px; cursor:pointer; }
+  button.sec { background:#fff; color:var(--txt); border:1px solid var(--borde); }
+  button.del { background:#fff; color:var(--rojo); border:1px solid #f1c2c2; }
+  table { width:100%; border-collapse:collapse; font-size:14px; table-layout:fixed; }
+  th,td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--borde);
+    vertical-align:middle; }
+  th { color:var(--txt2); font-weight:500; font-size:13px; }
+  td .sec, td .del { padding:6px 10px; font-size:13px; }
+  .acciones { display:flex; gap:6px; flex-wrap:wrap; }
+  .badge { font-size:12px; padding:2px 8px; border-radius:6px; }
+  .badge.on { background:#e7f6ec; color:var(--verde); }
+  .badge.off { background:#fde8e8; color:var(--rojo); }
+  .tag { font-size:12px; padding:2px 8px; border-radius:6px; background:#eef2ff; color:#3730a3; margin-right:4px; }
+  .msg { font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; display:none; }
+  .msg.err { background:#fde8e8; color:var(--rojo); display:block; }
+  .msg.ok { background:#e7f6ec; color:var(--verde); display:block; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  .row > div { flex:1; min-width:150px; }
+  .cab { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .cab h2 { margin:0; }
+  .filtros { display:flex; gap:8px; align-items:center; }
+  .hidden { display:none; }
+  .topinfo { font-size:13px; color:var(--txt2); margin-right:10px; }
+  .vacio { color:var(--txt2); font-size:13px; padding:14px 8px; }
+  .check { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--txt); margin:0; }
+  .check input { width:auto; }
+  .nota { font-size:12px; color:var(--txt2); margin-top:4px; }
+  /* Linea unica de extranet */
+  .liniaext { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:6px; }
+  .liniaext .f-cuit { flex:0 0 150px; }
+  .liniaext .f-cod { flex:1 1 130px; }
+  .liniaext .f-btn button { white-space:nowrap; }
+  /* Columnas de la tabla (table-layout: fixed) */
+  .col-id { width:15%; }
+  .col-nombre { width:20%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .col-tipo { width:13%; }
+  .col-cod { width:15%; }
+  .col-estado { width:9%; }
+  .col-acc { width:28%; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Administración de usuarios</h1>
+    <div class="sub">Portal de Clientes</div>
+  </div>
+  <div id="sesion" class="hidden">
+    <span class="topinfo" id="quien"></span>
+    <button class="sec" id="btnSalir">Salir</button>
+  </div>
+</header>
+
+<main>
+  <!-- LOGIN -->
+  <section id="vistaLogin" class="card">
+    <h2>Ingresar</h2>
+    <label>Usuario</label>
+    <input id="loginIdent" type="text" value="admin" />
+    <label>Contraseña</label>
+    <input id="loginPass" type="password" />
+    <div style="margin-top:14px"><button id="btnIngresar">Ingresar</button></div>
+    <div id="msgLogin" class="msg"></div>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="vistaAdmin" class="hidden">
+    <div class="card">
+      <h2 id="cardTitulo">Crear usuario</h2>
+
+      <label>Tipo de usuario</label>
+      <select id="nuevoTipo">
+        <option value="Extranet">Extranet (cliente / proveedor)</option>
+        <option value="Interno">Interno (red local)</option>
+      </select>
+
+      <!-- Campos extranet: CUIT + códigos + botones en una sola línea -->
+      <div id="campoExtranet">
+        <div class="liniaext">
+          <div class="f-cuit"><label>CUIT</label><input id="nuevoCuit" type="text" placeholder="20123456789" /></div>
+          <div class="f-cod"><label>Código cliente</label><input id="nuevoCodigoCliente" type="text" placeholder="cliente" /></div>
+          <div class="f-btn"><button class="sec" id="btnBuscarCliente">Buscar</button></div>
+          <div class="f-cod"><label>Código proveedor</label><input id="nuevoCodigoProveedor" type="text" placeholder="proveedor" /></div>
+          <div class="f-btn"><button class="sec" id="btnBuscarProveedor">Buscar</button></div>
+        </div>
+        <div class="nota">El rol se infiere del código que cargues: cliente, proveedor, o ambos.</div>
+      </div>
+
+      <!-- Campos interno -->
+      <div id="campoInterno" class="hidden">
+        <div class="row" style="margin-top:6px">
+          <div><label>Nombre de usuario</label><input id="nuevoUsuario" type="text" /></div>
+          <div style="align-self:center; margin-top:22px">
+            <label class="check"><input id="nuevoEsAdmin" type="checkbox" /> Es administrador</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:6px">
+        <div><label>Email (opcional)</label><input id="nuevoEmail" type="email" /></div>
+        <div><label id="lblPass">Contraseña inicial</label><input id="nuevoPass" type="text" /></div>
+        <div style="flex:0; align-self:flex-end; display:flex; gap:8px">
+          <button id="btnCrear">Crear</button>
+          <button class="sec hidden" id="btnCancelar">Cancelar</button>
+        </div>
+      </div>
+      <div id="msgCrear" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <div class="cab">
+        <h2>Usuarios</h2>
+        <div class="filtros">
+          <label style="display:inline; margin:0;">Ver:</label>
+          <select id="filtroTipo" style="width:auto; display:inline-block">
+            <option value="internos">Internos</option>
+            <option value="externos">Externos</option>
+            <option value="todos">Todos</option>
+          </select>
+          <select id="filtroEstado" style="width:auto; display:inline-block">
+            <option value="activos">Activos</option>
+            <option value="inactivos">Inactivos</option>
+            <option value="todos">Todos</option>
+          </select>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th class="col-id">Usuario / CUIT</th>
+            <th class="col-nombre">Razón social</th>
+            <th class="col-tipo">Tipo / Roles</th>
+            <th class="col-cod">Códigos BAS</th>
+            <th class="col-estado">Estado</th>
+            <th class="col-acc"></th>
+          </tr>
+        </thead>
+        <tbody id="tablaUsuarios"></tbody>
+      </table>
+      <div id="msgLista" class="msg"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let token = localStorage.getItem("portal_token") || "";
+  let esAdmin = localStorage.getItem("portal_esadmin") === "true";
+  let ident = localStorage.getItem("portal_ident") || "";
+
+  let razonCliente = "";        // razón social capturada al buscar cliente
+  let razonProveedor = "";      // ídem proveedor
+  let razonSocialCargada = "";  // la que ya tenía el usuario al editar
+  let editandoId = null;        // null = creando; id = modificando
+  let usuariosActuales = [];    // último listado, para el botón Modificar
+
+  function mostrar(el, t, tipo) { el.textContent = t; el.className = "msg " + tipo; }
+  function limpiar(el) { el.textContent = ""; el.className = "msg"; }
+  function esc(s) {
+    return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function actualizarVista() {
+    if (token && esAdmin) {
+      $("vistaLogin").classList.add("hidden");
+      $("vistaAdmin").classList.remove("hidden");
+      $("sesion").classList.remove("hidden");
+      $("quien").textContent = ident;
+      actualizarCamposTipo();
+      cargarUsuarios();
+    } else {
+      $("vistaAdmin").classList.add("hidden");
+      $("vistaLogin").classList.remove("hidden");
+      $("sesion").classList.add("hidden");
+    }
+  }
+
+  function actualizarCamposTipo() {
+    const t = $("nuevoTipo").value;
+    $("campoExtranet").classList.toggle("hidden", t !== "Extranet");
+    $("campoInterno").classList.toggle("hidden", t !== "Interno");
+  }
+
+  async function ingresar() {
+    limpiar($("msgLogin"));
+    let r;
+    try {
+      r = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identificador: $("loginIdent").value, password: $("loginPass").value })
+      });
+    } catch (e) { mostrar($("msgLogin"), "No se pudo conectar con el backend.", "err"); return; }
+
+    if (!r.ok) { mostrar($("msgLogin"), "Usuario o contraseña incorrectos.", "err"); return; }
+    const data = await r.json();
+    if (!data.esAdmin) { mostrar($("msgLogin"), "Ese usuario no es administrador.", "err"); return; }
+
+    token = data.token; esAdmin = data.esAdmin; ident = data.identificador;
+    localStorage.setItem("portal_token", token);
+    localStorage.setItem("portal_esadmin", esAdmin);
+    localStorage.setItem("portal_ident", ident);
+    actualizarVista();
+  }
+
+  function salir() {
+    token = ""; esAdmin = false; ident = "";
+    localStorage.clear();
+    actualizarVista();
+  }
+
+  async function buscarCliente() {
+    limpiar($("msgCrear"));
+    const cuit = $("nuevoCuit").value.trim();
+    if (!cuit) { mostrar($("msgCrear"), "Ingresá un CUIT.", "err"); return; }
+
+    mostrar($("msgCrear"), "Buscando cliente en BAS…", "ok");
+    let r;
+    try {
+      r = await fetch("/api/admin/bas/cliente-por-cuit?cuit=" + encodeURIComponent(cuit), {
+        headers: { "Authorization": "Bearer " + token }
+      });
+    } catch (e) { mostrar($("msgCrear"), "No se pudo conectar.", "err"); return; }
+
+    if (r.status === 404) { mostrar($("msgCrear"), "No se encontró un cliente con ese CUIT en BAS.", "err"); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      mostrar($("msgCrear"), d.mensaje || "No se pudo consultar BAS.", "err");
+      return;
+    }
+    const d = await r.json();
+    $("nuevoCodigoCliente").value = d.codigo;
+    razonCliente = d.razonSocial || "";
+    mostrar($("msgCrear"), "Cliente encontrado: " + d.razonSocial + " (código " + d.codigo + ").", "ok");
+  }
+
+  async function buscarProveedor() {
+    limpiar($("msgCrear"));
+    const cuit = $("nuevoCuit").value.trim();
+    if (!cuit) { mostrar($("msgCrear"), "Ingresá un CUIT.", "err"); return; }
+
+    mostrar($("msgCrear"), "Buscando proveedor en BAS…", "ok");
+    let r;
+    try {
+      r = await fetch("/api/admin/bas/proveedor-por-cuit?cuit=" + encodeURIComponent(cuit), {
+        headers: { "Authorization": "Bearer " + token }
+      });
+    } catch (e) { mostrar($("msgCrear"), "No se pudo conectar.", "err"); return; }
+
+    if (r.status === 404) { mostrar($("msgCrear"), "No se encontró un proveedor con ese CUIT en BAS.", "err"); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      mostrar($("msgCrear"), d.mensaje || "No se pudo consultar BAS.", "err");
+      return;
+    }
+    const d = await r.json();
+    $("nuevoCodigoProveedor").value = d.codigo;
+    razonProveedor = d.razonSocial || "";
+    mostrar($("msgCrear"), "Proveedor encontrado: " + d.razonSocial + " (código " + d.codigo + ").", "ok");
+  }
+
+  async function cargarUsuarios() {
+    limpiar($("msgLista"));
+    const estado = $("filtroEstado").value || "activos";
+    const tipo = $("filtroTipo").value || "internos";
+    const r = await fetch("/api/admin/usuarios?estado=" + estado + "&tipo=" + tipo, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (r.status === 401 || r.status === 403) { salir(); return; }
+    const usuarios = await r.json();
+    usuariosActuales = usuarios;
+    const tbody = $("tablaUsuarios");
+    tbody.innerHTML = "";
+
+    if (usuarios.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="vacio">No hay usuarios para mostrar.</td></tr>';
+      return;
+    }
+
+    for (const u of usuarios) {
+      const tr = document.createElement("tr");
+
+      let tipoTxt;
+      if (u.tipo === "Interno") {
+        tipoTxt = u.esAdmin ? "Interno · admin" : "Interno";
+      } else {
+        const roles = [];
+        if (u.esCliente) roles.push("Cliente");
+        if (u.esProveedor) roles.push("Proveedor");
+        tipoTxt = roles.map(x => '<span class="tag">' + x + '</span>').join("") || '<span class="tag">Extranet</span>';
+      }
+
+      const cods = [];
+      if (u.codigoCliente) cods.push("Cli " + u.codigoCliente);
+      if (u.codigoProveedor) cods.push("Prov " + u.codigoProveedor);
+      const codTxt = cods.join(" · ") || "—";
+
+      const nombre = u.razonSocial || "—";
+
+      const estadoTxt = u.activo
+        ? '<span class="badge on">Activo</span>'
+        : '<span class="badge off">Inactivo</span>';
+
+      const acciones =
+        '<div class="acciones">'
+        + '<button class="sec" data-act="modificar" data-id="' + u.id + '">Modificar</button>'
+        + '<button class="sec" data-act="clave" data-id="' + u.id + '" data-ident="' + esc(u.identificador) + '">Clave</button>'
+        + '<button class="sec" data-act="estado" data-id="' + u.id + '" data-activo="' + u.activo + '">'
+          + (u.activo ? 'Desactivar' : 'Activar') + '</button>'
+        + '<button class="del" data-act="eliminar" data-id="' + u.id + '" data-ident="' + esc(u.identificador) + '">Eliminar</button>'
+        + '</div>';
+
+      tr.innerHTML =
+          '<td class="col-id">' + esc(u.identificador) + '</td>'
+        + '<td class="col-nombre" title="' + esc(u.razonSocial || "") + '">' + esc(nombre) + '</td>'
+        + '<td class="col-tipo">' + tipoTxt + '</td>'
+        + '<td class="col-cod">' + esc(codTxt) + '</td>'
+        + '<td class="col-estado">' + estadoTxt + '</td>'
+        + '<td class="col-acc">' + acciones + '</td>';
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll("button[data-act]").forEach(b => {
+      b.addEventListener("click", () => {
+        const act = b.dataset.act;
+        if (act === "estado") cambiarEstado(b.dataset.id, b.dataset.activo !== "true");
+        else if (act === "eliminar") eliminar(b.dataset.id, b.dataset.ident);
+        else if (act === "clave") cambiarClave(b.dataset.id, b.dataset.ident);
+        else if (act === "modificar") {
+          const u = usuariosActuales.find(x => String(x.id) === String(b.dataset.id));
+          if (u) cargarParaEditar(u);
+        }
+      });
+    });
+  }
+
+  function cargarParaEditar(u) {
+    editandoId = u.id;
+    razonCliente = ""; razonProveedor = ""; razonSocialCargada = u.razonSocial || "";
+
+    $("nuevoTipo").value = (u.tipo === "Interno") ? "Interno" : "Extranet";
+    $("nuevoTipo").disabled = true;
+    actualizarCamposTipo();
+
+    if (u.tipo === "Interno") {
+      $("nuevoUsuario").value = u.identificador;
+      $("nuevoEsAdmin").checked = u.esAdmin;
+    } else {
+      $("nuevoCuit").value = u.identificador;
+      $("nuevoCodigoCliente").value = u.codigoCliente || "";
+      $("nuevoCodigoProveedor").value = u.codigoProveedor || "";
+    }
+    $("nuevoEmail").value = u.email || "";
+    $("nuevoPass").value = "";
+    $("lblPass").textContent = "Nueva contraseña (opcional)";
+    $("nuevoPass").placeholder = "dejar vacío para no cambiar";
+    $("cardTitulo").textContent = "Modificar usuario";
+    $("btnCrear").textContent = "Guardar cambios";
+    $("btnCancelar").classList.remove("hidden");
+    limpiar($("msgCrear"));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function salirDeEdicion() {
+    editandoId = null;
+    razonCliente = ""; razonProveedor = ""; razonSocialCargada = "";
+    $("nuevoTipo").disabled = false;
+    $("nuevoCuit").value = ""; $("nuevoCodigoCliente").value = ""; $("nuevoCodigoProveedor").value = "";
+    $("nuevoUsuario").value = ""; $("nuevoEmail").value = ""; $("nuevoPass").value = "";
+    $("nuevoEsAdmin").checked = false;
+    $("lblPass").textContent = "Contraseña inicial";
+    $("nuevoPass").placeholder = "";
+    $("cardTitulo").textContent = "Crear usuario";
+    $("btnCrear").textContent = "Crear";
+    $("btnCancelar").classList.add("hidden");
+  }
+
+  async function guardar() {
+    limpiar($("msgCrear"));
+    const tipo = $("nuevoTipo").value;
+
+    if (editandoId === null) {
+      // ---- CREAR ----
+      const body = {
+        tipo: tipo, password: $("nuevoPass").value, email: $("nuevoEmail").value || null,
+        esAdmin: false, codigoCliente: null, codigoProveedor: null, razonSocial: null, identificador: ""
+      };
+      if (tipo === "Interno") {
+        body.identificador = $("nuevoUsuario").value;
+        body.esAdmin = $("nuevoEsAdmin").checked;
+      } else {
+        body.identificador = $("nuevoCuit").value;
+        body.codigoCliente = $("nuevoCodigoCliente").value || null;
+        body.codigoProveedor = $("nuevoCodigoProveedor").value || null;
+        body.razonSocial = razonCliente || razonProveedor || null;
+      }
+      const r = await fetch("/api/admin/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(body)
+      });
+      if (await manejarRespuesta(r, "Usuario creado.")) { salirDeEdicion(); cargarUsuarios(); }
+    } else {
+      // ---- MODIFICAR ----
+      const body = {
+        identificador: "", password: $("nuevoPass").value || null, esAdmin: false,
+        codigoCliente: null, codigoProveedor: null, email: $("nuevoEmail").value || null, razonSocial: null
+      };
+      if (tipo === "Interno") {
+        body.identificador = $("nuevoUsuario").value;
+        body.esAdmin = $("nuevoEsAdmin").checked;
+      } else {
+        body.identificador = $("nuevoCuit").value;
+        body.codigoCliente = $("nuevoCodigoCliente").value || null;
+        body.codigoProveedor = $("nuevoCodigoProveedor").value || null;
+        body.razonSocial = razonCliente || razonProveedor || razonSocialCargada || null;
+      }
+      const r = await fetch("/api/admin/usuarios/" + editandoId, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(body)
+      });
+      if (await manejarRespuesta(r, "Cambios guardados.")) { salirDeEdicion(); cargarUsuarios(); }
+    }
+  }
+
+  // Devuelve true si salió bien.
+  async function manejarRespuesta(r, mensajeOk) {
+    if (r.status === 409) { mostrar($("msgCrear"), "Ya existe un usuario con ese identificador.", "err"); return false; }
+    if (r.status === 400) {
+      const d = await r.json().catch(() => ({}));
+      mostrar($("msgCrear"), d.mensaje || "Datos incompletos.", "err"); return false;
+    }
+    if (!r.ok) { mostrar($("msgCrear"), "No se pudo guardar.", "err"); return false; }
+    mostrar($("msgCrear"), mensajeOk, "ok");
+    return true;
+  }
+
+  async function cambiarEstado(id, activo) {
+    limpiar($("msgLista"));
+    const r = await fetch("/api/admin/usuarios/" + id + "/estado", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ activo: activo })
+    });
+    if (r.ok) { cargarUsuarios(); return; }
+    if (r.status === 400) {
+      const d = await r.json();
+      mostrar($("msgLista"), d.mensaje || "No se pudo cambiar el estado.", "err");
+      return;
+    }
+    mostrar($("msgLista"), "No se pudo cambiar el estado.", "err");
+  }
+
+  async function cambiarClave(id, identUsuario) {
+    limpiar($("msgLista"));
+    const nueva = prompt("Nueva contraseña para " + identUsuario + " (mínimo 6 caracteres):");
+    if (nueva === null) return;
+    if (nueva.trim().length < 6) {
+      mostrar($("msgLista"), "La contraseña debe tener al menos 6 caracteres.", "err");
+      return;
+    }
+    const r = await fetch("/api/admin/usuarios/" + id + "/password", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ nuevaPassword: nueva })
+    });
+    if (r.ok) {
+      mostrar($("msgLista"), "Contraseña actualizada para " + identUsuario + ".", "ok");
+    } else if (r.status === 400) {
+      const d = await r.json();
+      mostrar($("msgLista"), d.mensaje || "No se pudo cambiar la contraseña.", "err");
+    } else {
+      mostrar($("msgLista"), "No se pudo cambiar la contraseña.", "err");
+    }
+  }
+
+  async function eliminar(id, identUsuario) {
+    const ok = confirm("¿Seguro que querés eliminar al usuario " + identUsuario
+      + "?\n\nEsta acción no se puede deshacer.");
+    if (!ok) return;
+
+    const r = await fetch("/api/admin/usuarios/" + id, {
+      method: "DELETE",
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (r.ok) {
+      if (String(editandoId) === String(id)) salirDeEdicion();
+      cargarUsuarios();
+    } else if (r.status === 400) {
+      const d = await r.json();
+      mostrar($("msgLista"), d.mensaje || "No se pudo eliminar.", "err");
+    } else {
+      mostrar($("msgLista"), "No se pudo eliminar el usuario.", "err");
+    }
+  }
+
+  $("btnIngresar").addEventListener("click", ingresar);
+  $("btnSalir").addEventListener("click", salir);
+  $("btnCrear").addEventListener("click", guardar);
+  $("btnCancelar").addEventListener("click", salirDeEdicion);
+  $("btnBuscarCliente").addEventListener("click", buscarCliente);
+  $("btnBuscarProveedor").addEventListener("click", buscarProveedor);
+  $("nuevoTipo").addEventListener("change", actualizarCamposTipo);
+  $("filtroTipo").addEventListener("change", cargarUsuarios);
+  $("filtroEstado").addEventListener("change", cargarUsuarios);
+  // Si cambian el CUIT, las razones sociales capturadas ya no aplican.
+  $("nuevoCuit").addEventListener("input", () => { razonCliente = ""; razonProveedor = ""; });
+  $("loginPass").addEventListener("keydown", e => { if (e.key === "Enter") ingresar(); });
+
+  actualizarVista();
+</script>
+</body>
+</html>

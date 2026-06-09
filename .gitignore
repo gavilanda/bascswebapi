@@ -1,0 +1,28 @@
+# ---- .NET / build ----
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# ---- Base de datos local (SQLite de desarrollo) ----
+*.db
+*.db-shm
+*.db-wal
+
+# ---- Caché del padrón (se regenera desde BAS) ----
+cache-padron/
+
+# ---- Configuración con secretos ----
+# El template (appsettings.json) SÍ se sube; la config real de desarrollo NO.
+appsettings.Development.json
+appsettings.Production.json
+appsettings.*.Local.json
+
+# ---- Manuales/recursos pesados de BAS (opcional, ver nota) ----
+# BASCS/
+
+# ---- Varios ----
+*.log
+.DS_Store
+Thumbs.db

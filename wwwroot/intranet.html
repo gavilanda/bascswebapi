@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Intranet — Portal de Clientes</title>
+<style>
+  :root {
+    --borde:#e4e4e7; --bordeInput:#a1a1aa; --txt:#18181b; --txt2:#71717a; --azul:#2563eb;
+    --bg:#f6f6f7; --rojo:#dc2626; --verde:#16a34a; --activo:#eef2ff; --activotxt:#3730a3;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin:0; background:var(--bg); color:var(--txt); }
+  header { background:#fff; border-bottom:1px solid var(--borde); padding:16px 24px;
+    display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  .sub { color:var(--txt2); font-size:13px; }
+  main { max-width:1500px; margin:24px auto; padding:0 24px; }
+  .card { background:#fff; border:1px solid var(--borde); border-radius:10px;
+    padding:20px; margin-bottom:20px; }
+  .card h2 { font-size:15px; margin:0 0 14px; font-weight:600; }
+  label { display:block; font-size:13px; color:var(--txt2); margin:10px 0 4px; }
+  input, select { width:100%; padding:9px 10px; border:1px solid var(--bordeInput);
+    border-radius:7px; font-size:14px; background:#fff; color:var(--txt); }
+  input:hover, select:hover { border-color:#71717a; }
+  input:focus, select:focus { outline:none; border-color:var(--azul);
+    box-shadow:0 0 0 3px rgba(37,99,235,.18); }
+  input:disabled { background:#f3f4f6; color:var(--txt2); border-color:var(--borde); }
+  input[readonly] { background:#f4f4f5; color:var(--txt2); border-color:var(--borde); cursor:default; }
+  input[readonly]:hover { border-color:var(--borde); }
+  button { background:var(--azul); color:#fff; border:none; padding:9px 16px;
+    border-radius:7px; font-size:14px; cursor:pointer; }
+  button.sec { background:#fff; color:var(--txt); border:1px solid var(--bordeInput); }
+  button.del { background:#fff; color:var(--rojo); border:1px solid #f1c2c2; }
+  button:disabled { opacity:.6; cursor:default; }
+  table { width:100%; border-collapse:collapse; font-size:14px; table-layout:fixed; }
+  th,td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--borde);
+    vertical-align:middle; }
+  th { color:var(--txt2); font-weight:500; font-size:13px; }
+  td .sec, td .del { padding:6px 10px; font-size:13px; }
+  .acciones { display:flex; gap:6px; flex-wrap:wrap; }
+  .badge { font-size:12px; padding:2px 8px; border-radius:6px; }
+  .badge.on { background:#e7f6ec; color:var(--verde); }
+  .badge.off { background:#fde8e8; color:var(--rojo); }
+  .badge.borrador { background:#fef9c3; color:#854d0e; }
+  .badge.conformado { background:#dbeafe; color:#1e40af; }
+  .badge.enviado { background:#e7f6ec; color:var(--verde); }
+  .tag { font-size:12px; padding:2px 8px; border-radius:6px; background:#eef2ff; color:#3730a3; margin-right:4px; display:inline-block; margin-top:2px; }
+  .msg { font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; display:none; }
+  .msg.err { background:#fde8e8; color:var(--rojo); display:block; }
+  .msg.ok { background:#e7f6ec; color:var(--verde); display:block; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  .row > div { flex:1; min-width:150px; }
+  .cab { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .cab h2 { margin:0; }
+  .toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .filtros { display:flex; gap:8px; align-items:center; }
+  .hidden { display:none !important; }
+  .topinfo { font-size:13px; color:var(--txt2); margin-right:10px; }
+  .vacio { color:var(--txt2); font-size:13px; padding:14px 8px; }
+  .check { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--txt); margin:0; }
+  .check input { width:auto; }
+  .nota { font-size:12px; color:var(--txt2); margin-top:4px; }
+  .placeholder { color:var(--txt2); font-size:14px; line-height:1.6; }
+  .permisos { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:4px; }
+  .permisos label { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--txt); margin:0; }
+  .permisos input { width:auto; }
+  .liniaext { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:6px; }
+  .liniaext .f-cuit { flex:0 0 150px; }
+  .liniaext .f-cod { flex:1 1 130px; }
+  .liniaext .f-btn button { white-space:nowrap; }
+  .col-id { width:15%; }
+  .col-nombre { width:18%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .col-tipo { width:20%; }
+  .col-cod { width:12%; }
+  .col-estado { width:9%; }
+  .col-acc { width:26%; }
+  .volver { display:inline-block; color:var(--azul); cursor:pointer; font-size:13px; margin-bottom:12px; }
+  .padron { font-size:12px; color:var(--txt2); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .subt { font-size:12px; color:var(--txt2); font-weight:600; text-transform:uppercase; letter-spacing:.04em; margin:16px 0 2px; }
+  table.renglones td { padding:6px 6px; }
+  table.renglones input { padding:6px 8px; }
+  table.renglones .del { padding:6px 10px; }
+  table.renglones input.cob-ok { border-color:#16a34a; }
+  table.renglones input.cob-parcial { border-color:#d97706; }
+  table.renglones input.cob-falta { border-color:#dc2626; }
+  table.renglones .r-uni2 { margin-top:2px; line-height:1.2; }
+  td.r-cob { font-size:11px; line-height:1.6; white-space:normal; color:var(--txt2); }
+  td.r-cob .cob-badge { display:inline-block; margin:0 4px 2px 0; }
+  /* Cobertura (en qué bases existe un código) */
+  .cobertura { font-size:12px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; min-height:18px; }
+  .cob-badge { font-size:11px; padding:2px 8px; border-radius:6px; }
+  .cob-si { background:#e7f6ec; color:var(--verde); }
+  .cob-no { background:#f3f4f6; color:var(--txt2); }
+  .cob-err { background:#fde8e8; color:var(--rojo); }
+  /* Modal buscador (productos / proveedores) */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex;
+    align-items:flex-start; justify-content:center; padding:56px 16px; z-index:50; }
+  .modal { background:#fff; border-radius:12px; width:100%; max-width:700px; max-height:82vh;
+    display:flex; flex-direction:column; box-shadow:0 12px 44px rgba(0,0,0,.22); padding:18px; }
+  .modal-cab { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .modal-cab h2 { margin:0; font-size:15px; }
+  .modal-x { cursor:pointer; color:var(--txt2); font-size:18px; line-height:1; padding:2px 6px; }
+  .modal-info { font-size:12px; color:var(--txt2); margin:8px 2px; }
+  .modal-lista { overflow:auto; border:1px solid var(--borde); border-radius:8px; }
+  .modal-lista table { font-size:13px; }
+  .modal-lista th { position:sticky; top:0; background:#fafafa; }
+  .modal-lista tbody tr { cursor:pointer; }
+  .modal-lista tbody tr:hover { background:var(--activo); }
+  .modal-lista td { padding:8px; word-break:break-word; }
+  /* Cáscara con barra lateral */
+  .layout { display:flex; gap:20px; align-items:flex-start; }
+  .sidebar { width:210px; flex:0 0 210px; background:#fff; border:1px solid var(--borde);
+    border-radius:10px; padding:8px; }
+  .sidebar a { display:block; padding:10px 12px; border-radius:7px; font-size:14px;
+    color:var(--txt); cursor:pointer; user-select:none; }
+  .sidebar a:hover { background:var(--bg); }
+  .sidebar a.activo { background:var(--activo); color:var(--activotxt); font-weight:600; }
+  .sidebar a:focus-visible { outline:2px solid var(--azul); outline-offset:-2px; }
+  .sidebar-sep { border-top:1px solid var(--borde); margin:8px 6px; }
+  .contenido { flex:1; min-width:0; }
+  @media (max-width: 680px) {
+    .layout { flex-direction:column; }
+    .sidebar { width:100%; flex-basis:auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Intranet</h1>
+    <div class="sub">Portal de Clientes</div>
+  </div>
+  <div id="sesion" class="hidden">
+    <span class="topinfo" id="quien"></span>
+    <button class="sec" id="btnSalir">Salir</button>
+  </div>
+</header>
+
+<main>
+  <!-- LOGIN -->
+  <section id="vistaLogin" class="card">
+    <h2>Ingresar</h2>
+    <label>Usuario</label>
+    <input id="loginIdent" type="text" placeholder="usuario" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+    <label>Contraseña</label>
+    <input id="loginPass" type="password" autocomplete="new-password" />
+    <div style="margin-top:14px"><button id="btnIngresar">Ingresar</button></div>
+    <div id="msgLogin" class="msg"></div>
+  </section>
+
+  <!-- INTRANET (cáscara con barra lateral) -->
+  <section id="vistaIntranet" class="hidden">
+    <div class="layout">
+      <nav class="sidebar">
+        <a data-sec="inicio" tabindex="0" class="activo">Inicio</a>
+        <a data-sec="remitos" id="navRemitos" tabindex="0" class="hidden">Pre-remitos</a>
+        <div class="sidebar-sep hidden" id="navUsuariosSep"></div>
+        <a data-sec="usuarios" id="navUsuarios" tabindex="0" class="hidden">Usuarios</a>
+      </nav>
+
+      <div class="contenido">
+
+        <!-- INICIO -->
+        <div id="secInicio" class="seccion">
+          <div class="card">
+            <h2>Inicio</h2>
+            <p>Hola, <strong id="inicioNombre"></strong>.</p>
+            <p class="placeholder">
+              Desde el menú de la izquierda accedés a las funciones internas.<br>
+              Vamos a ir sumando secciones a medida que las armemos.
+            </p>
+          </div>
+        </div>
+
+        <!-- PRE-REMITOS -->
+        <div id="secRemitos" class="seccion hidden">
+
+          <!-- Lista -->
+          <div id="remVista" class="card">
+            <div class="toolbar">
+              <h2 style="margin:0">Pre-remitos de compra</h2>
+              <div class="filtros">
+                <select id="remFiltroEstado" style="width:auto; display:inline-block">
+                  <option value="todos">Todos</option>
+                  <option value="Borrador">Borrador</option>
+                  <option value="Conformado">Conformado</option>
+                  <option value="Enviado">Enviado</option>
+                </select>
+                <button id="btnNuevoRemito">Nuevo</button>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:6%">#</th>
+                  <th style="width:12%">Fecha</th>
+                  <th style="width:28%">Proveedor</th>
+                  <th style="width:10%">Renglones</th>
+                  <th style="width:12%">Estado</th>
+                  <th style="width:14%">Creado por</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="remTabla"></tbody>
+            </table>
+            <div id="remMsgLista" class="msg"></div>
+          </div>
+
+          <!-- Formulario (alta / edición / ver) -->
+          <div id="remForm" class="card hidden">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px">
+              <span class="volver" id="btnVolverRem" style="margin:0">← Volver a la lista</span>
+              <div class="padron" id="remPadron">
+                <span id="remPadronTxt">Padrón: cargando…</span>
+                <button class="sec" id="btnRefrescarPadron" style="padding:5px 10px; font-size:12px">Refrescar padrón</button>
+              </div>
+            </div>
+            <h2 id="remFormTitulo">Nuevo pre-remito</h2>
+
+            <div class="row">
+              <div style="flex:0 0 150px"><label>Fecha de Ingreso</label><input id="remFecha" type="date" /></div>
+              <div style="flex:0 0 150px"><label>Cód. proveedor</label><input id="remProvCod" type="text" placeholder="00123 · F3 busca" /></div>
+              <div style="flex:1 1 180px; min-width:110px"><label>Razón social</label><input id="remProvRazon" type="text" placeholder="(se completa al verificar)" /></div>
+              <div style="flex:1 1 160px; min-width:130px"><label>Bases</label><div id="remProvCob" class="cobertura"></div></div>
+            </div>
+
+            <div class="subt">Comprobante del proveedor</div>
+            <div class="row">
+              <div style="flex:0 0 150px"><label>Prefijo</label><input id="remCompPrefijo" type="text" placeholder="0001" /></div>
+              <div style="flex:0 0 170px"><label>Número</label><input id="remCompNumero" type="number" placeholder="00000000" /></div>
+              <div style="flex:0 0 170px"><label>Fecha del comprobante</label><input id="remCompFecha" type="date" /></div>
+            </div>
+
+            <label>Observaciones</label>
+            <input id="remObs" type="text" />
+
+            <h2 style="font-size:14px; margin:18px 0 8px">Renglones</h2>
+            <table class="renglones">
+              <thead>
+                <tr>
+                  <th style="width:10%">Cód. producto</th>
+                  <th>Descripción</th>
+                  <th style="width:7%">Cantidad</th>
+                  <th style="width:7%">Unidad</th>
+                  <th style="width:10%">2ª unidad</th>
+                  <th style="width:8%">Partida</th>
+                  <th style="width:9%">Series</th>
+                  <th style="width:10%">Observación</th>
+                  <th style="width:12%">Bases</th>
+                  <th style="width:4%"></th>
+                </tr>
+              </thead>
+              <tbody id="remRenglones"></tbody>
+            </table>
+            <div style="margin-top:8px"><button class="sec" id="btnAgregarRenglon">+ Agregar renglón</button></div>
+            <div class="nota">Tip: <strong>F3</strong> en <strong>Cód. producto</strong> o en <strong>Cód. proveedor</strong> abre el buscador (por código o nombre). <strong>Enter</strong> pasa al campo siguiente igual que Tab; al salir del último campo del último renglón se agrega una línea nueva. La <strong>Unidad</strong> y la <strong>2ª unidad</strong> se completan solas según el artículo (2ª unidad = Cantidad ÷ relación; no se puede editar cuando la relación es fija). La columna <strong>Bases</strong> muestra en qué bases existe (✓ / ✗).</div>
+
+            <div style="margin-top:18px; display:flex; gap:8px">
+              <button id="btnGuardarRem">Guardar</button>
+              <button class="sec" id="btnCancelarRem">Cancelar</button>
+            </div>
+            <div id="remMsgForm" class="msg"></div>
+          </div>
+
+        </div>
+
+        <!-- USUARIOS (solo administradores) -->
+        <div id="secUsuarios" class="seccion hidden">
+          <div class="card">
+            <h2 id="cardTitulo">Crear usuario</h2>
+
+            <label>Tipo de usuario</label>
+            <select id="nuevoTipo">
+              <option value="Extranet">Extranet (cliente / proveedor)</option>
+              <option value="Interno">Interno (red local)</option>
+            </select>
+
+            <!-- Campos extranet -->
+            <div id="campoExtranet">
+              <div class="liniaext">
+                <div class="f-cuit"><label>CUIT</label><input id="nuevoCuit" type="text" placeholder="20123456789" /></div>
+                <div class="f-cod"><label>Código cliente</label><input id="nuevoCodigoCliente" type="text" placeholder="cliente" /></div>
+                <div class="f-btn"><button class="sec" id="btnBuscarCliente">Buscar</button></div>
+                <div class="f-cod"><label>Código proveedor</label><input id="nuevoCodigoProveedor" type="text" placeholder="proveedor" /></div>
+                <div class="f-btn"><button class="sec" id="btnBuscarProveedor">Buscar</button></div>
+              </div>
+              <div class="nota">El rol se infiere del código que cargues: cliente, proveedor, o ambos.</div>
+            </div>
+
+            <!-- Campos interno -->
+            <div id="campoInterno" class="hidden">
+              <div class="row" style="margin-top:6px">
+                <div><label>Nombre de usuario</label><input id="nuevoUsuario" type="text" /></div>
+                <div style="align-self:center; margin-top:22px">
+                  <label class="check"><input id="nuevoEsAdmin" type="checkbox" /> Es administrador</label>
+                </div>
+              </div>
+              <label style="margin-top:10px">Permisos</label>
+              <div id="permisosBox" class="permisos"></div>
+              <div class="nota">El administrador gestiona usuarios; los permisos habilitan las funciones internas. Se pueden combinar.</div>
+            </div>
+
+            <div class="row" style="margin-top:6px">
+              <div><label>Email (opcional)</label><input id="nuevoEmail" type="email" /></div>
+              <div><label id="lblPass">Contraseña inicial</label><input id="nuevoPass" type="text" /></div>
+              <div style="flex:0; align-self:flex-end; display:flex; gap:8px">
+                <button id="btnCrear">Crear</button>
+                <button class="sec hidden" id="btnCancelar">Cancelar</button>
+              </div>
+            </div>
+            <div id="msgCrear" class="msg"></div>
+          </div>
+
+          <div class="card">
+            <div class="cab">
+              <h2>Usuarios</h2>
+              <div class="filtros">
+                <label style="display:inline; margin:0;">Ver:</label>
+                <select id="filtroTipo" style="width:auto; display:inline-block">
+                  <option value="internos">Internos</option>
+                  <option value="externos">Externos</option>
+                  <option value="todos">Todos</option>
+                </select>
+                <select id="filtroEstado" style="width:auto; display:inline-block">
+                  <option value="activos">Activos</option>
+                  <option value="inactivos">Inactivos</option>
+                  <option value="todos">Todos</option>
+                </select>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th class="col-id">Usuario / CUIT</th>
+                  <th class="col-nombre">Razón social</th>
+                  <th class="col-tipo">Tipo / Roles / Permisos</th>
+                  <th class="col-cod">Códigos BAS</th>
+                  <th class="col-estado">Estado</th>
+                  <th class="col-acc"></th>
+                </tr>
+              </thead>
+              <tbody id="tablaUsuarios"></tbody>
+            </table>
+            <div id="msgLista" class="msg"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- MODAL: buscador (productos / proveedores), F3 -->
+  <div id="modalProd" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-cab">
+        <h2 id="modalProdTitulo">Buscar</h2>
+        <span class="modal-x" id="modalProdCerrar" title="Cerrar (Esc)">✕</span>
+      </div>
+      <input id="modalProdBuscar" type="text" placeholder="Buscar…" autocomplete="off" />
+      <div class="modal-info" id="modalProdInfo"></div>
+      <div class="modal-lista" id="modalProdLista">
+        <table>
+          <thead>
+            <tr><th style="width:22%">Código</th><th>Descripción</th><th style="width:30%">Bases</th></tr>
+          </thead>
+          <tbody id="modalProdTabla"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let token = localStorage.getItem("in_token") || "";
+  let esAdmin = localStorage.getItem("in_esadmin") === "true";
+  let ident = localStorage.getItem("in_ident") || "";
+  let tipo = localStorage.getItem("in_tipo") || "";
+  let misPermisos = JSON.parse(localStorage.getItem("in_permisos") || "[]");
+
+  const PERM_EDITAR = "editar_remitos";
+  const PERM_CONFORMAR = "conformar_remitos";
+
+  let catalogoPermisos = [];     // [{codigo, etiqueta}]
+  let razonCliente = "";
+  let razonProveedor = "";
+  let razonSocialCargada = "";
+  let editandoId = null;
+  let usuariosActuales = [];
+
+  // Estado del formulario de pre-remito.
+  let remModo = "nuevo";   // nuevo | editar | ver
+  let remId = null;
+  let remRowVersion = null;
+
+  // Buscador modal (F3).
+  let modalKind = "producto";    // producto | proveedor
+  let prodTargetInput = null;
+  let prodTargetTr = null;
+  let prodTimer = null;
+  let modalQ = "";
+  let modalOffset = 0;
+  let modalTotal = 0;
+  let modalHayMas = false;
+  let modalCargando = false;
+  let modalGen = 0;              // invalida respuestas viejas al cambiar la búsqueda
+
+  function mostrar(el, t, tipoMsg) { el.textContent = t; el.className = "msg " + tipoMsg; }
+  function limpiar(el) { el.textContent = ""; el.className = "msg"; }
+  function esc(s) {
+    return (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function etiquetaPermiso(code) {
+    const p = catalogoPermisos.find(x => x.codigo === code);
+    return p ? p.etiqueta : code;
+  }
+  function tienePermiso(code) { return misPermisos.includes(code); }
+  function puedeEditarRemitos() { return tienePermiso(PERM_EDITAR); }
+  function puedeConformarRemitos() { return tienePermiso(PERM_CONFORMAR); }
+  function puedeVerRemitos() { return puedeEditarRemitos() || puedeConformarRemitos(); }
+  function hdrJson() { return { "Content-Type": "application/json", "Authorization": "Bearer " + token }; }
+  function fechaCorta(s) {
+    if (!s) return "—";
+    const d = String(s).split("T")[0];
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? (m[3] + "/" + m[2] + "/" + m[1]) : d;
+  }
+  function hoyISO() {
+    const d = new Date(); const p = n => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+  function haceCuanto(iso) {
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    if (isNaN(t)) return null;
+    const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (s < 60) return "hace instantes";
+    const m = Math.floor(s / 60); if (m < 60) return "hace " + m + " min";
+    const h = Math.floor(m / 60); if (h < 24) return "hace " + h + " h";
+    const d = Math.floor(h / 24); return "hace " + d + " d";
+  }
+
+  function actualizarVista() {
+    if (token && tipo === "Interno") {
+      $("vistaLogin").classList.add("hidden");
+      $("vistaIntranet").classList.remove("hidden");
+      $("sesion").classList.remove("hidden");
+      $("quien").textContent = ident + (esAdmin ? " · Administrador" : " · Interno");
+      $("inicioNombre").textContent = ident;
+      $("navUsuarios").classList.toggle("hidden", !esAdmin);
+      $("navUsuariosSep").classList.toggle("hidden", !esAdmin);
+      $("navRemitos").classList.toggle("hidden", !puedeVerRemitos());
+      // Al entrar siempre se muestra Inicio.
+      mostrarSeccion("inicio");
+    } else {
+      $("vistaIntranet").classList.add("hidden");
+      $("vistaLogin").classList.remove("hidden");
+      $("sesion").classList.add("hidden");
+    }
+  }
+
+  async function mostrarSeccion(sec) {
+    if (sec === "usuarios" && !esAdmin) sec = "inicio";
+    if (sec === "remitos" && !puedeVerRemitos()) sec = "inicio";
+
+    const mapa = { inicio: "secInicio", usuarios: "secUsuarios", remitos: "secRemitos" };
+    document.querySelectorAll(".seccion").forEach(s => s.classList.add("hidden"));
+    const destino = $(mapa[sec] || "secInicio");
+    if (destino) destino.classList.remove("hidden");
+
+    document.querySelectorAll(".sidebar a").forEach(a =>
+      a.classList.toggle("activo", a.dataset.sec === sec));
+
+    if (sec === "usuarios") {
+      actualizarCamposTipo();
+      if (catalogoPermisos.length === 0) await cargarCatalogoPermisos();
+      cargarUsuarios();
+    } else if (sec === "remitos") {
+      $("remForm").classList.add("hidden");
+      $("remVista").classList.remove("hidden");
+      $("btnNuevoRemito").classList.toggle("hidden", !puedeEditarRemitos());
+      cargarRemitos();
+    }
+  }
+
+  function actualizarCamposTipo() {
+    const t = $("nuevoTipo").value;
+    $("campoExtranet").classList.toggle("hidden", t !== "Extranet");
+    $("campoInterno").classList.toggle("hidden", t !== "Interno");
+  }
+
+  async function cargarCatalogoPermisos() {
+    try {
+      const r = await fetch("/api/admin/permisos", { headers: { "Authorization": "Bearer " + token } });
+      if (!r.ok) return;
+      catalogoPermisos = await r.json();
+    } catch (e) { return; }
+    renderPermisos();
+  }
+
+  function renderPermisos() {
+    const box = $("permisosBox");
+    box.innerHTML = "";
+    for (const p of catalogoPermisos) {
+      const label = document.createElement("label");
+      label.innerHTML = '<input type="checkbox" class="perm-chk" value="' + esc(p.codigo) + '"> ' + esc(p.etiqueta);
+      box.appendChild(label);
+    }
+  }
+
+  function permisosSeleccionados() {
+    return Array.from(document.querySelectorAll(".perm-chk:checked")).map(c => c.value);
+  }
+
+  function setPermisos(arr) {
+    const set = new Set(arr || []);
+    document.querySelectorAll(".perm-chk").forEach(c => { c.checked = set.has(c.value); });
+  }
+
+  async function ingresar() {
+    limpiar($("msgLogin"));
+    let r;
+    try {
+      r = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identificador: $("loginIdent").value, password: $("loginPass").value })
+      });
+    } catch (e) { mostrar($("msgLogin"), "No se pudo conectar con el backend.", "err"); return; }
+
+    if (!r.ok) { mostrar($("msgLogin"), "Usuario o contraseña incorrectos.", "err"); return; }
+    const data = await r.json();
+    if (data.tipo !== "Interno") {
+      mostrar($("msgLogin"), "Este acceso es solo para usuarios internos.", "err");
+      return;
+    }
+
+    token = data.token; esAdmin = data.esAdmin; ident = data.identificador; tipo = data.tipo;
+    misPermisos = data.permisos || [];
+    localStorage.setItem("in_token", token);
+    localStorage.setItem("in_esadmin", esAdmin);
+    localStorage.setItem("in_ident", ident);
+    localStorage.setItem("in_tipo", tipo);
+    localStorage.setItem("in_permisos", JSON.stringify(misPermisos));
+    actualizarVista();
+  }
+
+  function salir() {
+    token = ""; esAdmin = false; ident = ""; tipo = ""; misPermisos = [];
+    ["in_token", "in_esadmin", "in_ident", "in_tipo", "in_permisos"].forEach(k => localStorage.removeItem(k));
+    // Limpiamos los campos del login para que el autocompletado del navegador
+    // no quede peleando con el valor anterior (comía las primeras teclas).
+    $("loginIdent").value = "";
+    $("loginPass").value = "";
+    actualizarVista();
+  }
+
+  // ===================== PRE-REMITOS =====================
+  function estadoBadgeRem(estado) {
+    const cls = estado === "Borrador" ? "borrador" : estado === "Conformado" ? "conformado" : "enviado";
+    return '<span class="badge ' + cls + '">' + esc(estado) + '</span>';
+  }
+
+  async function cargarRemitos() {
+    limpiar($("remMsgLista"));
+    const estado = $("remFiltroEstado").value || "todos";
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos?estado=" + encodeURIComponent(estado), { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
+    if (r.status === 401 || r.status === 403) { salir(); return; }
+    if (!r.ok) { mostrar($("remMsgLista"), "No se pudo cargar la lista.", "err"); return; }
+
+    const lista = await r.json();
+    const tbody = $("remTabla");
+    tbody.innerHTML = "";
+
+    if (!lista.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="vacio">No hay pre-remitos para mostrar.</td></tr>';
+      return;
+    }
+
+    for (const p of lista) {
+      const prov = (p.proveedorCodigo || "") + (p.proveedorRazonSocial ? " · " + p.proveedorRazonSocial : "");
+      const acc = [];
+      if (p.estado === "Borrador" && puedeEditarRemitos())
+        acc.push('<button class="sec" data-act="editar" data-id="' + p.id + '">Editar</button>');
+      else
+        acc.push('<button class="sec" data-act="ver" data-id="' + p.id + '">Ver</button>');
+      if (p.estado === "Borrador" && puedeConformarRemitos())
+        acc.push('<button class="sec" data-act="conformar" data-id="' + p.id + '">Conformar</button>');
+      if (p.estado === "Conformado" && puedeConformarRemitos()) {
+        acc.push('<button class="sec" data-act="reabrir" data-id="' + p.id + '">Reabrir</button>');
+        acc.push('<button data-act="grabar" data-id="' + p.id + '">Grabar</button>');
+      }
+      if (p.estado === "Borrador" && puedeEditarRemitos())
+        acc.push('<button class="del" data-act="eliminar" data-id="' + p.id + '">Eliminar</button>');
+
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+          '<td>' + p.id + '</td>'
+        + '<td>' + esc(fechaCorta(p.fecha)) + '</td>'
+        + '<td title="' + esc(prov) + '">' + esc(prov || "—") + '</td>'
+        + '<td>' + p.cantidadRenglones + '</td>'
+        + '<td>' + estadoBadgeRem(p.estado) + '</td>'
+        + '<td>' + esc(p.creadoPor || "—") + '</td>'
+        + '<td><div class="acciones">' + acc.join("") + '</div></td>';
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll("button[data-act]").forEach(b => {
+      b.addEventListener("click", () => manejarAccionRem(b.dataset.act, b.dataset.id));
+    });
+  }
+
+  function manejarAccionRem(act, id) {
+    if (act === "ver") return abrirRemito(id, "ver");
+    if (act === "editar") return abrirRemito(id, "editar");
+    if (act === "eliminar") return eliminarRemito(id);
+    if (act === "conformar") return accionEstadoRem(id, "conformar", "¿Conformar este pre-remito? No se podrá editar hasta reabrirlo.");
+    if (act === "reabrir") return accionEstadoRem(id, "reabrir", "¿Reabrir este pre-remito para volver a editarlo?");
+    if (act === "grabar") return grabarRemito(id);
+  }
+
+  function mostrarFormRem() {
+    limpiar($("remMsgForm"));
+    $("remVista").classList.add("hidden");
+    $("remForm").classList.remove("hidden");
+    cargarEstadoPadron();
+    window.scrollTo({ top: 0, behavior: "auto" });
+    // El foco arranca en la fecha (salvo en modo "ver", donde está deshabilitada).
+    setTimeout(() => { if (!$("remFecha").disabled) $("remFecha").focus(); }, 0);
+  }
+
+  function volverListaRem() {
+    $("remForm").classList.add("hidden");
+    $("remVista").classList.remove("hidden");
+    cargarRemitos();
+  }
+
+  // ---- Estado del padrón (caché del servidor) ----
+  async function cargarEstadoPadron() {
+    const txt = $("remPadronTxt");
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos/estado-cache", { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { txt.textContent = "Padrón: no disponible"; return; }
+    if (!r.ok) { txt.textContent = "Padrón: no disponible"; return; }
+    const d = await r.json();
+    const bases = d.bases || [];
+    let prov = 0, items = 0, listo = bases.length > 0, ultimo = null, algunError = false;
+    for (const b of bases) {
+      prov += b.proveedores || 0;
+      items += b.bienes || 0;
+      if (!b.listo) listo = false;
+      if (b.error) algunError = true;
+      if (b.actualizado && (!ultimo || new Date(b.actualizado) > new Date(ultimo))) ultimo = b.actualizado;
+    }
+    let s = "Padrón: " + prov + " proveedores · " + items + " productos";
+    const hc = haceCuanto(ultimo);
+    if (hc) s += " · actualizado " + hc;
+    else if (!listo) s += " · cargando…";
+    if (algunError) s += " · (una base con error)";
+    txt.textContent = s;
+  }
+
+  async function refrescarPadron() {
+    const btn = $("btnRefrescarPadron"), txt = $("remPadronTxt");
+    btn.disabled = true;
+    const prev = btn.textContent;
+    btn.textContent = "Refrescando…";
+    txt.textContent = "Padrón: actualizando…";
+    try {
+      await fetch("/api/pre-remitos/refrescar-cache", { method: "POST", headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { /* ignore */ }
+    for (let i = 0; i < 8; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      await cargarEstadoPadron();
+    }
+    btn.disabled = false;
+    btn.textContent = prev;
+  }
+
+  // ---- Resolución de códigos en las dos bases ----
+  function pintarCoberturaCompacta(cont, bases) {
+    cont.innerHTML = "";
+    if (!bases || !bases.length) { cont.textContent = "—"; return; }
+    for (const b of bases) {
+      const span = document.createElement("span");
+      if (b.error) {
+        span.className = "cob-badge cob-err"; span.textContent = b.base; span.title = "Error: " + b.error;
+      } else if (b.existe) {
+        span.className = "cob-badge cob-si"; span.textContent = b.base + " ✓"; if (b.descripcion) span.title = b.descripcion;
+      } else {
+        span.className = "cob-badge cob-no"; span.textContent = b.base + " ✗";
+      }
+      cont.appendChild(span);
+    }
+  }
+
+  async function resolverProveedor() {
+    const cod = $("remProvCod").value.trim();
+    const cont = $("remProvCob");
+    cont.innerHTML = "";
+    if (!cod) return;
+    cont.textContent = "consultando…";
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos/resolver-proveedor?codigo=" + encodeURIComponent(cod), { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { cont.innerHTML = '<span class="cob-badge cob-err">sin conexión</span>'; return; }
+    if (!r.ok) { cont.innerHTML = '<span class="cob-badge cob-err">error ' + r.status + '</span>'; return; }
+    const d = await r.json();
+    pintarCoberturaCompacta(cont, d.bases);
+    const conNombre = (d.bases || []).find(b => b.existe && b.descripcion);
+    if (conNombre && !$("remProvRazon").value) $("remProvRazon").value = conNombre.descripcion;
+  }
+
+  async function resolverProductoRenglon(tr) {
+    const codInput = tr.querySelector(".r-cod");
+    const cell = tr.querySelector(".r-cob");
+    const cod = codInput.value.trim();
+    codInput.classList.remove("cob-ok", "cob-parcial", "cob-falta");
+    codInput.title = "";
+    if (cell) cell.innerHTML = "";
+    if (!cod) { limpiarArticulo(tr); return; }
+    if (cell) cell.textContent = "consultando…";
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos/resolver-producto?codigo=" + encodeURIComponent(cod), { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { if (cell) cell.innerHTML = '<span class="cob-badge cob-err">sin conexión</span>'; return; }
+    if (!r.ok) { if (cell) cell.innerHTML = '<span class="cob-badge cob-err">error ' + r.status + '</span>'; return; }
+    const d = await r.json();
+    const bases = d.bases || [];
+    if (cell) pintarCoberturaCompacta(cell, bases);
+    const enCuantas = bases.filter(b => b.existe).length;
+    codInput.classList.add(enCuantas === 0 ? "cob-falta" : (enCuantas === bases.length ? "cob-ok" : "cob-parcial"));
+    const conNombre = bases.find(b => b.existe && b.descripcion);
+    const desc = tr.querySelector(".r-desc");
+    if (conNombre && desc && !desc.value) desc.value = conNombre.descripcion;
+    // Datos del artículo (unidad / relación) para calcular la 2ª unidad.
+    const conArt = bases.find(b => b.existe && b.articulo);
+    if (conArt) aplicarArticulo(tr, conArt.articulo);
+    else limpiarArticulo(tr);
+  }
+
+  // Guarda en el renglón los datos de unidad/relación del bien y completa la unidad.
+  function aplicarArticulo(tr, a) {
+    tr.dataset.resuelto = "1";
+    tr.dataset.doble = a.dobleUnidadMedida ? "1" : "0";
+    tr.dataset.relacion = (a.relacionStock != null ? String(a.relacionStock) : "");
+    tr.dataset.tipoRel = a.tipoRelacion || "";
+    tr.dataset.uni2 = a.unidadMedida2 || "";
+    const uniEl = tr.querySelector(".r-uni");
+    if (uniEl && a.unidadMedida1) uniEl.value = a.unidadMedida1;
+    recalcSegunda(tr);
+  }
+
+  // Limpia los datos de unidad cuando el producto no resuelve / se vacía.
+  function limpiarArticulo(tr) {
+    delete tr.dataset.resuelto;
+    tr.dataset.doble = "0"; tr.dataset.relacion = ""; tr.dataset.tipoRel = ""; tr.dataset.uni2 = "";
+    const c2 = tr.querySelector(".r-cant2"); if (c2) { c2.value = ""; c2.readOnly = true; }
+    const u2 = tr.querySelector(".r-uni2"); if (u2) u2.textContent = "";
+  }
+
+  // Calcula la 2ª unidad = Cantidad ÷ relación. Sólo se muestra para bienes de
+  // doble unidad. Si la relación es fija ("F"), queda de sólo lectura.
+  function recalcSegunda(tr) {
+    const c2 = tr.querySelector(".r-cant2");
+    const u2 = tr.querySelector(".r-uni2");
+    if (!c2) return;
+    if (!tr.dataset.resuelto || tr.dataset.doble !== "1") {
+      c2.value = ""; if (u2) u2.textContent = ""; c2.readOnly = true; return;
+    }
+    const tipoRel = (tr.dataset.tipoRel || "").toUpperCase();
+    const cant = parseFloat(tr.querySelector(".r-cant").value);
+    const rel = parseFloat(tr.dataset.relacion);
+    const r = (rel && rel > 0) ? rel : 1;
+    c2.value = isNaN(cant) ? "" : String(Math.round((cant / r) * 10000) / 10000);
+    if (u2) u2.textContent = tr.dataset.uni2 || "";
+    c2.readOnly = (tipoRel === "F");   // fija = no editable; otra relación = editable
+  }
+
+  function agregarRenglon(l) {
+    l = l || {};
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+        '<td><input class="r-cod" type="text" value="' + esc(l.productoCodigo || "") + '"></td>'
+      + '<td><input class="r-desc" type="text" value="' + esc(l.descripcion || "") + '"></td>'
+      + '<td><input class="r-cant" type="number" step="any" value="' + (l.cantidad != null ? l.cantidad : "") + '"></td>'
+      + '<td><input class="r-uni" type="text" readonly tabindex="-1" value="' + esc(l.unidad || "") + '"></td>'
+      + '<td><input class="r-cant2" type="text" readonly tabindex="-1" placeholder="—"><div class="r-uni2 nota"></div></td>'
+      + '<td><input class="r-part" type="text" value="' + esc(l.partida || "") + '"></td>'
+      + '<td><input class="r-ser" type="text" value="' + esc(l.series || "") + '"></td>'
+      + '<td><input class="r-obs" type="text" value="' + esc(l.observacion || "") + '"></td>'
+      + '<td class="r-cob"></td>'
+      + '<td><button class="del r-quitar" title="Quitar" tabindex="-1">✕</button></td>';
+    $("remRenglones").appendChild(tr);
+    tr.querySelector(".r-quitar").addEventListener("click", () => tr.remove());
+    const codInput = tr.querySelector(".r-cod");
+    codInput.addEventListener("blur", () => resolverProductoRenglon(tr));
+    codInput.addEventListener("keydown", e => {
+      if (e.key === "F3") { e.preventDefault(); abrirModalProducto(codInput, tr); }
+    });
+    tr.querySelector(".r-cant").addEventListener("input", () => recalcSegunda(tr));
+  }
+
+  function recolectarRenglones() {
+    const filas = [];
+    $("remRenglones").querySelectorAll("tr").forEach(tr => {
+      const cod = tr.querySelector(".r-cod").value.trim();
+      if (!cod) return;
+      filas.push({
+        productoCodigo: cod,
+        descripcion: tr.querySelector(".r-desc").value || null,
+        cantidad: parseFloat(tr.querySelector(".r-cant").value) || 0,
+        unidad: tr.querySelector(".r-uni").value || null,
+        observacion: tr.querySelector(".r-obs").value || null,
+        partida: tr.querySelector(".r-part").value || null,
+        series: tr.querySelector(".r-ser").value || null
+      });
+    });
+    return filas;
+  }
+
+  function setFormReadonly(ro) {
+    ["remFecha", "remProvCod", "remProvRazon", "remObs",
+     "remCompPrefijo", "remCompNumero", "remCompFecha"].forEach(idd => $(idd).disabled = ro);
+    $("remRenglones").querySelectorAll("input").forEach(i => i.disabled = ro);
+    $("remRenglones").querySelectorAll(".r-quitar").forEach(b => b.classList.toggle("hidden", ro));
+    $("btnAgregarRenglon").classList.toggle("hidden", ro);
+    $("btnGuardarRem").classList.toggle("hidden", ro);
+  }
+
+  // ---- Enter como Tab + alta automática de renglón ----
+  function camposFormEnOrden() {
+    return Array.from($("remForm").querySelectorAll("input"))
+      .filter(i => !i.disabled && !i.readOnly && i.offsetParent !== null);
+  }
+
+  function avanzarCampo(el) {
+    const campos = camposFormEnOrden();
+    const i = campos.indexOf(el);
+    if (i < 0) return;
+    if (i < campos.length - 1) {
+      const sig = campos[i + 1];
+      sig.focus();
+      try { sig.select(); } catch (_) {}
+    } else if (el.classList.contains("r-obs")) {
+      agregarYFocoNuevaLinea();
+    }
+  }
+
+  function agregarYFocoNuevaLinea() {
+    agregarRenglon();
+    const filas = $("remRenglones").querySelectorAll("tr");
+    const cod = filas[filas.length - 1].querySelector(".r-cod");
+    if (cod) cod.focus();
+  }
+
+  function abrirNuevoRemito() {
+    remModo = "nuevo"; remId = null; remRowVersion = null;
+    $("remFormTitulo").textContent = "Nuevo pre-remito";
+    $("remFecha").value = hoyISO();
+    $("remProvCod").value = ""; $("remProvRazon").value = ""; $("remObs").value = "";
+    $("remCompPrefijo").value = ""; $("remCompNumero").value = ""; $("remCompFecha").value = "";
+    $("remProvCob").innerHTML = "";
+    $("remRenglones").innerHTML = "";
+    agregarRenglon();
+    setFormReadonly(false);
+    mostrarFormRem();
+  }
+
+  async function abrirRemito(id, modo) {
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos/" + id, { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
+    if (!r.ok) { mostrar($("remMsgLista"), "No se pudo leer el pre-remito.", "err"); return; }
+    const d = await r.json();
+
+    remModo = modo; remId = d.id; remRowVersion = d.rowVersion;
+    $("remFormTitulo").textContent = (modo === "ver" ? "Pre-remito #" : "Editar pre-remito #") + d.id + "  ·  " + d.estado;
+    $("remFecha").value = (d.fecha || "").split("T")[0];
+    $("remProvCod").value = d.proveedorCodigo || "";
+    $("remProvRazon").value = d.proveedorRazonSocial || "";
+    $("remCompPrefijo").value = d.comprobantePrefijo || "";
+    $("remCompNumero").value = (d.comprobanteNumero != null ? d.comprobanteNumero : "");
+    $("remCompFecha").value = (d.comprobanteFecha || "").split("T")[0];
+    $("remObs").value = d.observaciones || "";
+    $("remProvCob").innerHTML = "";
+    $("remRenglones").innerHTML = "";
+    (d.lineas || []).forEach(l => agregarRenglon(l));
+    if (!d.lineas || !d.lineas.length) agregarRenglon();
+    setFormReadonly(modo === "ver");
+    mostrarFormRem();
+
+    resolverProveedor();
+    $("remRenglones").querySelectorAll("tr").forEach(tr => resolverProductoRenglon(tr));
+  }
+
+  async function guardarRemito() {
+    limpiar($("remMsgForm"));
+    const prov = $("remProvCod").value.trim();
+    if (!prov) { mostrar($("remMsgForm"), "Falta el código de proveedor.", "err"); return; }
+
+    const numComp = $("remCompNumero").value;
+    const body = {
+      proveedorCodigo: prov,
+      proveedorRazonSocial: $("remProvRazon").value || null,
+      fecha: $("remFecha").value || null,
+      comprobantePrefijo: $("remCompPrefijo").value || null,
+      comprobanteNumero: numComp ? parseInt(numComp, 10) : null,
+      comprobanteFecha: $("remCompFecha").value || null,
+      observaciones: $("remObs").value || null,
+      lineas: recolectarRenglones()
+    };
+
+    let r;
+    try {
+      if (remModo === "nuevo") {
+        r = await fetch("/api/pre-remitos", { method: "POST", headers: hdrJson(), body: JSON.stringify(body) });
+      } else {
+        body.rowVersion = remRowVersion;
+        r = await fetch("/api/pre-remitos/" + remId, { method: "PUT", headers: hdrJson(), body: JSON.stringify(body) });
+      }
+    } catch (e) { mostrar($("remMsgForm"), "No se pudo conectar.", "err"); return; }
+
+    if (r.ok) {
+      const d = await r.json();
+      remId = d.id; remRowVersion = d.rowVersion; remModo = "editar";
+      mostrar($("remMsgForm"), "Guardado. Volviendo a la lista…", "ok");
+      $("btnGuardarRem").disabled = true;
+      $("btnCancelarRem").disabled = true;
+      setTimeout(() => {
+        $("btnGuardarRem").disabled = false;
+        $("btnCancelarRem").disabled = false;
+        volverListaRem();
+      }, 1800);
+      return;
+    }
+    if (r.status === 409) {
+      const d = await r.json().catch(() => ({}));
+      mostrar($("remMsgForm"), d.mensaje || "Otro usuario modificó este pre-remito. Recargá.", "err");
+      return;
+    }
+    const d = await r.json().catch(() => ({}));
+    mostrar($("remMsgForm"), d.mensaje || "No se pudo guardar.", "err");
+  }
+
+  async function accionEstadoRem(id, accion, confirmMsg) {
+    if (!confirm(confirmMsg)) return;
+    limpiar($("remMsgLista"));
+
+    let det;
+    try {
+      const rd = await fetch("/api/pre-remitos/" + id, { headers: { "Authorization": "Bearer " + token } });
+      if (!rd.ok) { mostrar($("remMsgLista"), "No se pudo leer el pre-remito.", "err"); return; }
+      det = await rd.json();
+    } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
+
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos/" + id + "/" + accion, {
+        method: "POST", headers: hdrJson(), body: JSON.stringify({ rowVersion: det.rowVersion })
+      });
+    } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
+
+    if (r.ok) { cargarRemitos(); return; }
+    const d = await r.json().catch(() => ({}));
+    mostrar($("remMsgLista"), d.mensaje || "No se pudo completar la acción.", "err");
+  }
+
+  async function eliminarRemito(id) {
+    if (!confirm("¿Eliminar el pre-remito #" + id + "?\n\nEsta acción no se puede deshacer.")) return;
+    limpiar($("remMsgLista"));
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos/" + id, { method: "DELETE", headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
+    if (r.ok) { cargarRemitos(); return; }
+    const d = await r.json().catch(() => ({}));
+    mostrar($("remMsgLista"), d.mensaje || "No se pudo eliminar.", "err");
+  }
+
+  function grabarRemito(id) {
+    mostrar($("remMsgLista"),
+      "El grabado en BAS se habilita en el próximo paso (validación de códigos y selección de base).", "ok");
+  }
+
+  // ---- Modal buscador (productos / proveedores), F3 + scroll infinito ----
+  function abrirModalProducto(input, tr) {
+    modalKind = "producto"; prodTargetInput = input; prodTargetTr = tr;
+    $("modalProdTitulo").textContent = "Buscar producto";
+    $("modalProdBuscar").placeholder = "Buscar por código o nombre…";
+    abrirModalComun(input);
+  }
+
+  function abrirModalProveedor(input) {
+    modalKind = "proveedor"; prodTargetInput = input; prodTargetTr = null;
+    $("modalProdTitulo").textContent = "Buscar proveedor";
+    $("modalProdBuscar").placeholder = "Buscar por código o razón social…";
+    abrirModalComun(input);
+  }
+
+  function abrirModalComun(input) {
+    $("modalProdBuscar").value = (input.value || "").trim();
+    $("modalProd").classList.remove("hidden");
+    $("modalProdLista").scrollTop = 0;
+    buscarModal(true);
+    setTimeout(() => { $("modalProdBuscar").focus(); $("modalProdBuscar").select(); }, 0);
+  }
+
+  function cerrarModalProducto() {
+    $("modalProd").classList.add("hidden");
+    prodTargetInput = null;
+    prodTargetTr = null;
+  }
+
+  async function buscarModal(reset) {
+    const tbody = $("modalProdTabla"), info = $("modalProdInfo");
+    if (reset) {
+      modalGen++;
+      modalQ = $("modalProdBuscar").value.trim();
+      modalOffset = 0; modalHayMas = false; modalTotal = 0;
+      tbody.innerHTML = "";
+      info.textContent = "Buscando…";
+    } else if (!modalHayMas || modalCargando) {
+      return;
+    }
+    const gen = modalGen;
+    modalCargando = true;
+    const endpoint = modalKind === "proveedor" ? "buscar-proveedores" : "buscar-productos";
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos/" + endpoint + "?limit=50&offset=" + modalOffset
+        + "&q=" + encodeURIComponent(modalQ), { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) {
+      if (gen === modalGen) info.textContent = "No se pudo conectar.";
+      modalCargando = false; return;
+    }
+    if (gen !== modalGen) { modalCargando = false; return; }      // búsqueda vieja
+    if (!r.ok) { info.textContent = "No se pudo buscar (error " + r.status + ")."; modalCargando = false; return; }
+    const d = await r.json();
+    if (gen !== modalGen) { modalCargando = false; return; }
+
+    const items = d.items || [];
+    modalTotal = d.total || 0;
+    modalOffset += items.length;
+    modalHayMas = !!d.hayMas;
+    for (const it of items) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td><strong>' + esc(it.codigo) + '</strong></td><td>' + esc(it.descripcion || "—") + '</td>';
+      const tdb = document.createElement("td");
+      pintarCoberturaCompacta(tdb, it.bases);
+      tr.appendChild(tdb);
+      tr.addEventListener("click", () => elegir(it.codigo));
+      tbody.appendChild(tr);
+    }
+    const cargados = tbody.querySelectorAll("tr").length;
+    if (modalTotal === 0)
+      info.textContent = modalQ ? ("Sin resultados para “" + modalQ + "”.")
+        : "Escribí para buscar (o esperá a que termine de cargar el padrón).";
+    else
+      info.textContent = "Mostrando " + cargados + " de " + modalTotal + (modalHayMas ? " — scrolleá para ver más." : "");
+    modalCargando = false;
+  }
+
+  function elegir(cod) {
+    const input = prodTargetInput, tr = prodTargetTr, kind = modalKind;
+    cerrarModalProducto();
+    if (!input) return;
+    input.value = cod;
+    if (kind === "proveedor") resolverProveedor();
+    else if (tr) resolverProductoRenglon(tr);
+    input.focus();
+  }
+
+  // ===================== USUARIOS =====================
+  async function buscarCliente() {
+    limpiar($("msgCrear"));
+    const cuit = $("nuevoCuit").value.trim();
+    if (!cuit) { mostrar($("msgCrear"), "Ingresá un CUIT.", "err"); return; }
+
+    mostrar($("msgCrear"), "Buscando cliente en BAS…", "ok");
+    let r;
+    try {
+      r = await fetch("/api/admin/bas/cliente-por-cuit?cuit=" + encodeURIComponent(cuit), {
+        headers: { "Authorization": "Bearer " + token }
+      });
+    } catch (e) { mostrar($("msgCrear"), "No se pudo conectar.", "err"); return; }
+
+    if (r.status === 404) { mostrar($("msgCrear"), "No se encontró un cliente con ese CUIT en BAS.", "err"); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      mostrar($("msgCrear"), d.mensaje || "No se pudo consultar BAS.", "err");
+      return;
+    }
+    const d = await r.json();
+    $("nuevoCodigoCliente").value = d.codigo;
+    razonCliente = d.razonSocial || "";
+    mostrar($("msgCrear"), "Cliente encontrado: " + d.razonSocial + " (código " + d.codigo + ").", "ok");
+  }
+
+  async function buscarProveedor() {
+    limpiar($("msgCrear"));
+    const cuit = $("nuevoCuit").value.trim();
+    if (!cuit) { mostrar($("msgCrear"), "Ingresá un CUIT.", "err"); return; }
+
+    mostrar($("msgCrear"), "Buscando proveedor en BAS…", "ok");
+    let r;
+    try {
+      r = await fetch("/api/admin/bas/proveedor-por-cuit?cuit=" + encodeURIComponent(cuit), {
+        headers: { "Authorization": "Bearer " + token }
+      });
+    } catch (e) { mostrar($("msgCrear"), "No se pudo conectar.", "err"); return; }
+
+    if (r.status === 404) { mostrar($("msgCrear"), "No se encontró un proveedor con ese CUIT en BAS.", "err"); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      mostrar($("msgCrear"), d.mensaje || "No se pudo consultar BAS.", "err");
+      return;
+    }
+    const d = await r.json();
+    $("nuevoCodigoProveedor").value = d.codigo;
+    razonProveedor = d.razonSocial || "";
+    mostrar($("msgCrear"), "Proveedor encontrado: " + d.razonSocial + " (código " + d.codigo + ").", "ok");
+  }
+
+  async function cargarUsuarios() {
+    limpiar($("msgLista"));
+    const estado = $("filtroEstado").value || "activos";
+    const t = $("filtroTipo").value || "internos";
+    const r = await fetch("/api/admin/usuarios?estado=" + estado + "&tipo=" + t, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (r.status === 401 || r.status === 403) { salir(); return; }
+    const usuarios = await r.json();
+    usuariosActuales = usuarios;
+    const tbody = $("tablaUsuarios");
+    tbody.innerHTML = "";
+
+    if (usuarios.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="vacio">No hay usuarios para mostrar.</td></tr>';
+      return;
+    }
+
+    for (const u of usuarios) {
+      const tr = document.createElement("tr");
+
+      let tipoTxt;
+      if (u.tipo === "Interno") {
+        tipoTxt = u.esAdmin ? "Interno · admin" : "Interno";
+        if (u.permisos && u.permisos.length) {
+          tipoTxt += '<br>' + u.permisos.map(p => '<span class="tag">' + esc(etiquetaPermiso(p)) + '</span>').join(" ");
+        }
+      } else {
+        const roles = [];
+        if (u.esCliente) roles.push("Cliente");
+        if (u.esProveedor) roles.push("Proveedor");
+        tipoTxt = roles.map(x => '<span class="tag">' + x + '</span>').join("") || '<span class="tag">Extranet</span>';
+      }
+
+      const cods = [];
+      if (u.codigoCliente) cods.push("Cli " + u.codigoCliente);
+      if (u.codigoProveedor) cods.push("Prov " + u.codigoProveedor);
+      const codTxt = cods.join(" · ") || "—";
+
+      const nombre = u.razonSocial || "—";
+
+      const estadoTxt = u.activo
+        ? '<span class="badge on">Activo</span>'
+        : '<span class="badge off">Inactivo</span>';
+
+      const acciones =
+        '<div class="acciones">'
+        + '<button class="sec" data-act="modificar" data-id="' + u.id + '">Modificar</button>'
+        + '<button class="sec" data-act="clave" data-id="' + u.id + '" data-ident="' + esc(u.identificador) + '">Clave</button>'
+        + '<button class="sec" data-act="estado" data-id="' + u.id + '" data-activo="' + u.activo + '">'
+          + (u.activo ? 'Desactivar' : 'Activar') + '</button>'
+        + '<button class="del" data-act="eliminar" data-id="' + u.id + '" data-ident="' + esc(u.identificador) + '">Eliminar</button>'
+        + '</div>';
+
+      tr.innerHTML =
+          '<td class="col-id">' + esc(u.identificador) + '</td>'
+        + '<td class="col-nombre" title="' + esc(u.razonSocial || "") + '">' + esc(nombre) + '</td>'
+        + '<td class="col-tipo">' + tipoTxt + '</td>'
+        + '<td class="col-cod">' + esc(codTxt) + '</td>'
+        + '<td class="col-estado">' + estadoTxt + '</td>'
+        + '<td class="col-acc">' + acciones + '</td>';
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll("button[data-act]").forEach(b => {
+      b.addEventListener("click", () => {
+        const act = b.dataset.act;
+        if (act === "estado") cambiarEstado(b.dataset.id, b.dataset.activo !== "true");
+        else if (act === "eliminar") eliminar(b.dataset.id, b.dataset.ident);
+        else if (act === "clave") cambiarClave(b.dataset.id, b.dataset.ident);
+        else if (act === "modificar") {
+          const u = usuariosActuales.find(x => String(x.id) === String(b.dataset.id));
+          if (u) cargarParaEditar(u);
+        }
+      });
+    });
+  }
+
+  function cargarParaEditar(u) {
+    editandoId = u.id;
+    razonCliente = ""; razonProveedor = ""; razonSocialCargada = u.razonSocial || "";
+
+    $("nuevoTipo").value = (u.tipo === "Interno") ? "Interno" : "Extranet";
+    $("nuevoTipo").disabled = true;
+    actualizarCamposTipo();
+
+    if (u.tipo === "Interno") {
+      $("nuevoUsuario").value = u.identificador;
+      $("nuevoEsAdmin").checked = u.esAdmin;
+      setPermisos(u.permisos || []);
+    } else {
+      $("nuevoCuit").value = u.identificador;
+      $("nuevoCodigoCliente").value = u.codigoCliente || "";
+      $("nuevoCodigoProveedor").value = u.codigoProveedor || "";
+    }
+    $("nuevoEmail").value = u.email || "";
+    $("nuevoPass").value = "";
+    $("lblPass").textContent = "Nueva contraseña (opcional)";
+    $("nuevoPass").placeholder = "dejar vacío para no cambiar";
+    $("cardTitulo").textContent = "Modificar usuario";
+    $("btnCrear").textContent = "Guardar cambios";
+    $("btnCancelar").classList.remove("hidden");
+    limpiar($("msgCrear"));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function salirDeEdicion() {
+    editandoId = null;
+    razonCliente = ""; razonProveedor = ""; razonSocialCargada = "";
+    $("nuevoTipo").disabled = false;
+    $("nuevoCuit").value = ""; $("nuevoCodigoCliente").value = ""; $("nuevoCodigoProveedor").value = "";
+    $("nuevoUsuario").value = ""; $("nuevoEmail").value = ""; $("nuevoPass").value = "";
+    $("nuevoEsAdmin").checked = false;
+    setPermisos([]);
+    $("lblPass").textContent = "Contraseña inicial";
+    $("nuevoPass").placeholder = "";
+    $("cardTitulo").textContent = "Crear usuario";
+    $("btnCrear").textContent = "Crear";
+    $("btnCancelar").classList.add("hidden");
+  }
+
+  async function guardar() {
+    limpiar($("msgCrear"));
+    const t = $("nuevoTipo").value;
+
+    if (editandoId === null) {
+      const body = {
+        tipo: t, password: $("nuevoPass").value, email: $("nuevoEmail").value || null,
+        esAdmin: false, permisos: [], codigoCliente: null, codigoProveedor: null,
+        razonSocial: null, identificador: ""
+      };
+      if (t === "Interno") {
+        body.identificador = $("nuevoUsuario").value;
+        body.esAdmin = $("nuevoEsAdmin").checked;
+        body.permisos = permisosSeleccionados();
+      } else {
+        body.identificador = $("nuevoCuit").value;
+        body.codigoCliente = $("nuevoCodigoCliente").value || null;
+        body.codigoProveedor = $("nuevoCodigoProveedor").value || null;
+        body.razonSocial = razonCliente || razonProveedor || null;
+      }
+      const r = await fetch("/api/admin/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(body)
+      });
+      if (await manejarRespuesta(r, "Usuario creado.")) { salirDeEdicion(); cargarUsuarios(); }
+    } else {
+      const body = {
+        identificador: "", password: $("nuevoPass").value || null, esAdmin: false,
+        permisos: [], codigoCliente: null, codigoProveedor: null,
+        email: $("nuevoEmail").value || null, razonSocial: null
+      };
+      if (t === "Interno") {
+        body.identificador = $("nuevoUsuario").value;
+        body.esAdmin = $("nuevoEsAdmin").checked;
+        body.permisos = permisosSeleccionados();
+      } else {
+        body.identificador = $("nuevoCuit").value;
+        body.codigoCliente = $("nuevoCodigoCliente").value || null;
+        body.codigoProveedor = $("nuevoCodigoProveedor").value || null;
+        body.razonSocial = razonCliente || razonProveedor || razonSocialCargada || null;
+      }
+      const r = await fetch("/api/admin/usuarios/" + editandoId, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(body)
+      });
+      if (await manejarRespuesta(r, "Cambios guardados.")) { salirDeEdicion(); cargarUsuarios(); }
+    }
+  }
+
+  async function manejarRespuesta(r, mensajeOk) {
+    if (r.status === 409) { mostrar($("msgCrear"), "Ya existe un usuario con ese identificador.", "err"); return false; }
+    if (r.status === 400) {
+      const d = await r.json().catch(() => ({}));
+      mostrar($("msgCrear"), d.mensaje || "Datos incompletos.", "err"); return false;
+    }
+    if (!r.ok) { mostrar($("msgCrear"), "No se pudo guardar.", "err"); return false; }
+    mostrar($("msgCrear"), mensajeOk, "ok");
+    return true;
+  }
+
+  async function cambiarEstado(id, activo) {
+    limpiar($("msgLista"));
+    const r = await fetch("/api/admin/usuarios/" + id + "/estado", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ activo: activo })
+    });
+    if (r.ok) { cargarUsuarios(); return; }
+    if (r.status === 400) {
+      const d = await r.json();
+      mostrar($("msgLista"), d.mensaje || "No se pudo cambiar el estado.", "err");
+      return;
+    }
+    mostrar($("msgLista"), "No se pudo cambiar el estado.", "err");
+  }
+
+  async function cambiarClave(id, identUsuario) {
+    limpiar($("msgLista"));
+    const nueva = prompt("Nueva contraseña para " + identUsuario + " (mínimo 6 caracteres):");
+    if (nueva === null) return;
+    if (nueva.trim().length < 6) {
+      mostrar($("msgLista"), "La contraseña debe tener al menos 6 caracteres.", "err");
+      return;
+    }
+    const r = await fetch("/api/admin/usuarios/" + id + "/password", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ nuevaPassword: nueva })
+    });
+    if (r.ok) {
+      mostrar($("msgLista"), "Contraseña actualizada para " + identUsuario + ".", "ok");
+    } else if (r.status === 400) {
+      const d = await r.json();
+      mostrar($("msgLista"), d.mensaje || "No se pudo cambiar la contraseña.", "err");
+    } else {
+      mostrar($("msgLista"), "No se pudo cambiar la contraseña.", "err");
+    }
+  }
+
+  async function eliminar(id, identUsuario) {
+    const ok = confirm("¿Seguro que querés eliminar al usuario " + identUsuario
+      + "?\n\nEsta acción no se puede deshacer.");
+    if (!ok) return;
+
+    const r = await fetch("/api/admin/usuarios/" + id, {
+      method: "DELETE",
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (r.ok) {
+      if (String(editandoId) === String(id)) salirDeEdicion();
+      cargarUsuarios();
+    } else if (r.status === 400) {
+      const d = await r.json();
+      mostrar($("msgLista"), d.mensaje || "No se pudo eliminar.", "err");
+    } else {
+      mostrar($("msgLista"), "No se pudo eliminar el usuario.", "err");
+    }
+  }
+
+  // ===================== EVENTOS =====================
+  $("btnIngresar").addEventListener("click", ingresar);
+  $("btnSalir").addEventListener("click", salir);
+  $("btnCrear").addEventListener("click", guardar);
+  $("btnCancelar").addEventListener("click", salirDeEdicion);
+  $("btnBuscarCliente").addEventListener("click", buscarCliente);
+  $("btnBuscarProveedor").addEventListener("click", buscarProveedor);
+  $("nuevoTipo").addEventListener("change", actualizarCamposTipo);
+  $("filtroTipo").addEventListener("change", cargarUsuarios);
+  $("filtroEstado").addEventListener("change", cargarUsuarios);
+  $("nuevoCuit").addEventListener("input", () => { razonCliente = ""; razonProveedor = ""; });
+  $("loginIdent").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("loginPass").focus(); } });
+  $("loginPass").addEventListener("keydown", e => { if (e.key === "Enter") ingresar(); });
+
+  // Menú lateral: click + navegación con teclado (flechas para moverse, Enter/Espacio para entrar).
+  document.querySelectorAll(".sidebar a").forEach(a => {
+    a.addEventListener("click", () => mostrarSeccion(a.dataset.sec));
+    a.addEventListener("keydown", e => {
+      const links = Array.from(document.querySelectorAll(".sidebar a")).filter(x => x.offsetParent !== null);
+      const i = links.indexOf(a);
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); mostrarSeccion(a.dataset.sec); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); (links[(i + 1) % links.length] || a).focus(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); (links[(i - 1 + links.length) % links.length] || a).focus(); }
+    });
+  });
+
+  // Pre-remitos
+  $("remFiltroEstado").addEventListener("change", cargarRemitos);
+  $("btnNuevoRemito").addEventListener("click", abrirNuevoRemito);
+  $("btnVolverRem").addEventListener("click", volverListaRem);
+  $("btnCancelarRem").addEventListener("click", volverListaRem);
+  $("btnAgregarRenglon").addEventListener("click", () => agregarRenglon());
+  $("btnGuardarRem").addEventListener("click", guardarRemito);
+  $("btnRefrescarPadron").addEventListener("click", refrescarPadron);
+  $("remProvCod").addEventListener("blur", resolverProveedor);
+  $("remProvCod").addEventListener("keydown", e => {
+    if (e.key === "F3") { e.preventDefault(); abrirModalProveedor($("remProvCod")); }
+  });
+
+  // Enter como Tab + alta automática de renglón (solo dentro del formulario de pre-remito)
+  $("remForm").addEventListener("keydown", e => {
+    const el = e.target;
+    if (!el || el.tagName !== "INPUT" || el.disabled || el.readOnly) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      avanzarCampo(el);
+    } else if (e.key === "Tab" && !e.shiftKey && el.classList.contains("r-obs")) {
+      const filas = $("remRenglones").querySelectorAll("tr");
+      if (el.closest("tr") === filas[filas.length - 1]) {
+        e.preventDefault();
+        agregarYFocoNuevaLinea();
+      }
+    }
+  });
+
+  // Modal buscador
+  $("modalProdCerrar").addEventListener("click", cerrarModalProducto);
+  $("modalProd").addEventListener("click", e => { if (e.target === $("modalProd")) cerrarModalProducto(); });
+  $("modalProdBuscar").addEventListener("input", () => {
+    clearTimeout(prodTimer);
+    prodTimer = setTimeout(() => buscarModal(true), 250);
+  });
+  $("modalProdBuscar").addEventListener("keydown", e => {
+    if (e.key === "Escape") { e.preventDefault(); cerrarModalProducto(); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const primera = $("modalProdTabla").querySelector("tr");
+      if (primera) primera.click();
+    }
+  });
+  $("modalProdLista").addEventListener("scroll", () => {
+    const el = $("modalProdLista");
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) buscarModal(false);
+  });
+
+  actualizarVista();
+</script>
+</body>
+</html>
