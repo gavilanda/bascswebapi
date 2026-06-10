@@ -79,6 +79,9 @@
   .filtro-campo { display:flex; flex-direction:column; gap:2px; }
   .filtro-campo > span { font-size:12px; color:var(--txt2); }
   .filtro-campo input, .filtro-campo select { padding:7px 9px; font-size:13px; width:auto; }
+  /* El botón de la barra de filtros no tiene etiqueta arriba; lo bajamos para
+     que su base quede alineada con la de los filtros (que son más altos por el span). */
+  .filtros > button { margin-top:18px; }
   .hidden { display:none !important; }
   .topinfo { font-size:13px; color:var(--txt2); margin-right:10px; }
   .vacio { color:var(--txt2); font-size:13px; padding:14px 8px; }
