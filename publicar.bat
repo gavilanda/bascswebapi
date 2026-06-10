@@ -16,26 +16,22 @@ if errorlevel 1 (
     goto fin
 )
 
-REM --- Muestra que cambio hay ---
+REM --- Detecta la rama actual (main, master, etc.) ---
+set "RAMA="
+for /f "delims=" %%B in ('git rev-parse --abbrev-ref HEAD') do set "RAMA=%%B"
+if "%RAMA%"=="" (
+    echo [ERROR] No se pudo determinar la rama actual.
+    goto fin
+)
+echo Rama actual: %RAMA%
+echo.
+
+REM --- Muestra que cambios hay ---
 echo Cambios detectados:
 echo --------------------------------------------
 git status --short
 echo --------------------------------------------
 echo.
-
-REM --- Si no hay nada para subir, avisa y sale ---
-git diff --quiet
-set HAY_MOD=%errorlevel%
-git diff --cached --quiet
-set HAY_STAGED=%errorlevel%
-git ls-files --others --exclude-standard >"%temp%\_gitnew.txt"
-for %%A in ("%temp%\_gitnew.txt") do set NEW_SIZE=%%~zA
-del "%temp%\_gitnew.txt" >nul 2>&1
-
-if "%HAY_MOD%"=="0" if "%HAY_STAGED%"=="0" if "%NEW_SIZE%"=="0" (
-    echo No hay cambios para publicar. Todo esta al dia.
-    goto fin
-)
 
 REM --- Pide el mensaje del commit ---
 set "MENSAJE="
@@ -45,23 +41,19 @@ if "%MENSAJE%"=="" set "MENSAJE=Actualizacion"
 echo.
 echo Agregando cambios...
 git add -A
-if errorlevel 1 (
-    echo [ERROR] Fallo "git add".
-    goto fin
-)
 
 echo Creando commit...
 git commit -m "%MENSAJE%"
-if errorlevel 1 (
-    echo [ERROR] Fallo "git commit" (puede que no hubiera nada para commitear).
-    goto fin
-)
+REM Nota: si no hay nada para commitear, git devuelve error; seguimos igual
+REM porque puede haber un commit anterior sin subir.
 
+echo.
 echo Subiendo a GitHub...
-git push
+git push -u origin %RAMA%
 if errorlevel 1 (
     echo.
-    echo [ERROR] Fallo "git push". Revisa la conexion o las credenciales/token.
+    echo [ERROR] Fallo el push. Revisa la conexion o las credenciales/token.
+    echo Si el problema persiste, corre a mano:  git push -u origin %RAMA%
     goto fin
 )
 
@@ -72,5 +64,6 @@ echo ============================================
 
 :fin
 echo.
-pause
+echo (Presiona una tecla para cerrar esta ventana)
+pause >nul
 endlocal
