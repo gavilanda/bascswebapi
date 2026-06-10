@@ -40,22 +40,45 @@
   th { color:var(--txt2); font-weight:500; font-size:13px; }
   td .sec, td .del { padding:6px 10px; font-size:13px; }
   .acciones { display:flex; gap:6px; flex-wrap:wrap; }
+  .right { text-align:right; }
+  .center { text-align:center; }
+  /* Columnas compactas (Reng./Estado/Creado por): menos separación entre ellas. */
+  th.compacta, td.compacta { padding-left:3px; padding-right:3px; }
+  /* Comprobante: un poco de aire respecto de la columna anterior; número y fecha en una sola línea. */
+  th.comp-cell, td.comp-cell { padding-left:14px; }
+  td.comp-cell { white-space:nowrap; }
+  /* Columna de acciones de la lista: los botones en una sola línea. */
+  td.acc-cell .acciones { flex-wrap:nowrap; white-space:nowrap; }
   .badge { font-size:12px; padding:2px 8px; border-radius:6px; }
   .badge.on { background:#e7f6ec; color:var(--verde); }
   .badge.off { background:#fde8e8; color:var(--rojo); }
   .badge.borrador { background:#fef9c3; color:#854d0e; }
   .badge.conformado { background:#dbeafe; color:#1e40af; }
   .badge.enviado { background:#e7f6ec; color:var(--verde); }
+  .badge.ev-alta { background:#e7f6ec; color:#15803d; }
+  .badge.ev-modificacion { background:#fef9c3; color:#854d0e; }
+  .badge.ev-eliminacion { background:#fde8e8; color:var(--rojo); }
+  .badge.ev-conformado { background:#dbeafe; color:#1e40af; }
+  .badge.ev-reabierto { background:#ede9fe; color:#6d28d9; }
+  .badge.ev-grabado { background:#cffafe; color:#0e7490; }
   .tag { font-size:12px; padding:2px 8px; border-radius:6px; background:#eef2ff; color:#3730a3; margin-right:4px; display:inline-block; margin-top:2px; }
   .msg { font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; display:none; }
   .msg.err { background:#fde8e8; color:var(--rojo); display:block; }
   .msg.ok { background:#e7f6ec; color:var(--verde); display:block; }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
   .row > div { flex:1; min-width:150px; }
+  /* Encabezado del formulario de pre-remito: filas y labels más juntos. */
+  .row.compacta-form { gap:8px; margin-top:6px; }
+  .row.compacta-form label { margin:0 0 2px; }
+  .subt.compacta-form { margin:10px 0 2px; }
   .cab { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
   .cab h2 { margin:0; }
-  .toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
-  .filtros { display:flex; gap:8px; align-items:center; }
+  .toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .filtros { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
+  /* Filtros de la lista de pre-remitos: etiqueta chica arriba de cada control. */
+  .filtro-campo { display:flex; flex-direction:column; gap:2px; }
+  .filtro-campo > span { font-size:12px; color:var(--txt2); }
+  .filtro-campo input, .filtro-campo select { padding:7px 9px; font-size:13px; width:auto; }
   .hidden { display:none !important; }
   .topinfo { font-size:13px; color:var(--txt2); margin-right:10px; }
   .vacio { color:var(--txt2); font-size:13px; padding:14px 8px; }
@@ -79,15 +102,20 @@
   .volver { display:inline-block; color:var(--azul); cursor:pointer; font-size:13px; margin-bottom:12px; }
   .padron { font-size:12px; color:var(--txt2); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .subt { font-size:12px; color:var(--txt2); font-weight:600; text-transform:uppercase; letter-spacing:.04em; margin:16px 0 2px; }
-  table.renglones td { padding:6px 6px; }
+  table.renglones td { padding:3px 6px; }
   table.renglones input { padding:6px 8px; }
   table.renglones .del { padding:6px 10px; }
   table.renglones input.cob-ok { border-color:#16a34a; }
   table.renglones input.cob-parcial { border-color:#d97706; }
   table.renglones input.cob-falta { border-color:#dc2626; }
-  table.renglones .r-uni2 { margin-top:2px; line-height:1.2; }
   td.r-cob { font-size:11px; line-height:1.6; white-space:normal; color:var(--txt2); }
   td.r-cob .cob-badge { display:inline-block; margin:0 4px 2px 0; }
+  /* Auditoría */
+  .filtros-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px 14px; align-items:end; }
+  .filtros-grid .acciones-filtro { display:flex; gap:8px; align-items:flex-end; }
+  table.audit { font-size:13px; }
+  table.audit td, table.audit th { padding:8px 8px; }
+  table.audit td { word-break:break-word; }
   /* Cobertura (en qué bases existe un código) */
   .cobertura { font-size:12px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; min-height:18px; }
   .cob-badge { font-size:11px; padding:2px 8px; border-radius:6px; }
@@ -156,6 +184,7 @@
       <nav class="sidebar">
         <a data-sec="inicio" tabindex="0" class="activo">Inicio</a>
         <a data-sec="remitos" id="navRemitos" tabindex="0" class="hidden">Pre-remitos</a>
+        <a data-sec="auditoria" id="navAuditoria" tabindex="0" class="hidden">Auditoría</a>
         <div class="sidebar-sep hidden" id="navUsuariosSep"></div>
         <a data-sec="usuarios" id="navUsuarios" tabindex="0" class="hidden">Usuarios</a>
       </nav>
@@ -180,27 +209,37 @@
           <!-- Lista -->
           <div id="remVista" class="card">
             <div class="toolbar">
-              <h2 style="margin:0">Pre-remitos de compra</h2>
+              <h2 style="margin:0; align-self:center">Pre-remitos de compra</h2>
               <div class="filtros">
-                <select id="remFiltroEstado" style="width:auto; display:inline-block">
-                  <option value="todos">Todos</option>
-                  <option value="Borrador">Borrador</option>
-                  <option value="Conformado">Conformado</option>
-                  <option value="Enviado">Enviado</option>
-                </select>
+                <label class="filtro-campo"><span>Desde</span><input id="remFiltroDesde" type="date" /></label>
+                <label class="filtro-campo"><span>Hasta</span><input id="remFiltroHasta" type="date" /></label>
+                <label class="filtro-campo"><span>Estado</span>
+                  <select id="remFiltroEstado">
+                    <option value="todos">Todos</option>
+                    <option value="Borrador">Borrador</option>
+                    <option value="Conformado">Conformado</option>
+                    <option value="Enviado">Enviado</option>
+                  </select>
+                </label>
+                <label class="filtro-campo"><span>Destino</span>
+                  <select id="remFiltroDestino">
+                    <option value="todos">Todos</option>
+                  </select>
+                </label>
                 <button id="btnNuevoRemito">Nuevo</button>
               </div>
             </div>
             <table>
               <thead>
                 <tr>
-                  <th style="width:6%">#</th>
-                  <th style="width:12%">Fecha</th>
-                  <th style="width:28%">Proveedor</th>
-                  <th style="width:10%">Renglones</th>
-                  <th style="width:12%">Estado</th>
-                  <th style="width:14%">Creado por</th>
-                  <th></th>
+                  <th style="width:5%">#</th>
+                  <th style="width:8%">Ingreso</th>
+                  <th style="width:23%">Proveedor</th>
+                  <th style="width:16%" class="comp-cell">Comprobante</th>
+                  <th style="width:5%" class="right compacta">Reng.</th>
+                  <th style="width:9%" class="right compacta">Estado</th>
+                  <th style="width:10%" class="right compacta">Creado por</th>
+                  <th style="width:24%"></th>
                 </tr>
               </thead>
               <tbody id="remTabla"></tbody>
@@ -219,41 +258,42 @@
             </div>
             <h2 id="remFormTitulo">Nuevo pre-remito</h2>
 
-            <div class="row">
+            <div class="row compacta-form">
               <div style="flex:0 0 150px"><label>Fecha de Ingreso</label><input id="remFecha" type="date" /></div>
               <div style="flex:0 0 150px"><label>Cód. proveedor</label><input id="remProvCod" type="text" placeholder="00123 · F3 busca" /></div>
               <div style="flex:1 1 180px; min-width:110px"><label>Razón social</label><input id="remProvRazon" type="text" placeholder="(se completa al verificar)" /></div>
               <div style="flex:1 1 160px; min-width:130px"><label>Bases</label><div id="remProvCob" class="cobertura"></div></div>
             </div>
 
-            <div class="subt">Comprobante del proveedor</div>
-            <div class="row">
-              <div style="flex:0 0 150px"><label>Prefijo</label><input id="remCompPrefijo" type="text" placeholder="0001" /></div>
-              <div style="flex:0 0 170px"><label>Número</label><input id="remCompNumero" type="number" placeholder="00000000" /></div>
+            <div class="subt compacta-form">Comprobante del proveedor</div>
+            <div class="row compacta-form">
+              <div style="flex:0 0 150px"><label>Prefijo</label><input id="remCompPrefijo" type="text" inputmode="numeric" placeholder="0001" /></div>
+              <div style="flex:0 0 170px"><label>Número</label><input id="remCompNumero" type="text" inputmode="numeric" placeholder="00000000" /></div>
               <div style="flex:0 0 170px"><label>Fecha del comprobante</label><input id="remCompFecha" type="date" /></div>
             </div>
 
-            <label>Observaciones</label>
+            <label style="margin:8px 0 4px">Observaciones</label>
             <input id="remObs" type="text" />
 
-            <h2 style="font-size:14px; margin:18px 0 8px">Renglones</h2>
-            <table class="renglones">
-              <thead>
-                <tr>
-                  <th style="width:10%">Cód. producto</th>
-                  <th>Descripción</th>
-                  <th style="width:7%">Cantidad</th>
-                  <th style="width:7%">Unidad</th>
-                  <th style="width:10%">2ª unidad</th>
-                  <th style="width:8%">Partida</th>
-                  <th style="width:9%">Series</th>
-                  <th style="width:10%">Observación</th>
-                  <th style="width:12%">Bases</th>
-                  <th style="width:4%"></th>
-                </tr>
-              </thead>
-              <tbody id="remRenglones"></tbody>
-            </table>
+            <div style="margin-top:16px">
+              <table class="renglones">
+                <thead>
+                  <tr>
+                    <th style="width:10%">Cód. producto</th>
+                    <th>Descripción</th>
+                    <th style="width:7%">Cantidad</th>
+                    <th style="width:7%">Unidad</th>
+                    <th style="width:10%">2ª unidad</th>
+                    <th style="width:8%">Partida</th>
+                    <th style="width:9%">Series</th>
+                    <th style="width:10%">Observación</th>
+                    <th style="width:12%">Bases</th>
+                    <th style="width:4%"></th>
+                  </tr>
+                </thead>
+                <tbody id="remRenglones"></tbody>
+              </table>
+            </div>
             <div style="margin-top:8px"><button class="sec" id="btnAgregarRenglon">+ Agregar renglón</button></div>
             <div class="nota">Tip: <strong>F3</strong> en <strong>Cód. producto</strong> o en <strong>Cód. proveedor</strong> abre el buscador (por código o nombre). <strong>Enter</strong> pasa al campo siguiente igual que Tab; al salir del último campo del último renglón se agrega una línea nueva. La <strong>Unidad</strong> y la <strong>2ª unidad</strong> se completan solas según el artículo (2ª unidad = Cantidad ÷ relación; no se puede editar cuando la relación es fija). La columna <strong>Bases</strong> muestra en qué bases existe (✓ / ✗).</div>
 
@@ -264,6 +304,56 @@
             <div id="remMsgForm" class="msg"></div>
           </div>
 
+        </div>
+
+        <!-- AUDITORÍA -->
+        <div id="secAuditoria" class="seccion hidden">
+          <div class="card">
+            <h2>Auditoría de pre-remitos</h2>
+            <div class="filtros-grid">
+              <div><label>Ingreso desde</label><input id="audIngDesde" type="date" /></div>
+              <div><label>Ingreso hasta</label><input id="audIngHasta" type="date" /></div>
+              <div><label>Usuario</label><input id="audUsuario" type="text" placeholder="parcial" /></div>
+              <div><label>Evento</label>
+                <select id="audEvento">
+                  <option value="todos">Todos</option>
+                  <option value="Alta">Alta</option>
+                  <option value="Modificacion">Modificación</option>
+                  <option value="Eliminacion">Eliminación</option>
+                  <option value="Conformado">Conformado</option>
+                  <option value="Reabierto">Reabierto</option>
+                  <option value="Grabado">Grabado</option>
+                </select>
+              </div>
+              <div><label>Comprobante desde</label><input id="audCompDesde" type="date" /></div>
+              <div><label>Comprobante hasta</label><input id="audCompHasta" type="date" /></div>
+              <div><label>Proveedor</label><input id="audProveedor" type="text" placeholder="código o razón social" /></div>
+              <div class="acciones-filtro">
+                <button id="btnAudBuscar">Buscar</button>
+                <button class="sec" id="btnAudLimpiar">Limpiar</button>
+              </div>
+            </div>
+            <div class="nota" id="audResumen" style="margin-top:12px"></div>
+          </div>
+
+          <div class="card">
+            <table class="audit">
+              <thead>
+                <tr>
+                  <th style="width:13%">Fecha/hora</th>
+                  <th style="width:10%">Evento</th>
+                  <th style="width:12%">Usuario</th>
+                  <th style="width:6%">Pre-rem.</th>
+                  <th style="width:22%">Proveedor</th>
+                  <th style="width:16%">Comprobante</th>
+                  <th style="width:9%">Estado</th>
+                  <th>Detalle</th>
+                </tr>
+              </thead>
+              <tbody id="audTabla"></tbody>
+            </table>
+            <div id="audMsg" class="msg"></div>
+          </div>
         </div>
 
         <!-- USUARIOS (solo administradores) -->
@@ -382,6 +472,7 @@
 
   const PERM_EDITAR = "editar_remitos";
   const PERM_CONFORMAR = "conformar_remitos";
+  const PERM_AUDITAR = "auditar";
 
   let catalogoPermisos = [];     // [{codigo, etiqueta}]
   let razonCliente = "";
@@ -394,6 +485,8 @@
   let remModo = "nuevo";   // nuevo | editar | ver
   let remId = null;
   let remRowVersion = null;
+  let destinosCargados = false;   // el dropdown de destino se llena una sola vez
+  let filtrosRemInit = false;     // las fechas por defecto se setean una sola vez
 
   // Buscador modal (F3).
   let modalKind = "producto";    // producto | proveedor
@@ -413,6 +506,19 @@
     return (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;")
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
+  // Rellena con ceros a la izquierda hasta 'len' dígitos. Vacío => "".
+  function padNum(v, len) {
+    const digits = String(v == null ? "" : v).replace(/\D/g, "");
+    if (!digits) return "";
+    return digits.padStart(len, "0");
+  }
+  // Arma "PPPP-NNNNNNNN" con el formato del comprobante; "" si no hay nada.
+  function comprobanteTxt(prefijo, numero) {
+    const p = padNum(prefijo, 4);
+    const n = padNum(numero, 8);
+    if (!p && !n) return "";
+    return (p ? p + "-" : "") + n;
+  }
   function etiquetaPermiso(code) {
     const p = catalogoPermisos.find(x => x.codigo === code);
     return p ? p.etiqueta : code;
@@ -421,6 +527,7 @@
   function puedeEditarRemitos() { return tienePermiso(PERM_EDITAR); }
   function puedeConformarRemitos() { return tienePermiso(PERM_CONFORMAR); }
   function puedeVerRemitos() { return puedeEditarRemitos() || puedeConformarRemitos(); }
+  function puedeAuditar() { return tienePermiso(PERM_AUDITAR); }
   function hdrJson() { return { "Content-Type": "application/json", "Authorization": "Bearer " + token }; }
   function fechaCorta(s) {
     if (!s) return "—";
@@ -428,9 +535,22 @@
     const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     return m ? (m[3] + "/" + m[2] + "/" + m[1]) : d;
   }
+  function fechaHora(s) {
+    if (!s) return "—";
+    const dt = new Date(s);
+    if (isNaN(dt.getTime())) return esc(s);
+    const p = n => String(n).padStart(2, "0");
+    return p(dt.getDate()) + "/" + p(dt.getMonth() + 1) + "/" + dt.getFullYear()
+      + " " + p(dt.getHours()) + ":" + p(dt.getMinutes());
+  }
   function hoyISO() {
     const d = new Date(); const p = n => String(n).padStart(2, "0");
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+  // Primer día del mes actual, en formato yyyy-MM-dd.
+  function primerDiaMesISO() {
+    const d = new Date(); const p = n => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-01";
   }
   function haceCuanto(iso) {
     if (!iso) return null;
@@ -453,6 +573,7 @@
       $("navUsuarios").classList.toggle("hidden", !esAdmin);
       $("navUsuariosSep").classList.toggle("hidden", !esAdmin);
       $("navRemitos").classList.toggle("hidden", !puedeVerRemitos());
+      $("navAuditoria").classList.toggle("hidden", !puedeAuditar());
       // Al entrar siempre se muestra Inicio.
       mostrarSeccion("inicio");
     } else {
@@ -465,8 +586,9 @@
   async function mostrarSeccion(sec) {
     if (sec === "usuarios" && !esAdmin) sec = "inicio";
     if (sec === "remitos" && !puedeVerRemitos()) sec = "inicio";
+    if (sec === "auditoria" && !puedeAuditar()) sec = "inicio";
 
-    const mapa = { inicio: "secInicio", usuarios: "secUsuarios", remitos: "secRemitos" };
+    const mapa = { inicio: "secInicio", usuarios: "secUsuarios", remitos: "secRemitos", auditoria: "secAuditoria" };
     document.querySelectorAll(".seccion").forEach(s => s.classList.add("hidden"));
     const destino = $(mapa[sec] || "secInicio");
     if (destino) destino.classList.remove("hidden");
@@ -482,7 +604,16 @@
       $("remForm").classList.add("hidden");
       $("remVista").classList.remove("hidden");
       $("btnNuevoRemito").classList.toggle("hidden", !puedeEditarRemitos());
+      // Defaults de los filtros: desde = primer día del mes, hasta = hoy (una vez).
+      if (!filtrosRemInit) {
+        $("remFiltroDesde").value = primerDiaMesISO();
+        $("remFiltroHasta").value = hoyISO();
+        filtrosRemInit = true;
+      }
+      await cargarDestinos();
       cargarRemitos();
+    } else if (sec === "auditoria") {
+      buscarAuditoria();
     }
   }
 
@@ -564,12 +695,37 @@
     return '<span class="badge ' + cls + '">' + esc(estado) + '</span>';
   }
 
-  async function cargarRemitos() {
-    limpiar($("remMsgLista"));
-    const estado = $("remFiltroEstado").value || "todos";
+  // Carga (una sola vez) los nombres de las bases de grabación en el filtro de destino.
+  async function cargarDestinos() {
+    if (destinosCargados) return;
     let r;
     try {
-      r = await fetch("/api/pre-remitos?estado=" + encodeURIComponent(estado), { headers: { "Authorization": "Bearer " + token } });
+      r = await fetch("/api/pre-remitos/destinos", { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { return; }
+    if (!r.ok) return;
+    const d = await r.json();
+    const sel = $("remFiltroDestino");
+    for (const nombre of (d.destinos || [])) {
+      const opt = document.createElement("option");
+      opt.value = nombre; opt.textContent = nombre;
+      sel.appendChild(opt);
+    }
+    destinosCargados = true;
+  }
+
+  async function cargarRemitos() {
+    limpiar($("remMsgLista"));
+    const params = new URLSearchParams();
+    params.set("estado", $("remFiltroEstado").value || "todos");
+    const desde = $("remFiltroDesde").value;
+    const hasta = $("remFiltroHasta").value;
+    if (desde) params.set("desde", desde);
+    if (hasta) params.set("hasta", hasta);
+    params.set("destino", $("remFiltroDestino").value || "todos");
+
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos?" + params.toString(), { headers: { "Authorization": "Bearer " + token } });
     } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
     if (r.status === 401 || r.status === 403) { salir(); return; }
     if (!r.ok) { mostrar($("remMsgLista"), "No se pudo cargar la lista.", "err"); return; }
@@ -579,12 +735,25 @@
     tbody.innerHTML = "";
 
     if (!lista.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="vacio">No hay pre-remitos para mostrar.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="vacio">No hay pre-remitos para el período y los filtros elegidos.</td></tr>';
       return;
     }
 
     for (const p of lista) {
       const prov = (p.proveedorCodigo || "") + (p.proveedorRazonSocial ? " · " + p.proveedorRazonSocial : "");
+
+      // Comprobante: "PPPP-NNNNNNNN" + fecha del comprobante, misma letra y tamaño, misma línea.
+      const compNum = comprobanteTxt(p.comprobantePrefijo, p.comprobanteNumero);
+      let compCell;
+      if (compNum || p.comprobanteFecha) {
+        const partes = [];
+        if (compNum) partes.push(esc(compNum));
+        if (p.comprobanteFecha) partes.push(esc(fechaCorta(p.comprobanteFecha)));
+        compCell = partes.join(" ");
+      } else {
+        compCell = "—";
+      }
+
       const acc = [];
       if (p.estado === "Borrador" && puedeEditarRemitos())
         acc.push('<button class="sec" data-act="editar" data-id="' + p.id + '">Editar</button>');
@@ -594,7 +763,7 @@
         acc.push('<button class="sec" data-act="conformar" data-id="' + p.id + '">Conformar</button>');
       if (p.estado === "Conformado" && puedeConformarRemitos()) {
         acc.push('<button class="sec" data-act="reabrir" data-id="' + p.id + '">Reabrir</button>');
-        acc.push('<button data-act="grabar" data-id="' + p.id + '">Grabar</button>');
+        acc.push('<button data-act="enviar" data-id="' + p.id + '">Enviar</button>');
       }
       if (p.estado === "Borrador" && puedeEditarRemitos())
         acc.push('<button class="del" data-act="eliminar" data-id="' + p.id + '">Eliminar</button>');
@@ -604,10 +773,11 @@
           '<td>' + p.id + '</td>'
         + '<td>' + esc(fechaCorta(p.fecha)) + '</td>'
         + '<td title="' + esc(prov) + '">' + esc(prov || "—") + '</td>'
-        + '<td>' + p.cantidadRenglones + '</td>'
-        + '<td>' + estadoBadgeRem(p.estado) + '</td>'
-        + '<td>' + esc(p.creadoPor || "—") + '</td>'
-        + '<td><div class="acciones">' + acc.join("") + '</div></td>';
+        + '<td class="comp-cell">' + compCell + '</td>'
+        + '<td class="right compacta">' + p.cantidadRenglones + '</td>'
+        + '<td class="right compacta">' + estadoBadgeRem(p.estado) + '</td>'
+        + '<td class="right compacta">' + esc(p.creadoPor || "—") + '</td>'
+        + '<td class="acc-cell"><div class="acciones">' + acc.join("") + '</div></td>';
       tbody.appendChild(tr);
     }
 
@@ -622,7 +792,7 @@
     if (act === "eliminar") return eliminarRemito(id);
     if (act === "conformar") return accionEstadoRem(id, "conformar", "¿Conformar este pre-remito? No se podrá editar hasta reabrirlo.");
     if (act === "reabrir") return accionEstadoRem(id, "reabrir", "¿Reabrir este pre-remito para volver a editarlo?");
-    if (act === "grabar") return grabarRemito(id);
+    if (act === "enviar") return enviarRemito(id);
   }
 
   function mostrarFormRem() {
@@ -631,8 +801,12 @@
     $("remForm").classList.remove("hidden");
     cargarEstadoPadron();
     window.scrollTo({ top: 0, behavior: "auto" });
-    // El foco arranca en la fecha (salvo en modo "ver", donde está deshabilitada).
-    setTimeout(() => { if (!$("remFecha").disabled) $("remFecha").focus(); }, 0);
+    // El foco arranca en la fecha; si está deshabilitada (modo editar/ver),
+    // va al primer campo editable del comprobante.
+    setTimeout(() => {
+      if (!$("remFecha").disabled) $("remFecha").focus();
+      else if (!$("remCompPrefijo").disabled) $("remCompPrefijo").focus();
+    }, 0);
   }
 
   function volverListaRem() {
@@ -763,24 +937,21 @@
     delete tr.dataset.resuelto;
     tr.dataset.doble = "0"; tr.dataset.relacion = ""; tr.dataset.tipoRel = ""; tr.dataset.uni2 = "";
     const c2 = tr.querySelector(".r-cant2"); if (c2) { c2.value = ""; c2.readOnly = true; }
-    const u2 = tr.querySelector(".r-uni2"); if (u2) u2.textContent = "";
   }
 
   // Calcula la 2ª unidad = Cantidad ÷ relación. Sólo se muestra para bienes de
   // doble unidad. Si la relación es fija ("F"), queda de sólo lectura.
   function recalcSegunda(tr) {
     const c2 = tr.querySelector(".r-cant2");
-    const u2 = tr.querySelector(".r-uni2");
     if (!c2) return;
     if (!tr.dataset.resuelto || tr.dataset.doble !== "1") {
-      c2.value = ""; if (u2) u2.textContent = ""; c2.readOnly = true; return;
+      c2.value = ""; c2.readOnly = true; return;
     }
     const tipoRel = (tr.dataset.tipoRel || "").toUpperCase();
     const cant = parseFloat(tr.querySelector(".r-cant").value);
     const rel = parseFloat(tr.dataset.relacion);
     const r = (rel && rel > 0) ? rel : 1;
     c2.value = isNaN(cant) ? "" : String(Math.round((cant / r) * 10000) / 10000);
-    if (u2) u2.textContent = tr.dataset.uni2 || "";
     c2.readOnly = (tipoRel === "F");   // fija = no editable; otra relación = editable
   }
 
@@ -792,7 +963,7 @@
       + '<td><input class="r-desc" type="text" value="' + esc(l.descripcion || "") + '"></td>'
       + '<td><input class="r-cant" type="number" step="any" value="' + (l.cantidad != null ? l.cantidad : "") + '"></td>'
       + '<td><input class="r-uni" type="text" readonly tabindex="-1" value="' + esc(l.unidad || "") + '"></td>'
-      + '<td><input class="r-cant2" type="text" readonly tabindex="-1" placeholder="—"><div class="r-uni2 nota"></div></td>'
+      + '<td><input class="r-cant2" type="text" readonly tabindex="-1" placeholder="—"></td>'
       + '<td><input class="r-part" type="text" value="' + esc(l.partida || "") + '"></td>'
       + '<td><input class="r-ser" type="text" value="' + esc(l.series || "") + '"></td>'
       + '<td><input class="r-obs" type="text" value="' + esc(l.observacion || "") + '"></td>'
@@ -826,6 +997,8 @@
     return filas;
   }
 
+  // ro = solo lectura total (modo "ver"). Por separado, en modo "editar" se
+  // bloquean además los campos de identidad (fecha de ingreso y proveedor).
   function setFormReadonly(ro) {
     ["remFecha", "remProvCod", "remProvRazon", "remObs",
      "remCompPrefijo", "remCompNumero", "remCompFecha"].forEach(idd => $(idd).disabled = ro);
@@ -833,6 +1006,14 @@
     $("remRenglones").querySelectorAll(".r-quitar").forEach(b => b.classList.toggle("hidden", ro));
     $("btnAgregarRenglon").classList.toggle("hidden", ro);
     $("btnGuardarRem").classList.toggle("hidden", ro);
+  }
+
+  // Bloquea la fecha de ingreso y el proveedor (identidad del comprobante),
+  // que no se deben poder cambiar una vez creado el pre-remito.
+  function bloquearIdentidad() {
+    $("remFecha").disabled = true;
+    $("remProvCod").disabled = true;
+    $("remProvRazon").disabled = true;
   }
 
   // ---- Enter como Tab + alta automática de renglón ----
@@ -887,8 +1068,8 @@
     $("remFecha").value = (d.fecha || "").split("T")[0];
     $("remProvCod").value = d.proveedorCodigo || "";
     $("remProvRazon").value = d.proveedorRazonSocial || "";
-    $("remCompPrefijo").value = d.comprobantePrefijo || "";
-    $("remCompNumero").value = (d.comprobanteNumero != null ? d.comprobanteNumero : "");
+    $("remCompPrefijo").value = padNum(d.comprobantePrefijo, 4);
+    $("remCompNumero").value = padNum(d.comprobanteNumero, 8);
     $("remCompFecha").value = (d.comprobanteFecha || "").split("T")[0];
     $("remObs").value = d.observaciones || "";
     $("remProvCob").innerHTML = "";
@@ -896,6 +1077,8 @@
     (d.lineas || []).forEach(l => agregarRenglon(l));
     if (!d.lineas || !d.lineas.length) agregarRenglon();
     setFormReadonly(modo === "ver");
+    // En edición no se pueden cambiar la fecha de ingreso ni el proveedor.
+    if (modo === "editar") bloquearIdentidad();
     mostrarFormRem();
 
     resolverProveedor();
@@ -907,12 +1090,17 @@
     const prov = $("remProvCod").value.trim();
     if (!prov) { mostrar($("remMsgForm"), "Falta el código de proveedor.", "err"); return; }
 
-    const numComp = $("remCompNumero").value;
+    // Normalizamos el comprobante con ceros a la izquierda (prefijo 4, número 8).
+    const prefComp = padNum($("remCompPrefijo").value, 4);
+    const numComp = padNum($("remCompNumero").value, 8);
+    $("remCompPrefijo").value = prefComp;
+    $("remCompNumero").value = numComp;
+
     const body = {
       proveedorCodigo: prov,
       proveedorRazonSocial: $("remProvRazon").value || null,
       fecha: $("remFecha").value || null,
-      comprobantePrefijo: $("remCompPrefijo").value || null,
+      comprobantePrefijo: prefComp || null,
       comprobanteNumero: numComp ? parseInt(numComp, 10) : null,
       comprobanteFecha: $("remCompFecha").value || null,
       observaciones: $("remObs").value || null,
@@ -986,9 +1174,80 @@
     mostrar($("remMsgLista"), d.mensaje || "No se pudo eliminar.", "err");
   }
 
-  function grabarRemito(id) {
+  function enviarRemito(id) {
     mostrar($("remMsgLista"),
-      "El grabado en BAS se habilita en el próximo paso (validación de códigos y selección de base).", "ok");
+      "El envío a BAS se habilita en el próximo paso (validación de códigos y selección de base).", "ok");
+  }
+
+  // ===================== AUDITORÍA =====================
+  function eventoBadge(ev) {
+    const cls = "ev-" + (ev || "").toLowerCase();
+    return '<span class="badge ' + cls + '">' + esc(ev || "—") + '</span>';
+  }
+
+  function limpiarFiltrosAuditoria() {
+    ["audIngDesde", "audIngHasta", "audUsuario", "audCompDesde", "audCompHasta", "audProveedor"]
+      .forEach(idd => $(idd).value = "");
+    $("audEvento").value = "todos";
+    buscarAuditoria();
+  }
+
+  async function buscarAuditoria() {
+    limpiar($("audMsg"));
+    $("audResumen").textContent = "Buscando…";
+
+    const params = new URLSearchParams();
+    const add = (k, v) => { if (v) params.append(k, v); };
+    add("ingresoDesde", $("audIngDesde").value);
+    add("ingresoHasta", $("audIngHasta").value);
+    add("usuario", $("audUsuario").value.trim());
+    add("compDesde", $("audCompDesde").value);
+    add("compHasta", $("audCompHasta").value);
+    add("proveedor", $("audProveedor").value.trim());
+    const ev = $("audEvento").value;
+    if (ev && ev !== "todos") add("evento", ev);
+
+    let r;
+    try {
+      r = await fetch("/api/auditoria?" + params.toString(), { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { $("audResumen").textContent = ""; mostrar($("audMsg"), "No se pudo conectar.", "err"); return; }
+    if (r.status === 401 || r.status === 403) { salir(); return; }
+    if (!r.ok) { $("audResumen").textContent = ""; mostrar($("audMsg"), "No se pudo consultar la auditoría.", "err"); return; }
+
+    const d = await r.json();
+    const regs = d.registros || [];
+    const tbody = $("audTabla");
+    tbody.innerHTML = "";
+
+    if (!regs.length) {
+      $("audResumen").textContent = "Sin resultados para los filtros aplicados.";
+      tbody.innerHTML = '<tr><td colspan="8" class="vacio">No hay eventos para mostrar.</td></tr>';
+      return;
+    }
+
+    for (const a of regs) {
+      const prov = (a.proveedorCodigo || "") + (a.proveedorRazonSocial ? " · " + a.proveedorRazonSocial : "");
+      let comp = "—";
+      const numero = comprobanteTxt(a.comprobantePrefijo, a.comprobanteNumero);
+      const f = a.comprobanteFecha ? " (" + fechaCorta(a.comprobanteFecha) + ")" : "";
+      if (numero) comp = numero + f;
+      else if (a.comprobanteFecha) comp = fechaCorta(a.comprobanteFecha);
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+          '<td>' + esc(fechaHora(a.fechaHora)) + '</td>'
+        + '<td>' + eventoBadge(a.evento) + '</td>'
+        + '<td>' + esc(a.usuario || "—") + '</td>'
+        + '<td>#' + a.preRemitoId + '</td>'
+        + '<td title="' + esc(prov) + '">' + esc(prov || "—") + '</td>'
+        + '<td>' + esc(comp) + '</td>'
+        + '<td>' + esc(a.estado || "—") + '</td>'
+        + '<td>' + esc(a.detalle || "") + '</td>';
+      tbody.appendChild(tr);
+    }
+
+    let resumen = "Mostrando " + regs.length + " evento" + (regs.length === 1 ? "" : "s");
+    if (regs.length >= (d.limite || 0)) resumen += " (límite " + d.limite + "; afiná los filtros para ver más)";
+    $("audResumen").textContent = resumen + ".";
   }
 
   // ---- Modal buscador (productos / proveedores), F3 + scroll infinito ----
@@ -1400,6 +1659,9 @@
 
   // Pre-remitos
   $("remFiltroEstado").addEventListener("change", cargarRemitos);
+  $("remFiltroDesde").addEventListener("change", cargarRemitos);
+  $("remFiltroHasta").addEventListener("change", cargarRemitos);
+  $("remFiltroDestino").addEventListener("change", cargarRemitos);
   $("btnNuevoRemito").addEventListener("click", abrirNuevoRemito);
   $("btnVolverRem").addEventListener("click", volverListaRem);
   $("btnCancelarRem").addEventListener("click", volverListaRem);
@@ -1410,6 +1672,9 @@
   $("remProvCod").addEventListener("keydown", e => {
     if (e.key === "F3") { e.preventDefault(); abrirModalProveedor($("remProvCod")); }
   });
+  // Comprobante: completar con ceros a la izquierda al salir del campo.
+  $("remCompPrefijo").addEventListener("blur", () => { $("remCompPrefijo").value = padNum($("remCompPrefijo").value, 4); });
+  $("remCompNumero").addEventListener("blur", () => { $("remCompNumero").value = padNum($("remCompNumero").value, 8); });
 
   // Enter como Tab + alta automática de renglón (solo dentro del formulario de pre-remito)
   $("remForm").addEventListener("keydown", e => {

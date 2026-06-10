@@ -58,6 +58,7 @@ public record PreRemitoListItemDto(
     string? ProveedorRazonSocial,
     string? ComprobantePrefijo,
     long? ComprobanteNumero,
+    DateTime? ComprobanteFecha,
     string Estado,
     int CantidadRenglones,
     string? DestinoBase,
@@ -94,7 +95,7 @@ public static class RemitoMapeo
 {
     public static PreRemitoListItemDto AItem(PreRemito p) => new(
         p.Id, p.Fecha, p.ProveedorCodigo, p.ProveedorRazonSocial,
-        p.ComprobantePrefijo, p.ComprobanteNumero,
+        p.ComprobantePrefijo, p.ComprobanteNumero, p.ComprobanteFecha,
         p.Estado.ToString(), p.Lineas.Count, p.DestinoBase,
         p.CreadoPor, p.CreadoEn, p.ModificadoEn);
 

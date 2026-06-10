@@ -38,9 +38,17 @@ public class PreRemitosController : ControllerBase
 
     private string Usuario => User.FindFirstValue("identificador") ?? "";
 
-    // GET /api/pre-remitos?estado=Borrador|Conformado|Enviado|todos
+    // GET /api/pre-remitos?estado=&desde=&hasta=&destino=
+    //   estado : Borrador|Conformado|Enviado|todos
+    //   desde  : fecha de ingreso mínima (yyyy-MM-dd), inclusive
+    //   hasta  : fecha de ingreso máxima (yyyy-MM-dd), inclusive
+    //   destino: base de grabación (p.ej. BARK / PRUEBAB) | todos
     [HttpGet]
-    public async Task<ActionResult> Listar([FromQuery] string estado = "todos")
+    public async Task<ActionResult> Listar(
+        [FromQuery] string estado = "todos",
+        [FromQuery] string? desde = null,
+        [FromQuery] string? hasta = null,
+        [FromQuery] string destino = "todos")
     {
         IQueryable<PreRemito> q = _db.PreRemitos.Include(p => p.Lineas);
 
@@ -50,9 +58,32 @@ public class PreRemitosController : ControllerBase
             q = q.Where(p => p.Estado == e);
         }
 
+        // Filtro por fecha de ingreso (p.Fecha). "hasta" es inclusive: tomamos
+        // hasta el final de ese día comparando contra el día siguiente.
+        if (DateTime.TryParse(desde, out var fDesde))
+            q = q.Where(p => p.Fecha >= fDesde.Date);
+        if (DateTime.TryParse(hasta, out var fHasta))
+        {
+            var limite = fHasta.Date.AddDays(1);
+            q = q.Where(p => p.Fecha < limite);
+        }
+
+        // Filtro por destino de grabación. "todos" no filtra. Sólo los pre-remitos
+        // ya enviados tienen DestinoBase; los demás quedan fuera al elegir una base.
+        if (!string.IsNullOrWhiteSpace(destino)
+            && !string.Equals(destino, "todos", StringComparison.OrdinalIgnoreCase))
+        {
+            q = q.Where(p => p.DestinoBase == destino);
+        }
+
         var lista = await q.OrderByDescending(p => p.Id).ToListAsync();
         return Ok(lista.Select(RemitoMapeo.AItem));
     }
+
+    // GET /api/pre-remitos/destinos  -> nombres de las bases de grabación (config)
+    [HttpGet("destinos")]
+    public ActionResult Destinos()
+        => Ok(new { destinos = _destinos.Nombres.OrderBy(n => n, StringComparer.OrdinalIgnoreCase) });
 
     // GET /api/pre-remitos/resolver-producto?codigo=XXX
     [HttpGet("resolver-producto")]
@@ -246,12 +277,13 @@ public class PreRemitosController : ControllerBase
         if (p is null) return NotFound(new { mensaje = "No se encontró el pre-remito." });
         if (p.Estado != EstadoPreRemito.Borrador)
             return Conflict(new { mensaje = "Solo se puede editar un pre-remito en borrador." });
-        if (string.IsNullOrWhiteSpace(req.ProveedorCodigo))
-            return BadRequest(new { mensaje = "Falta el proveedor." });
 
-        p.ProveedorCodigo = req.ProveedorCodigo.Trim();
-        p.ProveedorRazonSocial = req.ProveedorRazonSocial;
-        p.Fecha = req.Fecha ?? p.Fecha;
+        // La fecha de ingreso y el proveedor son la identidad del comprobante:
+        // NO se modifican una vez creado. Se conservan siempre los valores
+        // originales, ignorando lo que venga en el request (aunque el front ya
+        // bloquea esos campos, acá lo blindamos de raíz).
+        // -> p.ProveedorCodigo, p.ProveedorRazonSocial y p.Fecha quedan intactos.
+
         p.ComprobantePrefijo = Limpiar(req.ComprobantePrefijo);
         p.ComprobanteNumero = req.ComprobanteNumero;
         p.ComprobanteFecha = req.ComprobanteFecha;

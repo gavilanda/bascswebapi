@@ -16,6 +16,7 @@ public static class Permisos
 {
     public const string EditarRemitos = "editar_remitos";
     public const string ConformarRemitos = "conformar_remitos";
+    public const string Auditar = "auditar";
 
     public record ItemPermiso(string Codigo, string Etiqueta);
 
@@ -23,6 +24,7 @@ public static class Permisos
     {
         new(EditarRemitos,    "Editar pre-remitos de compra"),
         new(ConformarRemitos, "Conformar pre-remitos de compra"),
+        new(Auditar,          "Ver auditoría de pre-remitos"),
     };
 
     public static readonly IReadOnlyList<string> Codigos =
