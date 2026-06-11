@@ -881,8 +881,13 @@
   async function resolverProveedor() {
     const cod = $("remProvCod").value.trim();
     const cont = $("remProvCob");
+    const razonEl = $("remProvRazon");
     cont.innerHTML = "";
-    if (!cod) return;
+    if (!cod) {
+      // Sin código no hay proveedor: limpiamos la razón social (si es editable).
+      if (!razonEl.disabled) razonEl.value = "";
+      return;
+    }
     cont.textContent = "consultando…";
     let r;
     try {
@@ -891,18 +896,29 @@
     if (!r.ok) { cont.innerHTML = '<span class="cob-badge cob-err">error ' + r.status + '</span>'; return; }
     const d = await r.json();
     pintarCoberturaCompacta(cont, d.bases);
+    // No tocamos la razón social si el campo está bloqueado (modo ver, o edición
+    // con identidad bloqueada): ahí se muestra lo que vino guardado.
+    if (razonEl.disabled) return;
     const conNombre = (d.bases || []).find(b => b.existe && b.descripcion);
-    if (conNombre && !$("remProvRazon").value) $("remProvRazon").value = conNombre.descripcion;
+    // Reflejamos SIEMPRE el proveedor actual: si resolvió con nombre, lo pisamos
+    // (aunque ya hubiera texto del proveedor anterior); si no resolvió, limpiamos.
+    razonEl.value = conNombre ? conNombre.descripcion : "";
   }
 
   async function resolverProductoRenglon(tr) {
     const codInput = tr.querySelector(".r-cod");
     const cell = tr.querySelector(".r-cob");
+    const desc = tr.querySelector(".r-desc");
     const cod = codInput.value.trim();
     codInput.classList.remove("cob-ok", "cob-parcial", "cob-falta");
     codInput.title = "";
     if (cell) cell.innerHTML = "";
-    if (!cod) { limpiarArticulo(tr); return; }
+    if (!cod) {
+      // Sin código no hay artículo: limpiamos descripción y datos de unidad (si es editable).
+      if (desc && !desc.disabled) desc.value = "";
+      limpiarArticulo(tr);
+      return;
+    }
     if (cell) cell.textContent = "consultando…";
     let r;
     try {
@@ -915,8 +931,10 @@
     const enCuantas = bases.filter(b => b.existe).length;
     codInput.classList.add(enCuantas === 0 ? "cob-falta" : (enCuantas === bases.length ? "cob-ok" : "cob-parcial"));
     const conNombre = bases.find(b => b.existe && b.descripcion);
-    const desc = tr.querySelector(".r-desc");
-    if (conNombre && desc && !desc.value) desc.value = conNombre.descripcion;
+    // Reflejamos SIEMPRE el artículo actual: si resolvió con nombre, pisamos la
+    // descripción (aunque ya hubiera texto del producto anterior); si no resolvió,
+    // la dejamos como está (puede ser una descripción manual). No tocamos si está bloqueado.
+    if (desc && !desc.disabled && conNombre) desc.value = conNombre.descripcion;
     // Datos del artículo (unidad / relación) para calcular la 2ª unidad.
     const conArt = bases.find(b => b.existe && b.articulo);
     if (conArt) aplicarArticulo(tr, conArt.articulo);
@@ -939,6 +957,7 @@
   function limpiarArticulo(tr) {
     delete tr.dataset.resuelto;
     tr.dataset.doble = "0"; tr.dataset.relacion = ""; tr.dataset.tipoRel = ""; tr.dataset.uni2 = "";
+    const uniEl = tr.querySelector(".r-uni"); if (uniEl) uniEl.value = "";
     const c2 = tr.querySelector(".r-cant2"); if (c2) { c2.value = ""; c2.readOnly = true; }
   }
 
@@ -1678,6 +1697,17 @@
   // Comprobante: completar con ceros a la izquierda al salir del campo.
   $("remCompPrefijo").addEventListener("blur", () => { $("remCompPrefijo").value = padNum($("remCompPrefijo").value, 4); });
   $("remCompNumero").addEventListener("blur", () => { $("remCompNumero").value = padNum($("remCompNumero").value, 8); });
+
+  // Auditoría: los filtros sólo se aplican al tocar "Buscar" (o Enter en un campo de texto).
+  $("btnAudBuscar").addEventListener("click", buscarAuditoria);
+  $("btnAudLimpiar").addEventListener("click", limpiarFiltrosAuditoria);
+  ["audUsuario", "audProveedor"].forEach(idd => {
+    $(idd).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); buscarAuditoria(); } });
+  });
+  // Los selects y fechas de auditoría re-buscan al cambiar.
+  ["audIngDesde", "audIngHasta", "audCompDesde", "audCompHasta", "audEvento"].forEach(idd => {
+    $(idd).addEventListener("change", buscarAuditoria);
+  });
 
   // Enter como Tab + alta automática de renglón (solo dentro del formulario de pre-remito)
   $("remForm").addEventListener("keydown", e => {
