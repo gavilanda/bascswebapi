@@ -28,20 +28,24 @@ public record CrearPreRemitoRequest(
     string ProveedorCodigo,
     string? ProveedorRazonSocial,
     DateTime? Fecha,
+    string? TipoComprobante,          // "Remito" | "Factura" (se elige en el alta)
     string? ComprobantePrefijo,
     long? ComprobanteNumero,
     DateTime? ComprobanteFecha,
     string? Observaciones,
+    string? Destino,                 // base BAS a la que se grabará (se elige en el alta)
     List<LineaRequest> Lineas);
 
 public record ModificarPreRemitoRequest(
     string ProveedorCodigo,
     string? ProveedorRazonSocial,
     DateTime? Fecha,
+    string? TipoComprobante,          // "Remito" | "Factura" (editable en Borrador)
     string? ComprobantePrefijo,
     long? ComprobanteNumero,
     DateTime? ComprobanteFecha,
     string? Observaciones,
+    string? Destino,                 // base BAS a la que se grabará (editable en Borrador)
     List<LineaRequest> Lineas,
     Guid RowVersion);   // token que tenía el cliente al cargar (concurrencia)
 
@@ -54,6 +58,7 @@ public record GrabarRequest(string Base, Guid RowVersion);
 public record PreRemitoListItemDto(
     int Id,
     DateTime Fecha,
+    string TipoComprobante,
     string ProveedorCodigo,
     string? ProveedorRazonSocial,
     string? ComprobantePrefijo,
@@ -69,6 +74,7 @@ public record PreRemitoListItemDto(
 public record PreRemitoDto(
     int Id,
     DateTime Fecha,
+    string TipoComprobante,
     string ProveedorCodigo,
     string? ProveedorRazonSocial,
     string? ComprobantePrefijo,
@@ -94,13 +100,13 @@ public record PreRemitoDto(
 public static class RemitoMapeo
 {
     public static PreRemitoListItemDto AItem(PreRemito p) => new(
-        p.Id, p.Fecha, p.ProveedorCodigo, p.ProveedorRazonSocial,
+        p.Id, p.Fecha, p.TipoComprobante.ToString(), p.ProveedorCodigo, p.ProveedorRazonSocial,
         p.ComprobantePrefijo, p.ComprobanteNumero, p.ComprobanteFecha,
         p.Estado.ToString(), p.Lineas.Count, p.DestinoBase,
         p.CreadoPor, p.CreadoEn, p.ModificadoEn);
 
     public static PreRemitoDto ADto(PreRemito p) => new(
-        p.Id, p.Fecha, p.ProveedorCodigo, p.ProveedorRazonSocial,
+        p.Id, p.Fecha, p.TipoComprobante.ToString(), p.ProveedorCodigo, p.ProveedorRazonSocial,
         p.ComprobantePrefijo, p.ComprobanteNumero, p.ComprobanteFecha,
         p.Observaciones,
         p.Estado.ToString(), p.DestinoBase, p.BasReferencia, p.MensajeError,

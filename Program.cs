@@ -56,7 +56,7 @@ builder.Services.AddAuthorization(opciones =>
     foreach (var permiso in Permisos.Codigos)
         opciones.AddPolicy(permiso, p => p.RequireClaim("permiso", permiso));
 
-    // Ver pre-remitos: alcanza con tener cualquiera de los dos permisos.
+    // Ver ingresos: alcanza con tener cualquiera de los dos permisos.
     opciones.AddPolicy("VerRemitos", p =>
         p.RequireClaim("permiso", Permisos.EditarRemitos, Permisos.ConformarRemitos));
 });
@@ -78,7 +78,7 @@ builder.Services.AddScoped<BasProveedoresService>();
 builder.Services.AddScoped<BasCuentaCorrienteService>();
 builder.Services.AddScoped<BasComprobantesService>();
 
-// ---- Destinos BAS (BARK, PRUEBAB) para pre-remitos ----
+// ---- Destinos BAS (BARK, PRUEBAB) para ingresos ----
 // Timeout amplio para la carga del padrón (la carga es secuencial y en segundo
 // plano; una base lenta puede tardar). La consulta EN VIVO se topea aparte,
 // corto (8s), en BasResolucionService.
@@ -94,6 +94,9 @@ foreach (var (nombre, cfg) in basDestinos)
 builder.Services.AddSingleton(basDestinos);
 builder.Services.AddSingleton<BasDestinosService>();
 builder.Services.AddScoped<BasResolucionService>();
+builder.Services.AddScoped<BasRemitoIngresoService>();    // grabado de ingresos como Remito
+builder.Services.AddScoped<BasFacturaIngresoService>();   // grabado de ingresos como Factura
+builder.Services.AddScoped<ConfigBasesService>();         // config por base (editable)
 
 // ---- Caché en memoria del padrón (productos + proveedores) de cada base ----
 builder.Services.AddSingleton<BasCacheMaestros>();
@@ -163,6 +166,40 @@ using (var scope = app.Services.CreateScope())
     db.Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_AuditoriaPreRemitos_Usuario"" ON ""AuditoriaPreRemitos"" (""Usuario"");");
     db.Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_AuditoriaPreRemitos_ProveedorCodigo"" ON ""AuditoriaPreRemitos"" (""ProveedorCodigo"");");
 
+    // Columna TipoComprobante: se agregó después de la creación original de la
+    // tabla PreRemitos. Default 'Remito' para que los ingresos previos queden
+    // como remito. (Ver AgregarColumnaSiFalta: sólo se agrega si no existe.)
+    AgregarColumnaSiFalta("PreRemitos", "TipoComprobante", "TEXT NOT NULL DEFAULT 'Remito'");
+
+    // Tabla de configuración por base. Idempotente: si la base ya existía, EnsureCreated
+    // no la habría agregado, así que la creamos acá. Luego sembramos las bases de
+    // appsettings que falten y sincronizamos los valores sobre el diccionario en memoria.
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS ""ConfiguracionesBase"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_ConfiguracionesBase"" PRIMARY KEY AUTOINCREMENT,
+            ""Nombre"" TEXT NOT NULL,
+            ""Descripcion"" TEXT NULL,
+            ""Activa"" INTEGER NOT NULL DEFAULT 1,
+            ""Empresa"" INTEGER NOT NULL DEFAULT 1,
+            ""Sucursal"" INTEGER NOT NULL DEFAULT 1,
+            ""RemitoPrefijo"" TEXT NOT NULL DEFAULT '1',
+            ""RemitoConcepto"" TEXT NOT NULL DEFAULT 'com',
+            ""RemitoDeposito"" INTEGER NOT NULL DEFAULT 1,
+            ""FacturaPrefijo"" TEXT NOT NULL DEFAULT '1',
+            ""FacturaConcepto"" TEXT NOT NULL DEFAULT 'com',
+            ""FacturaDeposito"" INTEGER NOT NULL DEFAULT 1
+        );");
+    db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ConfiguracionesBase_Nombre"" ON ""ConfiguracionesBase"" (""Nombre"");");
+
+    // Columnas de factura agregadas después de la creación original de la tabla
+    // ConfiguracionesBase. Sólo se agregan si todavía no existen.
+    AgregarColumnaSiFalta("ConfiguracionesBase", "FacturaConcepto", "TEXT NOT NULL DEFAULT 'com'");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "FacturaDeposito", "INTEGER NOT NULL DEFAULT 1");
+
+    var configBases = scope.ServiceProvider.GetRequiredService<ConfigBasesService>();
+    configBases.SembrarFaltantesAsync().GetAwaiter().GetResult();
+    configBases.SincronizarMemoriaAsync().GetAwaiter().GetResult();
+
     if (!db.Usuarios.Any())
     {
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<UsuarioPortal>>();
@@ -213,6 +250,41 @@ using (var scope = app.Services.CreateScope())
 
         db.Usuarios.AddRange(admin, cliente, proveedor, ambos);
         db.SaveChanges();
+    }
+
+    // ---- Funciones locales de migración idempotente ----
+    // SQLite no soporta "ADD COLUMN IF NOT EXISTS". En vez de intentar el ALTER y
+    // atrapar el error (que EF Core logueaba como 'fail' en rojo, aunque estuviera
+    // controlado), preguntamos antes si la columna existe y sólo la agregamos si falta.
+    void AgregarColumnaSiFalta(string tabla, string columna, string definicion)
+    {
+        if (!ColumnaExiste(tabla, columna))
+            db.Database.ExecuteSqlRaw($@"ALTER TABLE ""{tabla}"" ADD COLUMN ""{columna}"" {definicion};");
+    }
+
+    bool ColumnaExiste(string tabla, string columna)
+    {
+        var conn = db.Database.GetDbConnection();
+        var abrir = conn.State != System.Data.ConnectionState.Open;
+        if (abrir) conn.Open();
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"PRAGMA table_info(""{tabla}"");";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                // En el resultado de PRAGMA table_info, el nombre de la columna
+                // está en el campo "name" (índice 1).
+                if (string.Equals(reader.GetString(1), columna, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+        finally
+        {
+            if (abrir) conn.Close();
+        }
     }
 }
 

@@ -14,6 +14,7 @@ public class PortalDbContext : DbContext
     public DbSet<PreRemito> PreRemitos => Set<PreRemito>();
     public DbSet<PreRemitoLinea> PreRemitoLineas => Set<PreRemitoLinea>();
     public DbSet<AuditoriaPreRemito> AuditoriaPreRemitos => Set<AuditoriaPreRemito>();
+    public DbSet<ConfiguracionBase> ConfiguracionesBase => Set<ConfiguracionBase>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,10 +43,13 @@ public class PortalDbContext : DbContext
         e.Property(u => u.Permisos)
             .HasConversion(permisosConverter, permisosComparer);
 
-        // ---- Pre-remitos ----
+        // ---- Ingresos (pre-remitos) ----
         var pr = modelBuilder.Entity<PreRemito>();
 
         pr.Property(p => p.Estado).HasConversion<string>();
+        // El tipo de comprobante se guarda como texto ("Remito"/"Factura"), igual
+        // que el estado. La columna se creó como TEXT con default 'Remito'.
+        pr.Property(p => p.TipoComprobante).HasConversion<string>();
 
         // Concurrencia optimista: RowVersion entra en el WHERE al actualizar.
         pr.Property(p => p.RowVersion).IsConcurrencyToken();
@@ -62,5 +66,9 @@ public class PortalDbContext : DbContext
         au.HasIndex(a => a.FechaHora);
         au.HasIndex(a => a.Usuario);
         au.HasIndex(a => a.ProveedorCodigo);
+
+        // ---- Configuración de bases ----
+        var cb = modelBuilder.Entity<ConfiguracionBase>();
+        cb.HasIndex(c => c.Nombre).IsUnique();
     }
 }

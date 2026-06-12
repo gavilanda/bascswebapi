@@ -26,7 +26,7 @@
   input:hover, select:hover { border-color:#71717a; }
   input:focus, select:focus { outline:none; border-color:var(--azul);
     box-shadow:0 0 0 3px rgba(37,99,235,.18); }
-  input:disabled { background:#f3f4f6; color:var(--txt2); border-color:var(--borde); }
+  input:disabled, select:disabled { background:#f3f4f6; color:var(--txt2); border-color:var(--borde); }
   input[readonly] { background:#f4f4f5; color:var(--txt2); border-color:var(--borde); cursor:default; }
   input[readonly]:hover { border-color:var(--borde); }
   button { background:var(--azul); color:#fff; border:none; padding:9px 16px;
@@ -52,6 +52,9 @@
   .badge { font-size:12px; padding:2px 8px; border-radius:6px; }
   .badge.on { background:#e7f6ec; color:var(--verde); }
   .badge.off { background:#fde8e8; color:var(--rojo); }
+  /* "Inactiva" puesta a propósito desde Configuración: negro, para distinguirla
+     del rojo de una base activa que está caída/sin respuesta. */
+  .badge.inactiva { background:#18181b; color:#fff; }
   .badge.borrador { background:#fef9c3; color:#854d0e; }
   .badge.conformado { background:#dbeafe; color:#1e40af; }
   .badge.enviado { background:#e7f6ec; color:var(--verde); }
@@ -61,13 +64,18 @@
   .badge.ev-conformado { background:#dbeafe; color:#1e40af; }
   .badge.ev-reabierto { background:#ede9fe; color:#6d28d9; }
   .badge.ev-grabado { background:#cffafe; color:#0e7490; }
+  /* Insignia chica para el destino de grabación en la lista. */
+  .badge.dest { background:#ede9fe; color:#5b21b6; }
+  /* Insignia para el tipo de comprobante (Remito / Factura). */
+  .badge.tipo-remito { background:#e0f2fe; color:#075985; }
+  .badge.tipo-factura { background:#fae8ff; color:#86198f; }
   .tag { font-size:12px; padding:2px 8px; border-radius:6px; background:#eef2ff; color:#3730a3; margin-right:4px; display:inline-block; margin-top:2px; }
   .msg { font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; display:none; }
   .msg.err { background:#fde8e8; color:var(--rojo); display:block; }
   .msg.ok { background:#e7f6ec; color:var(--verde); display:block; }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
   .row > div { flex:1; min-width:150px; }
-  /* Encabezado del formulario de pre-remito: filas y labels más juntos. */
+  /* Encabezado del formulario de ingreso: filas y labels más juntos. */
   .row.compacta-form { gap:8px; margin-top:6px; }
   .row.compacta-form label { margin:0 0 2px; }
   .subt.compacta-form { margin:10px 0 2px; }
@@ -75,7 +83,7 @@
   .cab h2 { margin:0; }
   .toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
   .filtros { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
-  /* Filtros de la lista de pre-remitos: etiqueta chica arriba de cada control. */
+  /* Filtros de la lista de ingresos: etiqueta chica arriba de cada control. */
   .filtro-campo { display:flex; flex-direction:column; gap:2px; }
   .filtro-campo > span { font-size:12px; color:var(--txt2); }
   .filtro-campo input, .filtro-campo select { padding:7px 9px; font-size:13px; width:auto; }
@@ -125,6 +133,9 @@
   .cob-si { background:#e7f6ec; color:var(--verde); }
   .cob-no { background:#f3f4f6; color:var(--txt2); }
   .cob-err { background:#fde8e8; color:var(--rojo); }
+  /* Base inactiva (deshabilitada a propósito en Configuración): negro, igual que
+     el badge "Inactiva" de la tabla de Configuración. */
+  .cob-inactiva { background:#18181b; color:#fff; }
   /* Modal buscador (productos / proveedores) */
   .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex;
     align-items:flex-start; justify-content:center; padding:56px 16px; z-index:50; }
@@ -186,9 +197,10 @@
     <div class="layout">
       <nav class="sidebar">
         <a data-sec="inicio" tabindex="0" class="activo">Inicio</a>
-        <a data-sec="remitos" id="navRemitos" tabindex="0" class="hidden">Pre-remitos</a>
+        <a data-sec="remitos" id="navRemitos" tabindex="0" class="hidden">Ingresos</a>
         <a data-sec="auditoria" id="navAuditoria" tabindex="0" class="hidden">Auditoría</a>
-        <div class="sidebar-sep hidden" id="navUsuariosSep"></div>
+        <div class="sidebar-sep hidden" id="navAdminSep"></div>
+        <a data-sec="config" id="navConfig" tabindex="0" class="hidden">Configuración</a>
         <a data-sec="usuarios" id="navUsuarios" tabindex="0" class="hidden">Usuarios</a>
       </nav>
 
@@ -206,16 +218,23 @@
           </div>
         </div>
 
-        <!-- PRE-REMITOS -->
+        <!-- INGRESOS -->
         <div id="secRemitos" class="seccion hidden">
 
           <!-- Lista -->
           <div id="remVista" class="card">
             <div class="toolbar">
-              <h2 style="margin:0; align-self:center">Pre-remitos de compra</h2>
+              <h2 style="margin:0; align-self:center">Ingresos de compra</h2>
               <div class="filtros">
                 <label class="filtro-campo"><span>Desde</span><input id="remFiltroDesde" type="date" /></label>
                 <label class="filtro-campo"><span>Hasta</span><input id="remFiltroHasta" type="date" /></label>
+                <label class="filtro-campo"><span>Tipo</span>
+                  <select id="remFiltroTipo">
+                    <option value="todos">Todos</option>
+                    <option value="Remito">Remito</option>
+                    <option value="Factura">Factura</option>
+                  </select>
+                </label>
                 <label class="filtro-campo"><span>Estado</span>
                   <select id="remFiltroEstado">
                     <option value="todos">Todos</option>
@@ -237,12 +256,14 @@
                 <tr>
                   <th style="width:5%">#</th>
                   <th style="width:8%">Ingreso</th>
-                  <th style="width:23%">Proveedor</th>
-                  <th style="width:16%" class="comp-cell">Comprobante</th>
+                  <th style="width:8%" class="right compacta">Tipo</th>
+                  <th style="width:19%">Proveedor</th>
+                  <th style="width:14%" class="comp-cell">Comprobante</th>
                   <th style="width:5%" class="right compacta">Reng.</th>
-                  <th style="width:9%" class="right compacta">Estado</th>
-                  <th style="width:10%" class="right compacta">Creado por</th>
-                  <th style="width:24%"></th>
+                  <th style="width:8%" class="right compacta">Estado</th>
+                  <th style="width:8%" class="right compacta">Destino</th>
+                  <th style="width:9%" class="right compacta">Creado por</th>
+                  <th style="width:16%"></th>
                 </tr>
               </thead>
               <tbody id="remTabla"></tbody>
@@ -259,13 +280,22 @@
                 <button class="sec" id="btnRefrescarPadron" style="padding:5px 10px; font-size:12px">Refrescar padrón</button>
               </div>
             </div>
-            <h2 id="remFormTitulo">Nuevo pre-remito</h2>
+            <h2 id="remFormTitulo">Nuevo ingreso</h2>
 
             <div class="row compacta-form">
               <div style="flex:0 0 150px"><label>Fecha de Ingreso</label><input id="remFecha" type="date" /></div>
+              <div style="flex:0 0 130px"><label>Tipo de comprobante</label>
+                <select id="remTipo">
+                  <option value="Remito">Remito</option>
+                  <option value="Factura">Factura</option>
+                </select>
+              </div>
+              <div style="flex:0 0 140px"><label>Destino de grabación</label>
+                <select id="remDestino"><option value="">(elegir base)</option></select>
+              </div>
               <div style="flex:0 0 150px"><label>Cód. proveedor</label><input id="remProvCod" type="text" placeholder="00123 · F3 busca" /></div>
               <div style="flex:1 1 180px; min-width:110px"><label>Razón social</label><input id="remProvRazon" type="text" placeholder="(se completa al verificar)" /></div>
-              <div style="flex:1 1 160px; min-width:130px"><label>Bases</label><div id="remProvCob" class="cobertura"></div></div>
+              <div style="flex:1 1 150px; min-width:130px"><label>Bases</label><div id="remProvCob" class="cobertura"></div></div>
             </div>
 
             <div class="subt compacta-form">Comprobante del proveedor</div>
@@ -298,7 +328,7 @@
               </table>
             </div>
             <div style="margin-top:8px"><button class="sec" id="btnAgregarRenglon">+ Agregar renglón</button></div>
-            <div class="nota">Tip: <strong>F3</strong> en <strong>Cód. producto</strong> o en <strong>Cód. proveedor</strong> abre el buscador (por código o nombre). <strong>Enter</strong> pasa al campo siguiente igual que Tab; al salir del último campo del último renglón se agrega una línea nueva. La <strong>Unidad</strong> y la <strong>2ª unidad</strong> se completan solas según el artículo (2ª unidad = Cantidad ÷ relación; no se puede editar cuando la relación es fija). La columna <strong>Bases</strong> muestra en qué bases existe (✓ / ✗).</div>
+            <div class="nota">Tip: <strong>F3</strong> en <strong>Cód. producto</strong> o en <strong>Cód. proveedor</strong> abre el buscador (por código o nombre). <strong>Enter</strong> pasa al campo siguiente igual que Tab; al salir del último campo del último renglón se agrega una línea nueva. La <strong>Unidad</strong> y la <strong>2ª unidad</strong> se completan solas según el artículo (2ª unidad = Cantidad ÷ relación; no se puede editar cuando la relación es fija). La columna <strong>Bases</strong> muestra en qué bases existe (✓ / ✗); una base en negro está inactiva. El <strong>Tipo de comprobante</strong> define si el ingreso se graba en BAS como Remito o como Factura. El <strong>Destino de grabación</strong> es la base BAS donde se grabará; es obligatorio para conformar.</div>
 
             <div style="margin-top:18px; display:flex; gap:8px">
               <button id="btnGuardarRem">Guardar</button>
@@ -312,7 +342,7 @@
         <!-- AUDITORÍA -->
         <div id="secAuditoria" class="seccion hidden">
           <div class="card">
-            <h2>Auditoría de pre-remitos</h2>
+            <h2>Auditoría de ingresos</h2>
             <div class="filtros-grid">
               <div><label>Ingreso desde</label><input id="audIngDesde" type="date" /></div>
               <div><label>Ingreso hasta</label><input id="audIngHasta" type="date" /></div>
@@ -346,7 +376,7 @@
                   <th style="width:13%">Fecha/hora</th>
                   <th style="width:10%">Evento</th>
                   <th style="width:12%">Usuario</th>
-                  <th style="width:6%">Pre-rem.</th>
+                  <th style="width:6%">Ingreso</th>
                   <th style="width:22%">Proveedor</th>
                   <th style="width:16%">Comprobante</th>
                   <th style="width:9%">Estado</th>
@@ -356,6 +386,71 @@
               <tbody id="audTabla"></tbody>
             </table>
             <div id="audMsg" class="msg"></div>
+          </div>
+        </div>
+
+        <!-- CONFIGURACIÓN DE BASES (solo administradores) -->
+        <div id="secConfig" class="seccion hidden">
+
+          <!-- Formulario de edición (oculto hasta elegir una base) -->
+          <div id="cfgForm" class="card hidden">
+            <h2 id="cfgFormTitulo">Editar base</h2>
+            <div class="row compacta-form">
+              <div style="flex:0 0 130px"><label>Base</label><input id="cfgNombre" type="text" readonly /></div>
+              <div style="flex:1 1 220px"><label>Descripción</label><input id="cfgDescripcion" type="text" placeholder="Nombre para mostrar (ej. BARK · Producción)" /></div>
+              <div style="flex:0 0 150px; align-self:center; margin-top:18px">
+                <label class="check"><input id="cfgActiva" type="checkbox" /> Base activa</label>
+              </div>
+            </div>
+
+            <div class="subt compacta-form">Empresa</div>
+            <div class="row compacta-form">
+              <div style="flex:0 0 130px"><label>Cód. empresa</label><input id="cfgEmpresa" type="number" min="1" /></div>
+              <div style="flex:0 0 130px"><label>Cód. sucursal</label><input id="cfgSucursal" type="number" min="1" /></div>
+            </div>
+
+            <div class="subt compacta-form">Remito de ingreso</div>
+            <div class="row compacta-form">
+              <div style="flex:0 0 130px"><label>Prefijo</label><input id="cfgRemPrefijo" type="text" placeholder="1" /></div>
+              <div style="flex:0 0 130px"><label>Concepto</label><input id="cfgRemConcepto" type="text" placeholder="com" /></div>
+              <div style="flex:0 0 130px"><label>Depósito</label><input id="cfgRemDeposito" type="number" min="1" /></div>
+            </div>
+
+            <div class="subt compacta-form">Factura de compra</div>
+            <div class="row compacta-form">
+              <div style="flex:0 0 130px"><label>Prefijo</label><input id="cfgFacPrefijo" type="text" placeholder="1" /></div>
+              <div style="flex:0 0 130px"><label>Concepto</label><input id="cfgFacConcepto" type="text" placeholder="com" /></div>
+              <div style="flex:0 0 130px"><label>Depósito</label><input id="cfgFacDeposito" type="number" min="1" /></div>
+            </div>
+
+            <div class="nota" id="cfgInfoConexion" style="margin-top:12px"></div>
+
+            <div style="margin-top:16px; display:flex; gap:8px">
+              <button id="btnGuardarCfg">Guardar</button>
+              <button class="sec" id="btnCancelarCfg">Cancelar</button>
+            </div>
+            <div id="cfgMsgForm" class="msg"></div>
+          </div>
+
+          <!-- Lista de bases -->
+          <div class="card">
+            <h2>Configuración de bases</h2>
+            <div class="nota">Definen con qué datos se graban los ingresos en cada base BAS. La conexión (URL) y el tipo de remito se configuran en el servidor y se muestran solo como referencia. Una base <strong>inactiva</strong> no aparece para cargar ingresos ni se puede grabar (útil para deshabilitar bases de prueba en producción).</div>
+            <table style="margin-top:12px">
+              <thead>
+                <tr>
+                  <th style="width:16%">Base</th>
+                  <th style="width:8%" class="right">Estado</th>
+                  <th style="width:10%" class="right">Empresa / Suc.</th>
+                  <th style="width:22%">Remito (pref. · concepto · dep.)</th>
+                  <th style="width:22%">Factura (pref. · concepto · dep.)</th>
+                  <th style="width:14%">Conexión</th>
+                  <th style="width:8%"></th>
+                </tr>
+              </thead>
+              <tbody id="cfgTabla"></tbody>
+            </table>
+            <div id="cfgMsgLista" class="msg"></div>
           </div>
         </div>
 
@@ -484,12 +579,16 @@
   let editandoId = null;
   let usuariosActuales = [];
 
-  // Estado del formulario de pre-remito.
+  // Estado del formulario de ingreso.
   let remModo = "nuevo";   // nuevo | editar | ver
   let remId = null;
   let remRowVersion = null;
-  let destinosCargados = false;   // el dropdown de destino se llena una sola vez
+  let destinosCargados = false;   // ya se llenaron alguna vez los dropdowns de destino
+  let listaDestinos = [];         // nombres de bases ACTIVAS (para el filtro y el form)
   let filtrosRemInit = false;     // las fechas por defecto se setean una sola vez
+
+  // Configuración de bases.
+  let configBasesActuales = [];
 
   // Buscador modal (F3).
   let modalKind = "producto";    // producto | proveedor
@@ -574,7 +673,8 @@
       $("quien").textContent = ident + (esAdmin ? " · Administrador" : " · Interno");
       $("inicioNombre").textContent = ident;
       $("navUsuarios").classList.toggle("hidden", !esAdmin);
-      $("navUsuariosSep").classList.toggle("hidden", !esAdmin);
+      $("navConfig").classList.toggle("hidden", !esAdmin);
+      $("navAdminSep").classList.toggle("hidden", !esAdmin);
       $("navRemitos").classList.toggle("hidden", !puedeVerRemitos());
       $("navAuditoria").classList.toggle("hidden", !puedeAuditar());
       // Al entrar siempre se muestra Inicio.
@@ -588,10 +688,11 @@
 
   async function mostrarSeccion(sec) {
     if (sec === "usuarios" && !esAdmin) sec = "inicio";
+    if (sec === "config" && !esAdmin) sec = "inicio";
     if (sec === "remitos" && !puedeVerRemitos()) sec = "inicio";
     if (sec === "auditoria" && !puedeAuditar()) sec = "inicio";
 
-    const mapa = { inicio: "secInicio", usuarios: "secUsuarios", remitos: "secRemitos", auditoria: "secAuditoria" };
+    const mapa = { inicio: "secInicio", usuarios: "secUsuarios", remitos: "secRemitos", auditoria: "secAuditoria", config: "secConfig" };
     document.querySelectorAll(".seccion").forEach(s => s.classList.add("hidden"));
     const destino = $(mapa[sec] || "secInicio");
     if (destino) destino.classList.remove("hidden");
@@ -613,10 +714,14 @@
         $("remFiltroHasta").value = hoyISO();
         filtrosRemInit = true;
       }
+      // Se refresca SIEMPRE: si en Configuración se activó/desactivó una base,
+      // el selector queda al día sin tener que recargar la página.
       await cargarDestinos();
       cargarRemitos();
     } else if (sec === "auditoria") {
       buscarAuditoria();
+    } else if (sec === "config") {
+      cargarConfigBases();
     }
   }
 
@@ -692,34 +797,72 @@
     actualizarVista();
   }
 
-  // ===================== PRE-REMITOS =====================
+  // ===================== INGRESOS =====================
   function estadoBadgeRem(estado) {
     const cls = estado === "Borrador" ? "borrador" : estado === "Conformado" ? "conformado" : "enviado";
     return '<span class="badge ' + cls + '">' + esc(estado) + '</span>';
   }
 
-  // Carga (una sola vez) los nombres de las bases de grabación en el filtro de destino.
+  function tipoBadge(tipoComp) {
+    const t = tipoComp || "Remito";
+    const cls = t === "Factura" ? "tipo-factura" : "tipo-remito";
+    return '<span class="badge ' + cls + '">' + esc(t) + '</span>';
+  }
+
+  // Carga los nombres de las bases ACTIVAS en el filtro de la lista y en el
+  // selector del formulario. Se llama cada vez que se entra a Ingresos, así
+  // activar/desactivar una base en Configuración se refleja sin recargar la
+  // página. (El endpoint /destinos sólo devuelve bases activas.)
   async function cargarDestinos() {
-    if (destinosCargados) return;
     let r;
     try {
       r = await fetch("/api/pre-remitos/destinos", { headers: { "Authorization": "Bearer " + token } });
     } catch (e) { return; }
     if (!r.ok) return;
     const d = await r.json();
-    const sel = $("remFiltroDestino");
-    for (const nombre of (d.destinos || [])) {
+    listaDestinos = d.destinos || [];
+
+    // Filtro de la lista: dejamos sólo "Todos" (primera option) y volvemos a
+    // cargar las bases activas, preservando la selección si sigue siendo válida.
+    const selFiltro = $("remFiltroDestino");
+    const filtroPrev = selFiltro.value;
+    selFiltro.length = 1;
+    for (const nombre of listaDestinos) {
       const opt = document.createElement("option");
       opt.value = nombre; opt.textContent = nombre;
-      sel.appendChild(opt);
+      selFiltro.appendChild(opt);
+    }
+    selFiltro.value = (filtroPrev && listaDestinos.includes(filtroPrev)) ? filtroPrev : "todos";
+
+    // Selector del formulario: dejamos sólo "(elegir base)" (primera option) y
+    // recargamos las bases activas.
+    const selForm = $("remDestino");
+    selForm.length = 1;
+    for (const nombre of listaDestinos) {
+      const opt = document.createElement("option");
+      opt.value = nombre; opt.textContent = nombre;
+      selForm.appendChild(opt);
     }
     destinosCargados = true;
+  }
+
+  // Garantiza que el selector del formulario tenga una opción para 'nombre',
+  // aunque esa base esté inactiva (y por eso no venga en /destinos). Se usa al
+  // abrir un ingreso viejo cuyo destino se desactivó después: así igual se ve.
+  function asegurarOpcionDestino(nombre) {
+    if (!nombre) return;
+    const sel = $("remDestino");
+    if (Array.from(sel.options).some(o => o.value === nombre)) return;
+    const opt = document.createElement("option");
+    opt.value = nombre; opt.textContent = nombre + " (inactiva)";
+    sel.appendChild(opt);
   }
 
   async function cargarRemitos() {
     limpiar($("remMsgLista"));
     const params = new URLSearchParams();
     params.set("estado", $("remFiltroEstado").value || "todos");
+    params.set("tipo", $("remFiltroTipo").value || "todos");
     const desde = $("remFiltroDesde").value;
     const hasta = $("remFiltroHasta").value;
     if (desde) params.set("desde", desde);
@@ -738,7 +881,7 @@
     tbody.innerHTML = "";
 
     if (!lista.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="vacio">No hay pre-remitos para el período y los filtros elegidos.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="vacio">No hay ingresos para el período y los filtros elegidos.</td></tr>';
       return;
     }
 
@@ -756,6 +899,10 @@
       } else {
         compCell = "—";
       }
+
+      const destCell = p.destinoBase
+        ? '<span class="badge dest">' + esc(p.destinoBase) + '</span>'
+        : "—";
 
       const acc = [];
       if (p.estado === "Borrador" && puedeEditarRemitos())
@@ -775,10 +922,12 @@
       tr.innerHTML =
           '<td>' + p.id + '</td>'
         + '<td>' + esc(fechaCorta(p.fecha)) + '</td>'
+        + '<td class="right compacta">' + tipoBadge(p.tipoComprobante) + '</td>'
         + '<td title="' + esc(prov) + '">' + esc(prov || "—") + '</td>'
         + '<td class="comp-cell">' + compCell + '</td>'
         + '<td class="right compacta">' + p.cantidadRenglones + '</td>'
         + '<td class="right compacta">' + estadoBadgeRem(p.estado) + '</td>'
+        + '<td class="right compacta">' + destCell + '</td>'
         + '<td class="right compacta">' + esc(p.creadoPor || "—") + '</td>'
         + '<td class="acc-cell"><div class="acciones">' + acc.join("") + '</div></td>';
       tbody.appendChild(tr);
@@ -793,8 +942,8 @@
     if (act === "ver") return abrirRemito(id, "ver");
     if (act === "editar") return abrirRemito(id, "editar");
     if (act === "eliminar") return eliminarRemito(id);
-    if (act === "conformar") return accionEstadoRem(id, "conformar", "¿Conformar este pre-remito? No se podrá editar hasta reabrirlo.");
-    if (act === "reabrir") return accionEstadoRem(id, "reabrir", "¿Reabrir este pre-remito para volver a editarlo?");
+    if (act === "conformar") return accionEstadoRem(id, "conformar", "¿Conformar este ingreso? No se podrá editar hasta reabrirlo.");
+    if (act === "reabrir") return accionEstadoRem(id, "reabrir", "¿Reabrir este ingreso para volver a editarlo?");
     if (act === "enviar") return enviarRemito(id);
   }
 
@@ -862,12 +1011,24 @@
   }
 
   // ---- Resolución de códigos en las dos bases ----
+  // Una base está "inactiva" si no figura entre las activas (las que /destinos
+  // devolvió en listaDestinos). Sólo se evalúa si ya cargamos esa lista, para no
+  // marcar todo como inactivo antes de tener la info.
+  function baseInactiva(nombre) {
+    return listaDestinos.length > 0 && !listaDestinos.includes(nombre);
+  }
+
   function pintarCoberturaCompacta(cont, bases) {
     cont.innerHTML = "";
     if (!bases || !bases.length) { cont.textContent = "—"; return; }
     for (const b of bases) {
       const span = document.createElement("span");
-      if (b.error) {
+      if (baseInactiva(b.base)) {
+        // La pusiste inactiva en Configuración: negro, para distinguirla de una
+        // base activa que está caída/sin respuesta (que va en rojo).
+        span.className = "cob-badge cob-inactiva"; span.textContent = b.base;
+        span.title = "Base inactiva (deshabilitada en Configuración)";
+      } else if (b.error) {
         span.className = "cob-badge cob-err"; span.textContent = b.base; span.title = "Error: " + b.error;
       } else if (b.existe) {
         span.className = "cob-badge cob-si"; span.textContent = b.base + " ✓"; if (b.descripcion) span.title = b.descripcion;
@@ -928,8 +1089,12 @@
     const d = await r.json();
     const bases = d.bases || [];
     if (cell) pintarCoberturaCompacta(cell, bases);
-    const enCuantas = bases.filter(b => b.existe).length;
-    codInput.classList.add(enCuantas === 0 ? "cob-falta" : (enCuantas === bases.length ? "cob-ok" : "cob-parcial"));
+    // Para el color del borde del código sólo contamos las bases ACTIVAS (las
+    // inactivas no deben penalizar: no se graban ahí).
+    const basesActivas = bases.filter(b => !baseInactiva(b.base));
+    const enCuantas = basesActivas.filter(b => b.existe).length;
+    if (basesActivas.length > 0)
+      codInput.classList.add(enCuantas === 0 ? "cob-falta" : (enCuantas === basesActivas.length ? "cob-ok" : "cob-parcial"));
     const conNombre = bases.find(b => b.existe && b.descripcion);
     // Reflejamos SIEMPRE el artículo actual: si resolvió con nombre, pisamos la
     // descripción (aunque ya hubiera texto del producto anterior); si no resolvió,
@@ -1021,8 +1186,9 @@
 
   // ro = solo lectura total (modo "ver"). Por separado, en modo "editar" se
   // bloquean además los campos de identidad (fecha de ingreso y proveedor).
+  // El tipo y el destino se tratan como los demás campos: editables salvo en "ver".
   function setFormReadonly(ro) {
-    ["remFecha", "remProvCod", "remProvRazon", "remObs",
+    ["remFecha", "remTipo", "remDestino", "remProvCod", "remProvRazon", "remObs",
      "remCompPrefijo", "remCompNumero", "remCompFecha"].forEach(idd => $(idd).disabled = ro);
     $("remRenglones").querySelectorAll("input").forEach(i => i.disabled = ro);
     $("remRenglones").querySelectorAll(".r-quitar").forEach(b => b.classList.toggle("hidden", ro));
@@ -1031,7 +1197,8 @@
   }
 
   // Bloquea la fecha de ingreso y el proveedor (identidad del comprobante),
-  // que no se deben poder cambiar una vez creado el pre-remito.
+  // que no se deben poder cambiar una vez creado el ingreso. El tipo y el destino
+  // NO se bloquean acá: se pueden corregir mientras el ingreso está en borrador.
   function bloquearIdentidad() {
     $("remFecha").disabled = true;
     $("remProvCod").disabled = true;
@@ -1066,8 +1233,10 @@
 
   function abrirNuevoRemito() {
     remModo = "nuevo"; remId = null; remRowVersion = null;
-    $("remFormTitulo").textContent = "Nuevo pre-remito";
+    $("remFormTitulo").textContent = "Nuevo ingreso";
     $("remFecha").value = hoyISO();
+    $("remTipo").value = "Remito";
+    $("remDestino").value = "";
     $("remProvCod").value = ""; $("remProvRazon").value = ""; $("remObs").value = "";
     $("remCompPrefijo").value = ""; $("remCompNumero").value = ""; $("remCompFecha").value = "";
     $("remProvCob").innerHTML = "";
@@ -1082,12 +1251,17 @@
     try {
       r = await fetch("/api/pre-remitos/" + id, { headers: { "Authorization": "Bearer " + token } });
     } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
-    if (!r.ok) { mostrar($("remMsgLista"), "No se pudo leer el pre-remito.", "err"); return; }
+    if (!r.ok) { mostrar($("remMsgLista"), "No se pudo leer el ingreso.", "err"); return; }
     const d = await r.json();
 
     remModo = modo; remId = d.id; remRowVersion = d.rowVersion;
-    $("remFormTitulo").textContent = (modo === "ver" ? "Pre-remito #" : "Editar pre-remito #") + d.id + "  ·  " + d.estado;
+    $("remFormTitulo").textContent = (modo === "ver" ? "Ingreso #" : "Editar ingreso #") + d.id + "  ·  " + d.estado;
     $("remFecha").value = (d.fecha || "").split("T")[0];
+    $("remTipo").value = d.tipoComprobante || "Remito";
+    // Si el ingreso quedó con una base que después se desactivó, igual la mostramos
+    // (no viene en el selector porque /destinos sólo trae las activas).
+    asegurarOpcionDestino(d.destinoBase);
+    $("remDestino").value = d.destinoBase || "";
     $("remProvCod").value = d.proveedorCodigo || "";
     $("remProvRazon").value = d.proveedorRazonSocial || "";
     $("remCompPrefijo").value = padNum(d.comprobantePrefijo, 4);
@@ -1122,10 +1296,12 @@
       proveedorCodigo: prov,
       proveedorRazonSocial: $("remProvRazon").value || null,
       fecha: $("remFecha").value || null,
+      tipoComprobante: $("remTipo").value || "Remito",
       comprobantePrefijo: prefComp || null,
       comprobanteNumero: numComp ? parseInt(numComp, 10) : null,
       comprobanteFecha: $("remCompFecha").value || null,
       observaciones: $("remObs").value || null,
+      destino: $("remDestino").value || null,
       lineas: recolectarRenglones()
     };
 
@@ -1154,7 +1330,7 @@
     }
     if (r.status === 409) {
       const d = await r.json().catch(() => ({}));
-      mostrar($("remMsgForm"), d.mensaje || "Otro usuario modificó este pre-remito. Recargá.", "err");
+      mostrar($("remMsgForm"), d.mensaje || "Otro usuario modificó este ingreso. Recargá.", "err");
       return;
     }
     const d = await r.json().catch(() => ({}));
@@ -1168,7 +1344,7 @@
     let det;
     try {
       const rd = await fetch("/api/pre-remitos/" + id, { headers: { "Authorization": "Bearer " + token } });
-      if (!rd.ok) { mostrar($("remMsgLista"), "No se pudo leer el pre-remito.", "err"); return; }
+      if (!rd.ok) { mostrar($("remMsgLista"), "No se pudo leer el ingreso.", "err"); return; }
       det = await rd.json();
     } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
 
@@ -1185,7 +1361,7 @@
   }
 
   async function eliminarRemito(id) {
-    if (!confirm("¿Eliminar el pre-remito #" + id + "?\n\nEsta acción no se puede deshacer.")) return;
+    if (!confirm("¿Eliminar el ingreso #" + id + "?\n\nEsta acción no se puede deshacer.")) return;
     limpiar($("remMsgLista"));
     let r;
     try {
@@ -1196,9 +1372,43 @@
     mostrar($("remMsgLista"), d.mensaje || "No se pudo eliminar.", "err");
   }
 
-  function enviarRemito(id) {
-    mostrar($("remMsgLista"),
-      "El envío a BAS se habilita en el próximo paso (validación de códigos y selección de base).", "ok");
+  // Graba el ingreso en BAS. Lee el rowVersion actual, hace POST a /grabar y
+  // muestra el resultado (referencia del comprobante, o el error de validación/BAS).
+  async function enviarRemito(id) {
+    if (!confirm("¿Grabar este ingreso en BAS?\n\nSe va a crear el comprobante en la base de destino. Esta acción no se puede deshacer desde el portal.")) return;
+    limpiar($("remMsgLista"));
+    mostrar($("remMsgLista"), "Grabando en BAS…", "ok");
+
+    // Necesitamos el rowVersion actual del ingreso.
+    let det;
+    try {
+      const rd = await fetch("/api/pre-remitos/" + id, { headers: { "Authorization": "Bearer " + token } });
+      if (!rd.ok) { mostrar($("remMsgLista"), "No se pudo leer el ingreso.", "err"); return; }
+      det = await rd.json();
+    } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
+
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos/" + id + "/grabar", {
+        method: "POST", headers: hdrJson(),
+        body: JSON.stringify({ base: det.destinoBase || "", rowVersion: det.rowVersion })
+      });
+    } catch (e) { mostrar($("remMsgLista"), "No se pudo conectar.", "err"); return; }
+
+    if (r.ok) {
+      const d = await r.json().catch(() => ({}));
+      const ref = d.referencia ? (" · " + d.referencia) : "";
+      mostrar($("remMsgLista"), (d.mensaje || "Ingreso grabado.") + ref, "ok");
+      cargarRemitos();
+      return;
+    }
+
+    // Errores: validación (400), BAS (502), concurrencia (409), etc. El backend
+    // manda un 'mensaje' explicando qué pasó (proveedor/artículos faltantes, etc.).
+    const d = await r.json().catch(() => ({}));
+    mostrar($("remMsgLista"), d.mensaje || ("No se pudo grabar (error " + r.status + ")."), "err");
+    // Recargamos por si el estado cambió o para reflejar el mensaje de error guardado.
+    cargarRemitos();
   }
 
   // ===================== AUDITORÍA =====================
@@ -1270,6 +1480,122 @@
     let resumen = "Mostrando " + regs.length + " evento" + (regs.length === 1 ? "" : "s");
     if (regs.length >= (d.limite || 0)) resumen += " (límite " + d.limite + "; afiná los filtros para ver más)";
     $("audResumen").textContent = resumen + ".";
+  }
+
+  // ===================== CONFIGURACIÓN DE BASES =====================
+  async function cargarConfigBases() {
+    limpiar($("cfgMsgLista"));
+    $("cfgForm").classList.add("hidden");
+    let r;
+    try {
+      r = await fetch("/api/admin/config-bases", { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { mostrar($("cfgMsgLista"), "No se pudo conectar.", "err"); return; }
+    if (r.status === 401 || r.status === 403) { salir(); return; }
+    if (!r.ok) { mostrar($("cfgMsgLista"), "No se pudo cargar la configuración.", "err"); return; }
+    const d = await r.json();
+    configBasesActuales = d.bases || [];
+    const tbody = $("cfgTabla");
+    tbody.innerHTML = "";
+
+    if (!configBasesActuales.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="vacio">No hay bases configuradas.</td></tr>';
+      return;
+    }
+
+    for (const b of configBasesActuales) {
+      const estado = b.activa
+        ? '<span class="badge on">Activa</span>'
+        : '<span class="badge inactiva">Inactiva</span>';
+      const remito = esc(b.remitoPrefijo || "—") + " · " + esc(b.remitoConcepto || "—") + " · dep " + esc(String(b.remitoDeposito));
+      const factura = esc(b.facturaPrefijo || "—") + " · " + esc(b.facturaConcepto || "—") + " · dep " + esc(String(b.facturaDeposito));
+      const conexion = esc(b.baseUrl || "—") + (b.conectada ? "" : " (no conectada)");
+      const nombreCell = '<strong>' + esc(b.nombre) + '</strong>'
+        + (b.descripcion && b.descripcion !== b.nombre ? '<br><span class="nota">' + esc(b.descripcion) + '</span>' : '');
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+          '<td>' + nombreCell + '</td>'
+        + '<td class="right">' + estado + '</td>'
+        + '<td class="right">' + esc(String(b.empresa)) + ' / ' + esc(String(b.sucursal)) + '</td>'
+        + '<td>' + remito + '</td>'
+        + '<td>' + factura + '</td>'
+        + '<td title="' + esc(b.baseUrl || "") + '">' + conexion + '</td>'
+        + '<td><button class="sec" data-act="editar-cfg" data-nombre="' + esc(b.nombre) + '">Editar</button></td>';
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll("button[data-act='editar-cfg']").forEach(btn => {
+      btn.addEventListener("click", () => editarConfigBase(btn.dataset.nombre));
+    });
+  }
+
+  function editarConfigBase(nombre) {
+    const b = configBasesActuales.find(x => x.nombre === nombre);
+    if (!b) return;
+    limpiar($("cfgMsgForm"));
+    $("cfgFormTitulo").textContent = "Editar base · " + b.nombre;
+    $("cfgNombre").value = b.nombre;
+    $("cfgDescripcion").value = b.descripcion || "";
+    $("cfgActiva").checked = !!b.activa;
+    $("cfgEmpresa").value = b.empresa;
+    $("cfgSucursal").value = b.sucursal;
+    $("cfgRemPrefijo").value = b.remitoPrefijo || "";
+    $("cfgRemConcepto").value = b.remitoConcepto || "";
+    $("cfgRemDeposito").value = b.remitoDeposito;
+    $("cfgFacPrefijo").value = b.facturaPrefijo || "";
+    $("cfgFacConcepto").value = b.facturaConcepto || "";
+    $("cfgFacDeposito").value = b.facturaDeposito;
+    const info = [];
+    if (b.baseUrl) info.push("Conexión: " + b.baseUrl);
+    if (b.remitoTipo) info.push("Tipo de remito: " + b.remitoTipo + " (fijo)");
+    if (!b.conectada) info.push("⚠ Esta base no está conectada en el servidor (no figura en appsettings).");
+    $("cfgInfoConexion").textContent = info.join("  ·  ");
+    $("cfgForm").classList.remove("hidden");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setTimeout(() => $("cfgDescripcion").focus(), 0);
+  }
+
+  function cancelarConfigBase() {
+    $("cfgForm").classList.add("hidden");
+    limpiar($("cfgMsgForm"));
+  }
+
+  async function guardarConfigBase() {
+    limpiar($("cfgMsgForm"));
+    const nombre = $("cfgNombre").value;
+    const body = {
+      descripcion: $("cfgDescripcion").value || null,
+      activa: $("cfgActiva").checked,
+      empresa: parseInt($("cfgEmpresa").value, 10) || 0,
+      sucursal: parseInt($("cfgSucursal").value, 10) || 0,
+      remitoPrefijo: $("cfgRemPrefijo").value || "",
+      remitoConcepto: $("cfgRemConcepto").value || "",
+      remitoDeposito: parseInt($("cfgRemDeposito").value, 10) || 0,
+      facturaPrefijo: $("cfgFacPrefijo").value || "",
+      facturaConcepto: $("cfgFacConcepto").value || "",
+      facturaDeposito: parseInt($("cfgFacDeposito").value, 10) || 0
+    };
+    let r;
+    try {
+      r = await fetch("/api/admin/config-bases/" + encodeURIComponent(nombre), {
+        method: "PUT", headers: hdrJson(), body: JSON.stringify(body)
+      });
+    } catch (e) { mostrar($("cfgMsgForm"), "No se pudo conectar.", "err"); return; }
+
+    if (r.ok) {
+      mostrar($("cfgMsgForm"), "Configuración guardada.", "ok");
+      $("btnGuardarCfg").disabled = true;
+      // Como pudo cambiar el estado activa/inactiva de una base, forzamos que la
+      // próxima vez que se entre a Ingresos se recarguen los destinos.
+      destinosCargados = false;
+      setTimeout(() => {
+        $("btnGuardarCfg").disabled = false;
+        $("cfgForm").classList.add("hidden");
+        cargarConfigBases();
+      }, 1200);
+      return;
+    }
+    const d = await r.json().catch(() => ({}));
+    mostrar($("cfgMsgForm"), d.mensaje || "No se pudo guardar.", "err");
   }
 
   // ---- Modal buscador (productos / proveedores), F3 + scroll infinito ----
@@ -1679,8 +2005,9 @@
     });
   });
 
-  // Pre-remitos
+  // Ingresos
   $("remFiltroEstado").addEventListener("change", cargarRemitos);
+  $("remFiltroTipo").addEventListener("change", cargarRemitos);
   $("remFiltroDesde").addEventListener("change", cargarRemitos);
   $("remFiltroHasta").addEventListener("change", cargarRemitos);
   $("remFiltroDestino").addEventListener("change", cargarRemitos);
@@ -1698,6 +2025,10 @@
   $("remCompPrefijo").addEventListener("blur", () => { $("remCompPrefijo").value = padNum($("remCompPrefijo").value, 4); });
   $("remCompNumero").addEventListener("blur", () => { $("remCompNumero").value = padNum($("remCompNumero").value, 8); });
 
+  // Configuración de bases
+  $("btnGuardarCfg").addEventListener("click", guardarConfigBase);
+  $("btnCancelarCfg").addEventListener("click", cancelarConfigBase);
+
   // Auditoría: los filtros sólo se aplican al tocar "Buscar" (o Enter en un campo de texto).
   $("btnAudBuscar").addEventListener("click", buscarAuditoria);
   $("btnAudLimpiar").addEventListener("click", limpiarFiltrosAuditoria);
@@ -1709,7 +2040,7 @@
     $(idd).addEventListener("change", buscarAuditoria);
   });
 
-  // Enter como Tab + alta automática de renglón (solo dentro del formulario de pre-remito)
+  // Enter como Tab + alta automática de renglón (solo dentro del formulario de ingreso)
   $("remForm").addEventListener("keydown", e => {
     const el = e.target;
     if (!el || el.tagName !== "INPUT" || el.disabled || el.readOnly) return;

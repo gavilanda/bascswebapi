@@ -1,6 +1,6 @@
 namespace PortalClientes.Models;
 
-// Estado de un pre-remito de compra / entrada de mercadería.
+// Estado de un ingreso de compra / entrada de mercadería.
 //  Borrador   -> se está armando/editando (varios usuarios pueden tocarlo).
 //  Conformado -> revisado y bloqueado, listo para grabar en BAS.
 //  Enviado    -> grabado exitosamente en una base BAS.
@@ -11,16 +11,28 @@ public enum EstadoPreRemito
     Enviado
 }
 
-// Cabecera del pre-remito. Vive en NUESTRA base hasta que se graba en BAS.
+// Tipo de comprobante con el que se ingresa la mercadería. Define a qué API de
+// BAS se manda al grabar: Remito -> /api/RemitosIngreso; Factura -> API distinta.
+public enum TipoComprobante
+{
+    Remito,
+    Factura
+}
+
+// Cabecera del ingreso. Vive en NUESTRA base hasta que se graba en BAS.
 public class PreRemito
 {
     public int Id { get; set; }
+
+    // Tipo de comprobante: Remito o Factura. Se elige en el alta y determina la
+    // API de BAS usada al grabar.
+    public TipoComprobante TipoComprobante { get; set; } = TipoComprobante.Remito;
 
     // Proveedor por código BAS (más la razón social, guardada al elegirlo).
     public string ProveedorCodigo { get; set; } = "";
     public string? ProveedorRazonSocial { get; set; }
 
-    // Fecha del remito propio (BAS "Fecha"). Editable: no es necesariamente hoy.
+    // Fecha del comprobante propio (BAS "Fecha"). Editable: no es necesariamente hoy.
     public DateTime Fecha { get; set; } = DateTime.Today;
 
     // Comprobante del proveedor (datos externos -> BAS PrefijoExterno / NumeroExterno / FechaExterna).
@@ -34,7 +46,7 @@ public class PreRemito
 
     // Base BAS donde se grabó (se define recién al grabar). "BARK" / "PRUEBAB".
     public string? DestinoBase { get; set; }
-    // Referencia que devuelve BAS al crear el remito (prefijo/número e IdTransaccion).
+    // Referencia que devuelve BAS al crear el comprobante (prefijo/número e IdTransaccion).
     public string? BasReferencia { get; set; }
     // Detalle del último error de grabado, si lo hubo.
     public string? MensajeError { get; set; }
@@ -55,7 +67,7 @@ public class PreRemito
     public List<PreRemitoLinea> Lineas { get; set; } = new();
 }
 
-// Renglón del pre-remito: producto por código BAS + cantidad.
+// Renglón del ingreso: producto por código BAS + cantidad.
 public class PreRemitoLinea
 {
     public int Id { get; set; }
