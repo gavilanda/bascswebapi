@@ -29,6 +29,10 @@
   input:disabled, select:disabled { background:#f3f4f6; color:var(--txt2); border-color:var(--borde); }
   input[readonly] { background:#f4f4f5; color:var(--txt2); border-color:var(--borde); cursor:default; }
   input[readonly]:hover { border-color:var(--borde); }
+  /* Tasa IVA: sin flechitas (spinners) del input number. */
+  .r-iva::-webkit-outer-spin-button,
+  .r-iva::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .r-iva { -moz-appearance: textfield; appearance: textfield; }
   button { background:var(--azul); color:#fff; border:none; padding:9px 16px;
     border-radius:7px; font-size:14px; cursor:pointer; }
   button.sec { background:#fff; color:var(--txt); border:1px solid var(--bordeInput); }
@@ -1139,15 +1143,41 @@
     const enCuantas = basesActivas.filter(b => b.existe).length;
     if (basesActivas.length > 0)
       codInput.classList.add(enCuantas === 0 ? "cob-falta" : (enCuantas === basesActivas.length ? "cob-ok" : "cob-parcial"));
-    const conNombre = bases.find(b => b.existe && b.descripcion);
+    // Preferimos los datos de la BASE DESTINO (es donde se graba y donde BAS valida
+    // la alícuota de IVA). Si no hay destino elegido o el producto no está en esa
+    // base, caemos a la primera base que lo tenga.
+    const destino = $("remDestino").value;
+    const elegirBase = (pred) =>
+      (destino && bases.find(b => b.base === destino && b.existe && pred(b)))
+      || bases.find(b => b.existe && pred(b));
+    const conNombre = elegirBase(b => b.descripcion);
     // Reflejamos SIEMPRE el artículo actual: si resolvió con nombre, pisamos la
     // descripción (aunque ya hubiera texto del producto anterior); si no resolvió,
     // la dejamos como está (puede ser una descripción manual). No tocamos si está bloqueado.
     if (desc && !desc.disabled && conNombre) desc.value = conNombre.descripcion;
-    // Datos del artículo (unidad / relación) para calcular la 2ª unidad.
-    const conArt = bases.find(b => b.existe && b.articulo);
-    if (conArt) aplicarArticulo(tr, conArt.articulo);
-    else limpiarArticulo(tr);
+    // Datos del artículo (unidad / relación / tasa de IVA) de la base destino.
+    const conArt = elegirBase(b => b.articulo);
+    if (conArt) {
+      // Adoptamos el código tal cual lo tiene BAS: resuelve por el padrón
+      // (case-insensitive) y deja el código con el casing correcto para mostrar
+      // y grabar, aunque se haya tipeado en otra combinación de mayús/minús.
+      if (conArt.articulo.codigo) codInput.value = conArt.articulo.codigo;
+      aplicarArticulo(tr, conArt.articulo);
+      // Autocompletar la Tasa IVA del renglón con la del impuesto del artículo
+      // (sólo factura A y fuera de modo "ver"). Queda editable. Esto además evita
+      // el error de "IVA inconsistente" de BAS: la tasa siempre coincide con la
+      // que el artículo tiene configurada.
+      const ivaEl = tr.querySelector(".r-iva");
+      const tasaArt = conArt.articulo.tasaIvaCompras;
+      if (ivaEl && remModo !== "ver"
+          && $("remTipo").value === "Factura" && $("remLetra").value === "A"
+          && tasaArt != null && tasaArt > 0) {
+        ivaEl.value = tasaArt;
+        recalcularTotalesFactura();
+      }
+    } else {
+      limpiarArticulo(tr);
+    }
   }
 
   // Guarda en el renglón los datos de unidad/relación del bien y completa la unidad.
@@ -1400,6 +1430,17 @@
   }
 
   function avanzarCampo(el) {
+    // En el último renglón, Enter sobre Observación agrega una línea nueva.
+    // (En factura hay campos del pie DESPUÉS de los renglones, así que la obs ya
+    // no es el último input del form; por eso lo detectamos por FILA, no por
+    // posición global.)
+    if (el.classList.contains("r-obs")) {
+      const filas = $("remRenglones").querySelectorAll("tr");
+      if (filas.length && el.closest("tr") === filas[filas.length - 1]) {
+        agregarYFocoNuevaLinea();
+        return;
+      }
+    }
     const campos = camposFormEnOrden();
     const i = campos.indexOf(el);
     if (i < 0) return;
@@ -1407,8 +1448,6 @@
       const sig = campos[i + 1];
       sig.focus();
       try { sig.select(); } catch (_) {}
-    } else if (el.classList.contains("r-obs")) {
-      agregarYFocoNuevaLinea();
     }
   }
 
@@ -1427,7 +1466,8 @@
     $("remLetra").value = "A";
     $("remDestino").value = "";
     $("remProvCod").value = ""; $("remProvRazon").value = ""; $("remObs").value = "";
-    $("remCompPrefijo").value = ""; $("remCompNumero").value = ""; $("remCompFecha").value = "";
+    // La fecha del comprobante arranca en hoy (se puede cambiar).
+    $("remCompPrefijo").value = ""; $("remCompNumero").value = ""; $("remCompFecha").value = hoyISO();
     $("remPercIva").value = ""; $("remTotalDeclarado").value = "";
     $("remPercIIBB").innerHTML = "";
     $("remProvCob").innerHTML = "";
@@ -2229,6 +2269,11 @@
   $("btnGuardarRem").addEventListener("click", guardarRemito);
   $("remTipo").addEventListener("change", aplicarModoTipo);
   $("remLetra").addEventListener("change", aplicarLetra);
+  // Si cambia la base destino, re-resolvemos los renglones para que el artículo
+  // (código, descripción y tasa de IVA) corresponda a esa base.
+  $("remDestino").addEventListener("change", () => {
+    $("remRenglones").querySelectorAll("tr").forEach(tr => resolverProductoRenglon(tr));
+  });
   $("btnAgregarPerc").addEventListener("click", () => agregarPercepcion());
   // Recalcular los totales de la factura ante cualquier cambio en el formulario.
   $("remForm").addEventListener("input", () => { if ($("remTipo").value === "Factura") recalcularTotalesFactura(); });

@@ -9,6 +9,9 @@ namespace PortalClientes.Bas;
 // el renglón.
 public sealed class BienInfo
 {
+    // Código canónico del bien tal cual lo tiene BAS. La grilla lo usa para
+    // mostrar/grabar el código con el casing correcto aunque se tipee distinto.
+    public string Codigo { get; set; } = "";
     public string Descripcion { get; set; } = "";
     public string? UnidadMedida1 { get; set; }    // CodigoUnidadMedida1 (ej "kilos")
     public string? UnidadMedida2 { get; set; }    // CodigoUnidadMedida2
@@ -18,10 +21,19 @@ public sealed class BienInfo
     public string? UnidadCompras { get; set; }    // "1" / "2"
     public bool AdministraPartidas { get; set; }
     public bool AdministraSeries { get; set; }
+    // Código de impuesto del bien (apunta a la tabla api/Impuestos).
+    public string Impuesto { get; set; } = "";
+    // Tasa de IVA de compras (%), resuelta desde la tabla de impuestos al cargar el
+    // padrón (join Bien.Impuesto -> Impuestos.TasaIvaCompras). 0 si no se resolvió.
+    public decimal TasaIvaCompras { get; set; }
 
     // Construye un BienInfo a partir del JSON crudo de BAS (un elemento Bien).
+    // OJO: TasaIvaCompras NO sale del Bien; se completa aparte con la tabla de
+    // impuestos (ver BasCacheRefresher).
     public static BienInfo Desde(JsonElement el) => new()
     {
+        Codigo = Prop(el, "Codigo") ?? "",
+        Impuesto = Prop(el, "Impuesto") ?? "",
         Descripcion = Prop(el, "Descripcion") ?? "",
         UnidadMedida1 = Prop(el, "CodigoUnidadMedida1"),
         UnidadMedida2 = Prop(el, "CodigoUnidadMedida2"),

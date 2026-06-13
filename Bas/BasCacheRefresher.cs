@@ -29,7 +29,7 @@ public class BasCacheRefresher
     {
         "Codigo", "Descripcion", "CodigoUnidadMedida1", "CodigoUnidadMedida2",
         "DobleUnidadMedida", "RelacionStock", "TipoRelacion", "UnidadCompras",
-        "AdministraPartidas", "AdministraSeries"
+        "AdministraPartidas", "AdministraSeries", "Impuesto"
     };
     private static readonly string[] CamposProveedor = { "Codigo", "RazonSocial" };
 
@@ -92,6 +92,14 @@ public class BasCacheRefresher
                 var cod = BienInfo.Prop(el, "Codigo");
                 return string.IsNullOrEmpty(cod) ? ((string, BienInfo)?)null : (cod, BienInfo.Desde(el));
             });
+            // Resolvemos la tasa de IVA de cada bien desde la tabla de impuestos
+            // (Bien.Impuesto -> Impuestos.TasaIvaCompras), para autocompletarla en la
+            // factura. Si la tabla no carga, los bienes quedan con tasa 0 (se tipea).
+            var tasas = await CargarTasasImpuestoAsync(b, ct);
+            if (tasas.Count > 0)
+                foreach (var bien in datos.Values)
+                    if (!string.IsNullOrEmpty(bien.Impuesto) && tasas.TryGetValue(bien.Impuesto, out var t))
+                        bien.TasaIvaCompras = t;
             var ahora = DateTimeOffset.Now;
             GuardarBienes(b, datos, ahora);
             EscribirArchivo(b, "bienes", datos, ahora);
@@ -122,6 +130,49 @@ public class BasCacheRefresher
         catch (Exception ex) { MarcarError(b, "proveedores", ex); }
     }
 
+    // Carga la tabla de impuestos de la base (GET /api/Impuestos/{empresa}) y
+    // devuelve un mapa código -> TasaIvaCompras. Tolerante a fallos: si algo sale
+    // mal devuelve vacío (los bienes quedan sin tasa y se tipea a mano).
+    private async Task<Dictionary<string, decimal>> CargarTasasImpuestoAsync(string b, CancellationToken ct)
+    {
+        var dict = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var cfg = _destinos.Config(b) ?? new DestinoBas();
+            var json = await _destinos.GetAsync(b, "/api/Impuestos/" + cfg.Empresa, ct);
+            if (string.IsNullOrWhiteSpace(json)) return dict;
+
+            using var doc = JsonDocument.Parse(json);
+            var arr = ArrayDeImpuestos(doc.RootElement);
+            if (arr is null) return dict;
+
+            foreach (var el in arr.Value.EnumerateArray())
+            {
+                var cod = BienInfo.Prop(el, "Codigo");
+                if (string.IsNullOrEmpty(cod)) continue;
+                dict[cod] = BienInfo.PropDecimal(el, "TasaIvaCompras");
+            }
+            _log.LogInformation("Caché BAS '{Base}': {N} impuestos (tasas de IVA de compras).", b, dict.Count);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("Caché BAS '{Base}': no se pudo cargar la tabla de impuestos. {Msg}", b, ex.Message);
+        }
+        return dict;
+    }
+
+    // La respuesta de /api/Impuestos suele ser un array; si viniera envuelta en un
+    // objeto, devolvemos el primer array que encontremos dentro.
+    private static JsonElement? ArrayDeImpuestos(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Array) return root;
+        if (root.ValueKind == JsonValueKind.Object)
+            foreach (var p in root.EnumerateObject())
+                if (p.Value.ValueKind == JsonValueKind.Array)
+                    return p.Value;
+        return null;
+    }
+
     private bool Vigente(string b, string maestro, TimeSpan edad)
     {
         var cuando = maestro == "bienes"
@@ -131,26 +182,46 @@ public class BasCacheRefresher
     }
 
     private void GuardarBienes(string b, IReadOnlyDictionary<string, BienInfo> datos, DateTimeOffset cuando)
-        => _cache.Actualizar(b, s => new SnapshotMaestro
+    {
+        // Reconstruimos el diccionario con comparador CASE-INSENSITIVE. Si los datos
+        // vinieron de disco (deserializados de JSON) traen el comparador por defecto
+        // (sensible a mayúsculas) y la resolución no encontraría "02023p" vs "02023P".
+        // De paso dejamos el código canónico (la clave) dentro de cada BienInfo.
+        var dict = new Dictionary<string, BienInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in datos)
         {
-            Bienes = datos,
+            if (string.IsNullOrEmpty(kv.Value.Codigo)) kv.Value.Codigo = kv.Key;
+            dict[kv.Key] = kv.Value;
+        }
+
+        _cache.Actualizar(b, s => new SnapshotMaestro
+        {
+            Bienes = dict,
             Proveedores = s.Proveedores,
             BienesListo = true,
             ProveedoresListo = s.ProveedoresListo,
             Actualizado = cuando,
             Error = s.Error
         });
+    }
 
     private void GuardarProveedores(string b, IReadOnlyDictionary<string, string> datos, DateTimeOffset cuando)
-        => _cache.Actualizar(b, s => new SnapshotMaestro
+    {
+        // Mismo motivo que en GuardarBienes: comparador case-insensitive aunque
+        // los datos vengan deserializados de disco.
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in datos) dict[kv.Key] = kv.Value;
+
+        _cache.Actualizar(b, s => new SnapshotMaestro
         {
             Bienes = s.Bienes,
-            Proveedores = datos,
+            Proveedores = dict,
             BienesListo = s.BienesListo,
             ProveedoresListo = true,
             Actualizado = cuando,
             Error = s.Error
         });
+    }
 
     private void MarcarError(string b, string maestro, Exception ex)
     {
