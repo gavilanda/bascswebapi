@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,9 @@ namespace PortalClientes.Controllers;
 [Authorize(Policy = "VerRemitos")]   // requiere editar_remitos O conformar_remitos
 public class PreRemitosController : ControllerBase
 {
+    // BAS limita el campo Partida a 13 caracteres. Lo validamos antes de mandar.
+    private const int LargoMaxPartida = 13;
+
     private readonly PortalDbContext _db;
     private readonly BasResolucionService _resolucion;
     private readonly BasCacheMaestros _cache;
@@ -23,6 +27,7 @@ public class PreRemitosController : ControllerBase
     private readonly BasDestinosService _destinos;
     private readonly BasRemitoIngresoService _grabador;
     private readonly BasFacturaIngresoService _grabadorFactura;
+    private readonly BasPartidasService _partidas;
 
     public PreRemitosController(
         PortalDbContext db,
@@ -31,7 +36,8 @@ public class PreRemitosController : ControllerBase
         BasCacheRefresher refresher,
         BasDestinosService destinos,
         BasRemitoIngresoService grabador,
-        BasFacturaIngresoService grabadorFactura)
+        BasFacturaIngresoService grabadorFactura,
+        BasPartidasService partidas)
     {
         _db = db;
         _resolucion = resolucion;
@@ -40,16 +46,21 @@ public class PreRemitosController : ControllerBase
         _destinos = destinos;
         _grabador = grabador;
         _grabadorFactura = grabadorFactura;
+        _partidas = partidas;
     }
 
     private string Usuario => User.FindFirstValue("identificador") ?? "";
 
+    // ¿La base de destino existe y está activa? (la activación/desactivación se
+    // maneja desde la sección Configuración; el objeto vive en memoria).
+    private bool DestinoActivo(string? destino)
+        => !string.IsNullOrWhiteSpace(destino) && (_destinos.Config(destino!)?.Activa ?? false);
+
+    // Carga un ingreso con sus renglones y percepciones (para leer/editar/grabar).
+    private IQueryable<PreRemito> PreRemitosCompletos()
+        => _db.PreRemitos.Include(p => p.Lineas).Include(p => p.PercepcionesIngBr);
+
     // GET /api/pre-remitos?estado=&desde=&hasta=&destino=&tipo=
-    //   estado : Borrador|Conformado|Enviado|todos
-    //   desde  : fecha de ingreso mínima (yyyy-MM-dd), inclusive
-    //   hasta  : fecha de ingreso máxima (yyyy-MM-dd), inclusive
-    //   destino: base de grabación (p.ej. BARK / PRUEBAB) | todos
-    //   tipo   : Remito|Factura|todos
     [HttpGet]
     public async Task<ActionResult> Listar(
         [FromQuery] string estado = "todos",
@@ -83,8 +94,7 @@ public class PreRemitosController : ControllerBase
             q = q.Where(p => p.Fecha < limite);
         }
 
-        // Filtro por destino de grabación. "todos" no filtra. El destino se
-        // asigna desde el alta, así que un borrador ya puede tener DestinoBase.
+        // Filtro por destino de grabación. "todos" no filtra.
         if (!string.IsNullOrWhiteSpace(destino)
             && !string.Equals(destino, "todos", StringComparison.OrdinalIgnoreCase))
         {
@@ -95,10 +105,15 @@ public class PreRemitosController : ControllerBase
         return Ok(lista.Select(RemitoMapeo.AItem));
     }
 
-    // GET /api/pre-remitos/destinos  -> nombres de las bases de grabación (config)
+    // GET /api/pre-remitos/destinos  -> nombres de las bases de grabación ACTIVAS.
     [HttpGet("destinos")]
     public ActionResult Destinos()
-        => Ok(new { destinos = _destinos.Nombres.OrderBy(n => n, StringComparer.OrdinalIgnoreCase) });
+        => Ok(new
+        {
+            destinos = _destinos.Nombres
+                .Where(n => _destinos.Config(n)?.Activa ?? true)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+        });
 
     // GET /api/pre-remitos/resolver-producto?codigo=XXX
     [HttpGet("resolver-producto")]
@@ -246,7 +261,7 @@ public class PreRemitosController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult> Obtener(int id)
     {
-        var p = await _db.PreRemitos.Include(x => x.Lineas).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await PreRemitosCompletos().FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound(new { mensaje = "No se encontró el ingreso." });
         return Ok(RemitoMapeo.ADto(p));
     }
@@ -259,8 +274,6 @@ public class PreRemitosController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.ProveedorCodigo))
             return BadRequest(new { mensaje = "Falta el proveedor." });
 
-        // El destino (base BAS donde se grabará) se elige en el alta. Es opcional
-        // para guardar un borrador, pero si viene tiene que ser un destino conocido.
         var (destinoOk, destino, errDestino) = NormalizarDestino(req.Destino);
         if (!destinoOk) return BadRequest(new { mensaje = errDestino });
 
@@ -281,7 +294,13 @@ public class PreRemitosController : ControllerBase
             Estado = EstadoPreRemito.Borrador,
             CreadoPor = Usuario,
             CreadoEn = DateTime.Now,
-            Lineas = MapearLineas(req.Lineas)
+            Lineas = MapearLineas(req.Lineas),
+            // ---- Factura ----
+            Letra = NormalizarLetra(req.Letra),
+            CondicionCompra = Limpiar(req.CondicionCompra),
+            PercepcionIva = req.PercepcionIva,
+            TotalDeclarado = req.TotalDeclarado,
+            PercepcionesIngBr = MapearPercepciones(req.PercepcionesIngBr)
         };
 
         _db.PreRemitos.Add(p);
@@ -298,12 +317,11 @@ public class PreRemitosController : ControllerBase
     [Authorize(Policy = Permisos.EditarRemitos)]
     public async Task<ActionResult> Modificar(int id, [FromBody] ModificarPreRemitoRequest req)
     {
-        var p = await _db.PreRemitos.Include(x => x.Lineas).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await PreRemitosCompletos().FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound(new { mensaje = "No se encontró el ingreso." });
         if (p.Estado != EstadoPreRemito.Borrador)
             return Conflict(new { mensaje = "Solo se puede editar un ingreso en borrador." });
 
-        // El destino y el tipo se pueden cambiar mientras está en borrador.
         var (destinoOk, destino, errDestino) = NormalizarDestino(req.Destino);
         if (!destinoOk) return BadRequest(new { mensaje = errDestino });
 
@@ -311,10 +329,7 @@ public class PreRemitosController : ControllerBase
         if (!tipoOk) return BadRequest(new { mensaje = errTipo });
 
         // La fecha de ingreso y el proveedor son la identidad del comprobante:
-        // NO se modifican una vez creado. Se conservan siempre los valores
-        // originales, ignorando lo que venga en el request (aunque el front ya
-        // bloquea esos campos, acá lo blindamos de raíz).
-        // -> p.ProveedorCodigo, p.ProveedorRazonSocial y p.Fecha quedan intactos.
+        // NO se modifican una vez creado (el front ya los bloquea; acá lo blindamos).
 
         p.TipoComprobante = tipo;
         p.ComprobantePrefijo = Limpiar(req.ComprobantePrefijo);
@@ -325,9 +340,17 @@ public class PreRemitosController : ControllerBase
         p.ModificadoPor = Usuario;
         p.ModificadoEn = DateTime.Now;
 
-        // Reemplazamos los renglones.
+        // ---- Factura ----
+        p.Letra = NormalizarLetra(req.Letra);
+        p.CondicionCompra = Limpiar(req.CondicionCompra);
+        p.PercepcionIva = req.PercepcionIva;
+        p.TotalDeclarado = req.TotalDeclarado;
+
+        // Reemplazamos renglones y percepciones.
         _db.PreRemitoLineas.RemoveRange(p.Lineas);
         p.Lineas = MapearLineas(req.Lineas);
+        _db.PreRemitoPercepcionesIngBr.RemoveRange(p.PercepcionesIngBr);
+        p.PercepcionesIngBr = MapearPercepciones(req.PercepcionesIngBr);
 
         AgregarAuditoria(p, EventosAuditoria.Modificacion);
         return await GuardarConConcurrencia(p, req.RowVersion);
@@ -338,7 +361,7 @@ public class PreRemitosController : ControllerBase
     [Authorize(Policy = Permisos.EditarRemitos)]
     public async Task<ActionResult> Eliminar(int id)
     {
-        var p = await _db.PreRemitos.Include(x => x.Lineas).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await PreRemitosCompletos().FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound(new { mensaje = "No se encontró el ingreso." });
         if (p.Estado != EstadoPreRemito.Borrador)
             return Conflict(new { mensaje = "Solo se puede eliminar un ingreso en borrador." });
@@ -355,24 +378,26 @@ public class PreRemitosController : ControllerBase
     [Authorize(Policy = Permisos.ConformarRemitos)]
     public async Task<ActionResult> Conformar(int id, [FromBody] AccionRemitoRequest req)
     {
-        var p = await _db.PreRemitos.Include(x => x.Lineas).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await PreRemitosCompletos().FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound(new { mensaje = "No se encontró el ingreso." });
         if (p.Estado != EstadoPreRemito.Borrador)
             return Conflict(new { mensaje = "Solo se puede conformar un ingreso en borrador." });
         if (string.IsNullOrWhiteSpace(p.ProveedorCodigo) || p.Lineas.Count == 0)
             return BadRequest(new { mensaje = "El ingreso necesita un proveedor y al menos un renglón." });
-        // Para conformar exigimos que tenga destino: sin base no se va a poder grabar.
         if (string.IsNullOrWhiteSpace(p.DestinoBase))
             return BadRequest(new { mensaje = "Antes de conformar elegí la base de destino del ingreso." });
-        // El comprobante del proveedor es obligatorio para BAS (lo exige el ingreso).
-        // Lo pedimos ya al conformar para no fallar recién al grabar.
+        if (!DestinoActivo(p.DestinoBase))
+            return BadRequest(new { mensaje = $"La base de destino '{p.DestinoBase}' está inactiva. Activala en Configuración o elegí otra base." });
+        // En una factura, la letra es obligatoria (define el comprobante en BAS).
+        if (p.TipoComprobante == TipoComprobante.Factura && string.IsNullOrWhiteSpace(p.Letra))
+            return BadRequest(new { mensaje = "Elegí la letra de la factura (A, B o C) antes de conformar." });
         if (!ComprobanteCompleto(p))
             return BadRequest(new { mensaje = "Cargá el comprobante del proveedor (prefijo, número y fecha) antes de conformar." });
+        // La partida no puede superar lo que admite BAS (13 caracteres).
+        var errPartida = ValidarPartidas(p);
+        if (errPartida is not null) return BadRequest(new { mensaje = errPartida });
 
-        // Validación bloqueante: el proveedor y TODOS los artículos tienen que
-        // existir en la base destino. Si falta algo, no se conforma y se informa
-        // con detalle qué falta. (Este control se repite al grabar, porque los
-        // códigos pueden cambiar entre que se conforma y se graba.)
+        // Validación bloqueante: proveedor + artículos tienen que existir en la base.
         var val = await _resolucion.ValidarPreRemitoEnBaseAsync(
             p.DestinoBase!,
             p.ProveedorCodigo,
@@ -404,7 +429,7 @@ public class PreRemitosController : ControllerBase
     [Authorize(Policy = Permisos.ConformarRemitos)]
     public async Task<ActionResult> Reabrir(int id, [FromBody] AccionRemitoRequest req)
     {
-        var p = await _db.PreRemitos.Include(x => x.Lineas).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await PreRemitosCompletos().FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound(new { mensaje = "No se encontró el ingreso." });
         if (p.Estado != EstadoPreRemito.Conformado)
             return Conflict(new { mensaje = "Solo se puede reabrir un ingreso conformado." });
@@ -418,26 +443,28 @@ public class PreRemitosController : ControllerBase
     }
 
     // POST /api/pre-remitos/{id}/grabar  -> Conformado -> Enviado (graba en BAS)
-    // Según el TipoComprobante del ingreso, despacha a la API de Remito o de Factura.
     [HttpPost("{id:int}/grabar")]
     [Authorize(Policy = Permisos.ConformarRemitos)]
     public async Task<ActionResult> Grabar(int id, [FromBody] GrabarRequest req)
     {
-        var p = await _db.PreRemitos.Include(x => x.Lineas).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await PreRemitosCompletos().FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound(new { mensaje = "No se encontró el ingreso." });
         if (p.Estado != EstadoPreRemito.Conformado)
             return Conflict(new { mensaje = "Solo se puede grabar un ingreso conformado." });
         if (string.IsNullOrWhiteSpace(p.DestinoBase))
             return BadRequest(new { mensaje = "El ingreso no tiene base de destino." });
-        // El comprobante del proveedor es obligatorio para el ingreso en BAS.
+        if (!DestinoActivo(p.DestinoBase))
+            return BadRequest(new { mensaje = $"La base de destino '{p.DestinoBase}' está inactiva. Activala en Configuración o elegí otra base." });
         if (!ComprobanteCompleto(p))
             return BadRequest(new { mensaje = "Falta el comprobante del proveedor (prefijo, número y fecha). BAS lo exige para el ingreso." });
+        // La partida no puede superar lo que admite BAS (13 caracteres).
+        var errPartida = ValidarPartidas(p);
+        if (errPartida is not null) return BadRequest(new { mensaje = errPartida });
 
         var destino = p.DestinoBase!;
         var ct = HttpContext.RequestAborted;
 
         // ---- Control duro: revalidar proveedor + artículos contra el destino ----
-        // (Pudieron cambiar entre conformar y grabar; nunca grabamos a ciegas.)
         var val = await _resolucion.ValidarPreRemitoEnBaseAsync(
             destino, p.ProveedorCodigo, p.Lineas.Select(l => l.ProductoCodigo), ct);
 
@@ -452,7 +479,6 @@ public class PreRemitosController : ControllerBase
             });
 
         // ---- Resolvemos cada renglón en el destino para traer el BienInfo ----
-        // (lo necesitamos para calcular la segunda unidad).
         var lineasOrdenadas = p.Lineas.OrderBy(l => l.Orden).ToList();
         var bienes = new Dictionary<int, BienInfo?>();
         foreach (var l in lineasOrdenadas)
@@ -461,21 +487,58 @@ public class PreRemitosController : ControllerBase
             bienes[l.Id] = res.Articulo;
         }
 
+        // ---- Alta idempotente de PARTIDAS (las decide el usuario por renglón) ----
+        // BAS exige que la partida exista antes de usarla en el ítem. La partida se
+        // forma {proveedor}-{ddMMyy de la fecha del ingreso}. El renglón lleva partida
+        // si el usuario le cargó un vencimiento: ahí la generamos y la aseguramos en
+        // BAS (la crea si falta, idempotente). Sin vencimiento, el renglón va sin partida.
+        var partidaPorLinea = new Dictionary<int, string?>();
+        var numeroPartida = BasPartidasService.NumeroPartida(p.ProveedorCodigo, p.Fecha);
+        // La descripción de la partida es la razón social del proveedor (si no la
+        // tenemos guardada, caemos al número de partida).
+        var descripcionPartida = string.IsNullOrWhiteSpace(p.ProveedorRazonSocial)
+            ? numeroPartida
+            : p.ProveedorRazonSocial.Trim();
+        for (int i = 0; i < lineasOrdenadas.Count; i++)
+        {
+            var l = lineasOrdenadas[i];
+            if (l.FechaVencimiento.HasValue)
+            {
+                if (numeroPartida.Length > LargoMaxPartida)
+                    return BadRequest(new { mensaje = $"La partida calculada '{numeroPartida}' supera los {LargoMaxPartida} caracteres. Revisá el código de proveedor." });
+
+                var ase = await _partidas.AsegurarAsync(destino, l.ProductoCodigo, numeroPartida, descripcionPartida, l.FechaVencimiento.Value, ct);
+                if (!ase.Ok)
+                    return StatusCode(502, new { mensaje = $"No se pudo crear/verificar la partida '{numeroPartida}' del artículo {l.ProductoCodigo} en {destino}: {ase.Error}" });
+
+                l.Partida = numeroPartida;          // dejamos registrada la partida usada
+                partidaPorLinea[l.Id] = numeroPartida;
+            }
+            else
+            {
+                partidaPorLinea[l.Id] = null;
+            }
+        }
+
         // ---- Grabado en BAS según el tipo de comprobante ----
         GrabadoResultado res2;
         if (p.TipoComprobante == TipoComprobante.Factura)
         {
             var renglones = lineasOrdenadas.Select(l => new BasFacturaIngresoService.RenglonFactura(
-                l.ProductoCodigo, l.Cantidad, l.Partida, l.Series, bienes[l.Id])).ToList();
+                l.ProductoCodigo, l.Cantidad, l.PrecioUnitario, l.TasaIva, partidaPorLinea[l.Id], l.Series, bienes[l.Id])).ToList();
+
+            var percepciones = p.PercepcionesIngBr.Select(x => new BasFacturaIngresoService.PercepcionIngBrItem(
+                x.Provincia, x.BaseImponible, x.Importe, x.Porcentaje, x.Regimen)).ToList();
 
             res2 = await _grabadorFactura.GrabarAsync(
                 destino, p.Fecha, p.ComprobanteFecha, p.ComprobantePrefijo, p.ComprobanteNumero,
-                p.ProveedorCodigo, p.Observaciones, renglones, Usuario, ct);
+                p.ProveedorCodigo, p.Observaciones, p.Letra, p.PercepcionIva, percepciones,
+                p.TotalDeclarado, renglones, Usuario, ct);
         }
         else
         {
             var renglones = lineasOrdenadas.Select(l => new BasRemitoIngresoService.RenglonGrabado(
-                l.ProductoCodigo, l.Cantidad, l.Partida, l.Series, bienes[l.Id])).ToList();
+                l.ProductoCodigo, l.Cantidad, partidaPorLinea[l.Id], l.Series, bienes[l.Id])).ToList();
 
             res2 = await _grabador.GrabarAsync(
                 destino, p.Fecha, p.ComprobanteFecha, p.ComprobantePrefijo, p.ComprobanteNumero,
@@ -484,11 +547,12 @@ public class PreRemitosController : ControllerBase
 
         if (!res2.Ok)
         {
-            // Falló el grabado: queda Conformado, guardamos el error y lo auditamos.
-            p.MensajeError = Recortar(res2.Error ?? "Error desconocido al grabar en BAS.");
+            // Mensaje legible: referencia al ingreso + errores de validación de BAS.
+            var msgUsuario = FormatearErrorBas(res2.Error, p);
+            p.MensajeError = Recortar(msgUsuario);
             AgregarAuditoria(p, EventosAuditoria.Grabado, $"ERROR ({p.TipoComprobante}): {p.MensajeError}");
             await _db.SaveChangesAsync();
-            return StatusCode(502, new { mensaje = "No se pudo grabar en BAS: " + p.MensajeError });
+            return StatusCode(502, new { mensaje = "No se pudo grabar en BAS: " + msgUsuario });
         }
 
         // ---- Éxito: pasa a Enviado y guardamos la referencia de BAS ----
@@ -508,7 +572,6 @@ public class PreRemitosController : ControllerBase
         }
         catch (DbUpdateConcurrencyException)
         {
-            // Raro acá (no usamos rowVersion del cliente en el grabado), pero por las dudas.
             return Conflict(new { mensaje = "Otro usuario modificó el ingreso durante el grabado." });
         }
 
@@ -530,16 +593,37 @@ public class PreRemitosController : ControllerBase
     private static string? Limpiar(string? s)
         => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
-    private static string Recortar(string s) => s.Length > 900 ? s.Substring(0, 900) : s;
+    // Normaliza la letra a "A" / "B" / "C" en mayúscula, o null si no es válida.
+    private static string? NormalizarLetra(string? letra)
+    {
+        var l = (letra ?? "").Trim().ToUpperInvariant();
+        return l is "A" or "B" or "C" ? l : null;
+    }
 
-    // El comprobante del proveedor (prefijo + número + fecha) es obligatorio para
-    // el ingreso de BAS. Lo consideramos completo si están los tres.
+    private static string Recortar(string s) => s.Length > 1500 ? s.Substring(0, 1500) : s;
+
     private static bool ComprobanteCompleto(PreRemito p)
         => !string.IsNullOrWhiteSpace(p.ComprobantePrefijo)
         && p.ComprobanteNumero.HasValue && p.ComprobanteNumero.Value > 0
         && p.ComprobanteFecha.HasValue;
 
-    // Texto legible de qué falta en el destino (proveedor y/o artículos).
+    // Verifica que ninguna partida supere el largo que admite BAS. Devuelve el
+    // mensaje de error (nombrando los renglones) o null si está todo bien.
+    private static string? ValidarPartidas(PreRemito p)
+    {
+        var largas = p.Lineas
+            .OrderBy(l => l.Orden)
+            .Select((l, i) => (nro: i + 1, l))
+            .Where(x => (x.l.Partida?.Trim().Length ?? 0) > LargoMaxPartida)
+            .ToList();
+        if (largas.Count == 0) return null;
+
+        var detalle = string.Join("; ", largas.Select(x =>
+            $"renglón {x.nro} ({x.l.ProductoCodigo}): \"{x.l.Partida}\""));
+        return $"La partida supera los {LargoMaxPartida} caracteres que admite BAS en {detalle}. " +
+               $"Acortala a {LargoMaxPartida} caracteres o menos.";
+    }
+
     private static string DescribirFaltantes(ValidacionDestino val, string destino, string proveedorCodigo)
     {
         var problemas = new List<string>();
@@ -550,7 +634,6 @@ public class PreRemitosController : ControllerBase
         return string.Join("; ", problemas);
     }
 
-    // Arma una referencia legible del comprobante que devolvió BAS.
     private static string? ArmarReferencia(GrabadoResultado r)
     {
         var partes = new List<string>();
@@ -563,15 +646,66 @@ public class PreRemitosController : ControllerBase
         return partes.Count > 0 ? string.Join(" · ", partes) : null;
     }
 
+    // Arma un mensaje de error legible: referencia al ingreso + errores de
+    // validación de BAS (cuando vienen como ProblemDetails con "errors").
+    private static string FormatearErrorBas(string? error, PreRemito p)
+    {
+        var letra = string.IsNullOrWhiteSpace(p.Letra) ? "" : $" {p.Letra}";
+        var comp = string.IsNullOrWhiteSpace(p.ComprobantePrefijo)
+            ? ""
+            : $", comp. {p.ComprobantePrefijo}-{p.ComprobanteNumero}";
+        var refIngreso = $"Ingreso #{p.Id} ({p.TipoComprobante}{letra}, proveedor {p.ProveedorCodigo}{comp})";
+
+        var detalle = ExtraerErroresValidacion(error)
+                      ?? (string.IsNullOrWhiteSpace(error) ? "Error desconocido al grabar en BAS." : error.Trim());
+        return $"{refIngreso}: {detalle}";
+    }
+
+    // Si el error contiene un ProblemDetails de validación ({"errors":{...}}),
+    // devuelve los campos y mensajes en texto legible. Si no, null.
+    private static string? ExtraerErroresValidacion(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error)) return null;
+        var i = error.IndexOf('{');
+        if (i < 0) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(error[i..]);
+            if (!doc.RootElement.TryGetProperty("errors", out var errs) || errs.ValueKind != JsonValueKind.Object)
+                return null;
+
+            var partes = new List<string>();
+            foreach (var campo in errs.EnumerateObject())
+            {
+                var msgs = campo.Value.ValueKind == JsonValueKind.Array
+                    ? string.Join(" ", campo.Value.EnumerateArray().Select(x => x.GetString()))
+                    : campo.Value.ToString();
+                partes.Add($"{AmigarCampo(campo.Name)}: {msgs}");
+            }
+            return partes.Count > 0 ? string.Join(" | ", partes) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // "Items[0].Partida" -> "Renglón 1 · Partida".
+    private static string AmigarCampo(string campo)
+    {
+        var m = Regex.Match(campo, @"^Items\[(\d+)\]\.(.+)$");
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var idx))
+            return $"Renglón {idx + 1} · {m.Groups[2].Value}";
+        return campo;
+    }
+
     // Valida y normaliza el destino que viene del request.
-    //   - vacío/null  -> (ok, null, null): se guarda sin destino (borrador incompleto).
-    //   - conocido    -> (ok, NOMBRE, null): se normaliza al nombre tal cual está en config.
-    //   - desconocido -> (false, null, mensaje de error).
+    // Nota: NO se rechaza un destino inactivo al guardar (para no romper borradores
+    // viejos). El bloqueo por inactiva está en Conformar y Grabar.
     private (bool ok, string? destino, string? error) NormalizarDestino(string? destino)
     {
         if (string.IsNullOrWhiteSpace(destino)) return (true, null, null);
         var pedido = destino.Trim();
-        // Buscamos sin distinguir mayúsculas y devolvemos el nombre canónico de la config.
         var canonico = _destinos.Nombres
             .FirstOrDefault(n => string.Equals(n, pedido, StringComparison.OrdinalIgnoreCase));
         if (canonico is null)
@@ -579,7 +713,6 @@ public class PreRemitosController : ControllerBase
         return (true, canonico, null);
     }
 
-    // Valida y normaliza el tipo de comprobante. Vacío/null -> Remito (default).
     private static (bool ok, TipoComprobante tipo, string? error) NormalizarTipo(string? tipo)
     {
         if (string.IsNullOrWhiteSpace(tipo)) return (true, TipoComprobante.Remito, null);
@@ -588,8 +721,6 @@ public class PreRemitosController : ControllerBase
         return (false, TipoComprobante.Remito, $"Tipo de comprobante inválido: '{tipo}'. Debe ser Remito o Factura.");
     }
 
-    // Agrega un renglón de auditoría al contexto (se persiste con el SaveChanges
-    // de la operación). No guarda por sí solo.
     private void AgregarAuditoria(PreRemito p, string evento, string? detalle = null)
     {
         _db.AuditoriaPreRemitos.Add(new AuditoriaPreRemito
@@ -625,7 +756,35 @@ public class PreRemitosController : ControllerBase
                 Observacion = l.Observacion,
                 Partida = Limpiar(l.Partida),
                 Series = Limpiar(l.Series),
+                PrecioUnitario = l.PrecioUnitario,
+                TasaIva = l.TasaIva,
+                FechaVencimiento = l.FechaVencimiento,
                 Orden = orden++
+            });
+        }
+        return resultado;
+    }
+
+    // Mapea las percepciones de IIBB del request a entidades, calculando el % a
+    // partir del importe y la base. Ignora filas vacías (sin importe ni provincia).
+    private static List<PreRemitoPercepcionIngBr> MapearPercepciones(List<PercepcionIngBrRequest>? percepciones)
+    {
+        var resultado = new List<PreRemitoPercepcionIngBr>();
+        if (percepciones is null) return resultado;
+        foreach (var x in percepciones)
+        {
+            if (x.Importe == 0 && string.IsNullOrWhiteSpace(x.Provincia)) continue;
+            var baseImp = x.BaseImponible;
+            var pct = baseImp > 0
+                ? Math.Round(x.Importe / baseImp * 100m, 4, MidpointRounding.AwayFromZero)
+                : 0m;
+            resultado.Add(new PreRemitoPercepcionIngBr
+            {
+                Provincia = Limpiar(x.Provincia),
+                BaseImponible = baseImp,
+                Importe = x.Importe,
+                Porcentaje = pct,
+                Regimen = Limpiar(x.Regimen)
             });
         }
         return resultado;

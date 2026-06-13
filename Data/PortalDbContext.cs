@@ -13,6 +13,7 @@ public class PortalDbContext : DbContext
     public DbSet<UsuarioPortal> Usuarios => Set<UsuarioPortal>();
     public DbSet<PreRemito> PreRemitos => Set<PreRemito>();
     public DbSet<PreRemitoLinea> PreRemitoLineas => Set<PreRemitoLinea>();
+    public DbSet<PreRemitoPercepcionIngBr> PreRemitoPercepcionesIngBr => Set<PreRemitoPercepcionIngBr>();
     public DbSet<AuditoriaPreRemito> AuditoriaPreRemitos => Set<AuditoriaPreRemito>();
     public DbSet<ConfiguracionBase> ConfiguracionesBase => Set<ConfiguracionBase>();
 
@@ -58,6 +59,12 @@ public class PortalDbContext : DbContext
         pr.HasMany(p => p.Lineas)
           .WithOne(l => l.PreRemito!)
           .HasForeignKey(l => l.PreRemitoId)
+          .OnDelete(DeleteBehavior.Cascade);
+
+        // Percepciones de IIBB (factura): también en cascada con la cabecera.
+        pr.HasMany(p => p.PercepcionesIngBr)
+          .WithOne(x => x.PreRemito!)
+          .HasForeignKey(x => x.PreRemitoId)
           .OnDelete(DeleteBehavior.Cascade);
 
         // ---- Auditoría ----

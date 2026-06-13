@@ -46,6 +46,8 @@ public class DestinoBas
     public string FacturaPrefijo { get; set; } = "1";
     public string FacturaConcepto { get; set; } = "com";
     public int FacturaDeposito { get; set; } = 1;
+    // Cuenta contable de compras (se manda como ImputacionContable al grabar factura).
+    public long FacturaImputacionContable { get; set; } = 21001001;
 }
 
 public static class BasDestinosConfig

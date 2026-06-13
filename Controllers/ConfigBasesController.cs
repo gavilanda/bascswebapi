@@ -40,6 +40,7 @@ public class ConfigBasesController : ControllerBase
                 f.FacturaPrefijo,
                 f.FacturaConcepto,
                 f.FacturaDeposito,
+                f.FacturaImputacionContable,
                 // Sólo lectura / informativo:
                 baseUrl = mem?.BaseUrl,
                 remitoTipo = mem?.RemitoTipo,
@@ -67,6 +68,8 @@ public class ConfigBasesController : ControllerBase
             return BadRequest(new { mensaje = "El depósito de remito debe ser mayor a cero." });
         if (req.FacturaDeposito <= 0)
             return BadRequest(new { mensaje = "El depósito de factura debe ser mayor a cero." });
+        if (req.FacturaImputacionContable <= 0)
+            return BadRequest(new { mensaje = "La cuenta contable de la factura debe ser mayor a cero." });
 
         var f = await _svc.ActualizarAsync(nombre, req, HttpContext.RequestAborted);
         if (f is null)

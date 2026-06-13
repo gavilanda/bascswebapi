@@ -96,6 +96,7 @@ builder.Services.AddSingleton<BasDestinosService>();
 builder.Services.AddScoped<BasResolucionService>();
 builder.Services.AddScoped<BasRemitoIngresoService>();    // grabado de ingresos como Remito
 builder.Services.AddScoped<BasFacturaIngresoService>();   // grabado de ingresos como Factura
+builder.Services.AddScoped<BasPartidasService>();         // alta idempotente de partidas en BAS
 builder.Services.AddScoped<ConfigBasesService>();         // config por base (editable)
 
 // ---- Caché en memoria del padrón (productos + proveedores) de cada base ----
@@ -171,6 +172,32 @@ using (var scope = app.Services.CreateScope())
     // como remito. (Ver AgregarColumnaSiFalta: sólo se agrega si no existe.)
     AgregarColumnaSiFalta("PreRemitos", "TipoComprobante", "TEXT NOT NULL DEFAULT 'Remito'");
 
+    // ---- Columnas y tabla propias de FACTURA (sólo se agregan si faltan) ----
+    // Cabecera: letra, condición de compra, percepción de IVA y total declarado.
+    AgregarColumnaSiFalta("PreRemitos", "Letra", "TEXT NULL");
+    AgregarColumnaSiFalta("PreRemitos", "CondicionCompra", "TEXT NULL");
+    AgregarColumnaSiFalta("PreRemitos", "PercepcionIva", "TEXT NOT NULL DEFAULT '0'");
+    AgregarColumnaSiFalta("PreRemitos", "TotalDeclarado", "TEXT NULL");
+    // Renglón: precio unitario, alícuota de IVA y vencimiento de la partida.
+    AgregarColumnaSiFalta("PreRemitoLineas", "PrecioUnitario", "TEXT NOT NULL DEFAULT '0'");
+    AgregarColumnaSiFalta("PreRemitoLineas", "TasaIva", "TEXT NOT NULL DEFAULT '0'");
+    AgregarColumnaSiFalta("PreRemitoLineas", "FechaVencimiento", "TEXT NULL");
+
+    // Percepciones de IIBB por provincia (hijas de la factura). Idempotente.
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS ""PreRemitoPercepcionesIngBr"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_PreRemitoPercepcionesIngBr"" PRIMARY KEY AUTOINCREMENT,
+            ""PreRemitoId"" INTEGER NOT NULL,
+            ""Provincia"" TEXT NULL,
+            ""BaseImponible"" TEXT NOT NULL DEFAULT '0',
+            ""Importe"" TEXT NOT NULL DEFAULT '0',
+            ""Porcentaje"" TEXT NOT NULL DEFAULT '0',
+            ""Regimen"" TEXT NULL,
+            CONSTRAINT ""FK_PreRemitoPercepcionesIngBr_PreRemitos_PreRemitoId""
+                FOREIGN KEY (""PreRemitoId"") REFERENCES ""PreRemitos"" (""Id"") ON DELETE CASCADE
+        );");
+    db.Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_PreRemitoPercepcionesIngBr_PreRemitoId"" ON ""PreRemitoPercepcionesIngBr"" (""PreRemitoId"");");
+
     // Tabla de configuración por base. Idempotente: si la base ya existía, EnsureCreated
     // no la habría agregado, así que la creamos acá. Luego sembramos las bases de
     // appsettings que falten y sincronizamos los valores sobre el diccionario en memoria.
@@ -187,7 +214,8 @@ using (var scope = app.Services.CreateScope())
             ""RemitoDeposito"" INTEGER NOT NULL DEFAULT 1,
             ""FacturaPrefijo"" TEXT NOT NULL DEFAULT '1',
             ""FacturaConcepto"" TEXT NOT NULL DEFAULT 'com',
-            ""FacturaDeposito"" INTEGER NOT NULL DEFAULT 1
+            ""FacturaDeposito"" INTEGER NOT NULL DEFAULT 1,
+            ""FacturaImputacionContable"" INTEGER NOT NULL DEFAULT 21001001
         );");
     db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ConfiguracionesBase_Nombre"" ON ""ConfiguracionesBase"" (""Nombre"");");
 
@@ -195,6 +223,7 @@ using (var scope = app.Services.CreateScope())
     // ConfiguracionesBase. Sólo se agregan si todavía no existen.
     AgregarColumnaSiFalta("ConfiguracionesBase", "FacturaConcepto", "TEXT NOT NULL DEFAULT 'com'");
     AgregarColumnaSiFalta("ConfiguracionesBase", "FacturaDeposito", "INTEGER NOT NULL DEFAULT 1");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "FacturaImputacionContable", "INTEGER NOT NULL DEFAULT 21001001");
 
     var configBases = scope.ServiceProvider.GetRequiredService<ConfigBasesService>();
     configBases.SembrarFaltantesAsync().GetAwaiter().GetResult();

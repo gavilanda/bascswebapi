@@ -37,4 +37,7 @@ public class ConfiguracionBase
     public string FacturaPrefijo { get; set; } = "1";
     public string FacturaConcepto { get; set; } = "com";
     public int FacturaDeposito { get; set; } = 1;
+    // Cuenta contable a la que se imputa la compra (se manda como ImputacionContable
+    // a BAS al grabar la factura). FK a dbo.CUENTAS.
+    public long FacturaImputacionContable { get; set; } = 21001001;
 }

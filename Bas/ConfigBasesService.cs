@@ -51,7 +51,8 @@ public class ConfigBasesService
                 RemitoDeposito = d.RemitoDeposito,
                 FacturaPrefijo = d.FacturaPrefijo,
                 FacturaConcepto = d.FacturaConcepto,
-                FacturaDeposito = d.FacturaDeposito
+                FacturaDeposito = d.FacturaDeposito,
+                FacturaImputacionContable = d.FacturaImputacionContable
             });
         }
 
@@ -99,6 +100,7 @@ public class ConfigBasesService
         f.FacturaPrefijo = (req.FacturaPrefijo ?? "").Trim();
         f.FacturaConcepto = (req.FacturaConcepto ?? "").Trim();
         f.FacturaDeposito = req.FacturaDeposito;
+        f.FacturaImputacionContable = req.FacturaImputacionContable;
 
         await _db.SaveChangesAsync(ct);
 
@@ -121,6 +123,7 @@ public class ConfigBasesService
         d.FacturaPrefijo = f.FacturaPrefijo;
         d.FacturaConcepto = f.FacturaConcepto;
         d.FacturaDeposito = f.FacturaDeposito;
+        d.FacturaImputacionContable = f.FacturaImputacionContable;
     }
 }
 
@@ -135,4 +138,5 @@ public record ActualizarConfigBaseRequest(
     int RemitoDeposito,
     string? FacturaPrefijo,
     string? FacturaConcepto,
-    int FacturaDeposito);
+    int FacturaDeposito,
+    long FacturaImputacionContable);
