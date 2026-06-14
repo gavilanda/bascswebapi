@@ -172,8 +172,8 @@ public class UsuariosAdminController : ControllerBase
         // Password opcional: solo si vino algo.
         if (!string.IsNullOrWhiteSpace(req.Password))
         {
-            if (req.Password.Length < 6)
-                return BadRequest(new { mensaje = "La contrasena debe tener al menos 6 caracteres." });
+            if (req.Password.Length < 5)
+                return BadRequest(new { mensaje = "La contrasena debe tener al menos 5 caracteres." });
             usuario.PasswordHash = _hasher.HashPassword(usuario, req.Password);
         }
 
@@ -202,8 +202,8 @@ public class UsuariosAdminController : ControllerBase
     [HttpPatch("{id:int}/password")]
     public async Task<ActionResult> CambiarPassword(int id, CambiarPasswordRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.NuevaPassword) || req.NuevaPassword.Length < 6)
-            return BadRequest(new { mensaje = "La contrasena debe tener al menos 6 caracteres." });
+        if (string.IsNullOrWhiteSpace(req.NuevaPassword) || req.NuevaPassword.Length < 5)
+            return BadRequest(new { mensaje = "La contrasena debe tener al menos 5 caracteres." });
 
         var usuario = await _db.Usuarios.FindAsync(id);
         if (usuario is null)

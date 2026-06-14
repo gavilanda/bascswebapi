@@ -12,14 +12,17 @@ public class BasClientesService
     private readonly IHttpClientFactory _factory;
     private readonly BasAuthService _auth;
     private readonly IMemoryCache _cache;
+    private readonly BasDestinosService _destinos;
 
     private static readonly TimeSpan DuracionCache = TimeSpan.FromMinutes(30);
 
-    public BasClientesService(IHttpClientFactory factory, BasAuthService auth, IMemoryCache cache)
+    public BasClientesService(
+        IHttpClientFactory factory, BasAuthService auth, IMemoryCache cache, BasDestinosService destinos)
     {
         _factory = factory;
         _auth = auth;
         _cache = cache;
+        _destinos = destinos;
     }
 
     // Busca un cliente por CUIT (documento). Devuelve el primero que matchee,
@@ -51,13 +54,44 @@ public class BasClientesService
 
         var json = await resp.Content.ReadAsStringAsync(ct);
         var lista = JsonSerializer.Deserialize<List<ClienteBas>>(json, JsonOpts);
-        var cliente = lista is { Count: > 0 } ? lista[0] : null;
+        var cliente = ElegirCasaCentral(lista);
 
         // Solo cacheamos cuando se encontro (no cacheamos "no encontrado").
         if (cliente is not null)
             _cache.Set(cacheKey, cliente, DuracionCache);
 
         return cliente;
+    }
+
+    // Igual que BuscarPorCuitAsync pero contra una BASE puntual (BARK, PRUEBAB...),
+    // ruteando por BasDestinosService. El codigo de cliente difiere por base, por
+    // eso la cache incluye el destino en la clave.
+    public async Task<ClienteBas?> BuscarPorCuitEnBaseAsync(
+        string destino, string cuit, CancellationToken ct = default)
+    {
+        var cacheKey = $"clientePorCuit|{destino}|{cuit}";
+        if (_cache.TryGetValue(cacheKey, out ClienteBas? enCache))
+            return enCache;
+
+        var json = await _destinos.GetAsync(
+            destino, $"/api/Clientes/documento={Uri.EscapeDataString(cuit)}", ct);
+        if (string.IsNullOrWhiteSpace(json)) return null;
+
+        var lista = JsonSerializer.Deserialize<List<ClienteBas>>(json, JsonOpts);
+        var cliente = ElegirCasaCentral(lista);
+        if (cliente is not null)
+            _cache.Set(cacheKey, cliente, DuracionCache);
+        return cliente;
+    }
+
+    // Cuando un CUIT tiene sucursales, BAS devuelve varios clientes con el mismo
+    // documento. La cuenta corriente real es la de la CASA CENTRAL: la que NO está
+    // administrada por otra (campo AdministradaPor vacío). Si por algún motivo
+    // ninguna viniera sin marcar, caemos al primero para no romper.
+    private static ClienteBas? ElegirCasaCentral(List<ClienteBas>? lista)
+    {
+        if (lista is null || lista.Count == 0) return null;
+        return lista.FirstOrDefault(c => string.IsNullOrWhiteSpace(c.AdministradaPor)) ?? lista[0];
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };

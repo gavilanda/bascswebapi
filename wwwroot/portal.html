@@ -72,6 +72,16 @@
   /* Comprobante clickeable en la cuenta corriente */
   .lnk-comp { color:var(--azul); cursor:pointer; text-decoration:none; }
   .lnk-comp:hover { text-decoration:underline; }
+  /* Identificación de base (cuenta corriente consolidada BARK + PRUEBAB) */
+  .basebadge { font-size:11px; padding:2px 7px; border-radius:6px; font-weight:600; white-space:nowrap; }
+  .basebadge.BARK { background:#dbeafe; color:#1e40af; }
+  .basebadge.PRUEBAB { background:#e7f6ec; color:#15803d; }
+  #cuerpoCC tr.base-BARK td:first-child { box-shadow: inset 3px 0 0 #2563eb; }
+  #cuerpoCC tr.base-PRUEBAB td:first-child { box-shadow: inset 3px 0 0 #16a34a; }
+  .leyenda-bases { display:flex; gap:14px; align-items:center; font-size:12px; color:var(--txt2); margin:2px 0 12px; flex-wrap:wrap; }
+  .base-check { display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; color:var(--txt); }
+  .leyenda-bases input[type="checkbox"] { width:auto; padding:0; margin:0; cursor:pointer; accent-color:var(--azul); }
+  .aviso { background:#fef9c3; color:#854d0e; font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; }
   /* Resaltado fijo de la fila del último comprobante visto */
   #cuerpoCC tr { transition: background-color .3s ease; }
   #cuerpoCC tr.fila-foco { background:#fef9c3; }
@@ -133,10 +143,13 @@
               </div>
             </div>
             <div id="msgCuenta" class="msg"></div>
+            <div id="avisoBases" class="aviso hidden"></div>
             <div id="ccCargando" class="cargando hidden">Cargando cuenta corriente…</div>
+            <div id="leyendaBases" class="leyenda-bases hidden"></div>
             <table id="tablaCC" class="hidden">
               <thead>
                 <tr>
+                  <th>Base</th>
                   <th>Fecha</th>
                   <th>Comprobante</th>
                   <th>Vencimiento</th>
@@ -218,6 +231,7 @@
   let enVuelo = {};        // consultas de detalle en curso (dedupe)
   let ccCache = null;      // última cuenta corriente traída
   let datosCache = null;   // últimos "mis datos" traídos
+  let basesVisibles = {};  // qué bases están tildadas en la cuenta corriente
 
   function mostrar(el, t, tipo) { el.textContent = t; el.className = "msg " + tipo; }
   function limpiar(el) { el.textContent = ""; el.className = "msg"; }
@@ -255,8 +269,8 @@
   function comprobNombre(tipo, prefijo, numero) {
     return ((tipo || "").trim() + " " + pad(prefijo, 4) + "-" + pad(numero, 8)).trim();
   }
-  function claveComprob(tipo, prefijo, numero) {
-    return [tipo, prefijo, numero].join("|");
+  function claveComprob(base, tipo, prefijo, numero) {
+    return [base, tipo, prefijo, numero].join("|");
   }
   function limpiarFoco() {
     $("cuerpoCC").querySelectorAll("tr.fila-foco").forEach(f => f.classList.remove("fila-foco"));
@@ -267,14 +281,15 @@
   }
 
   // Trae el detalle de un comprobante. Usa caché y deduplica consultas en curso.
-  function fetchDetalle(tipo, prefijo, numero) {
-    const key = claveComprob(tipo, prefijo, numero);
+  function fetchDetalle(base, tipo, prefijo, numero) {
+    const key = claveComprob(base, tipo, prefijo, numero);
     if (cacheDetalle[key]) return Promise.resolve(cacheDetalle[key]);
     if (enVuelo[key]) return enVuelo[key];
 
     const q = "?tipo=" + encodeURIComponent(tipo)
             + "&prefijo=" + encodeURIComponent(prefijo)
-            + "&numero=" + encodeURIComponent(numero);
+            + "&numero=" + encodeURIComponent(numero)
+            + "&base=" + encodeURIComponent(base);
 
     const p = (async () => {
       const r = await fetch("/api/mi-cuenta/comprobante" + q, { headers: { "Authorization": "Bearer " + token } });
@@ -294,10 +309,10 @@
     return p;
   }
 
-  function precargarDetalle(tipo, prefijo, numero) {
-    const key = claveComprob(tipo, prefijo, numero);
+  function precargarDetalle(base, tipo, prefijo, numero) {
+    const key = claveComprob(base, tipo, prefijo, numero);
     if (cacheDetalle[key] || enVuelo[key]) return;
-    fetchDetalle(tipo, prefijo, numero).catch(() => {});
+    fetchDetalle(base, tipo, prefijo, numero).catch(() => {});
   }
 
   function pintarEncabezado() {
@@ -358,6 +373,7 @@
   function salir() {
     token = ""; ident = ""; codcli = ""; razon = "";
     ultimoComprobanteKey = ""; cacheDetalle = {}; enVuelo = {}; ccCache = null; datosCache = null;
+    basesVisibles = {};
     ["pc_token", "pc_ident", "pc_codcli", "pc_razon"].forEach(k => localStorage.removeItem(k));
     actualizarVista();
   }
@@ -413,21 +429,81 @@
   }
 
   // ---------- Cuenta corriente ----------
+  // Bases distintas que aparecen en los movimientos traídos.
+  function basesConDatos(d) {
+    const lista = [];
+    for (const c of (d.comprobantes || [])) {
+      if (c.baseNombre && !lista.includes(c.baseNombre)) lista.push(c.baseNombre);
+    }
+    return lista;
+  }
+
+  // Arma un tilde por base (una por cada base con datos). Por defecto van
+  // tildadas; los cambios del usuario se preservan entre refrescos de fondo.
+  function construirControlesBases(d) {
+    const cont = $("leyendaBases");
+    const bases = basesConDatos(d);
+    if (bases.length === 0) { cont.innerHTML = ""; cont.classList.add("hidden"); return; }
+
+    for (const b of bases) if (basesVisibles[b] === undefined) basesVisibles[b] = true;
+
+    cont.innerHTML = '<span>Ver bases:</span>' + bases.map(b =>
+      '<label class="base-check"><input type="checkbox" data-base="' + esc(b) + '"'
+        + (basesVisibles[b] ? ' checked' : '') + '> '
+        + '<span class="basebadge ' + esc(b) + '">' + esc(b) + '</span></label>'
+    ).join("");
+    cont.classList.remove("hidden");
+
+    cont.querySelectorAll('input[type="checkbox"]').forEach(chk => {
+      chk.addEventListener("change", () => {
+        basesVisibles[chk.dataset.base] = chk.checked;
+        renderMovimientos();
+      });
+    });
+  }
+
   function pintarCuenta(d) {
     $("ccCargando").classList.add("hidden");
     limpiar($("msgCuenta"));
 
-    const total = Number(d.totalSaldo) || 0;
+    // Aviso si alguna base no respondió (mostramos las que sí, con nota).
+    const basesFallidas = (d.bases || []).filter(b => b && b.ok === false);
+    const avisoEl = $("avisoBases");
+    if (basesFallidas.length > 0) {
+      avisoEl.textContent = "No se pudo consultar: "
+        + basesFallidas.map(b => b.baseNombre).join(", ")
+        + ". Se muestran las bases disponibles.";
+      avisoEl.classList.remove("hidden");
+    } else {
+      avisoEl.classList.add("hidden");
+    }
+
+    construirControlesBases(d);
+    renderMovimientos();
+  }
+
+  // Pinta la tabla y el saldo total a partir de ccCache, filtrando por las bases
+  // tildadas y recalculando total y acumulado sobre lo visible.
+  function renderMovimientos() {
+    const d = ccCache;
+    if (!d) return;
+
+    const todos = d.comprobantes || [];
+    const comps = todos.filter(c => basesVisibles[c.baseNombre] !== false);
+
+    const total = comps.reduce((s, c) => s + (Number(c.saldo) || 0), 0);
     $("saldoTotal").textContent = plata(total);
     $("saldoTotal").className = "saldo " + (Math.abs(total) < 0.005 ? "aldia" : "deuda");
     $("actualizacion").textContent = d.fechaActualizacion ? ("Actualizado: " + fecha(d.fechaActualizacion)) : "";
 
-    const comps = d.comprobantes || [];
     const cuerpo = $("cuerpoCC");
     cuerpo.innerHTML = "";
 
     if (comps.length === 0) {
       $("tablaCC").classList.add("hidden");
+      $("ccVacio").textContent = todos.length > 0
+        ? "Seleccioná al menos una base para ver movimientos."
+        : "No hay comprobantes para mostrar.";
       $("ccVacio").classList.remove("hidden");
       return;
     }
@@ -437,13 +513,15 @@
     for (const c of comps) {
       acumulado += Number(c.saldo) || 0;
       const tr = document.createElement("tr");
-      tr.dataset.key = claveComprob(c.tipo, c.prefijo, c.numero);
+      tr.dataset.key = claveComprob(c.baseNombre, c.tipo, c.prefijo, c.numero);
+      if (c.baseNombre) tr.classList.add("base-" + c.baseNombre);
       if (tr.dataset.key === ultimoComprobanteKey) tr.classList.add("fila-foco");
 
       const nombre = comprobNombre(c.tipo, c.prefijo, c.numero);
       const celdaComp = esExcluido(c.tipo)
         ? esc(nombre)
-        : '<a class="lnk-comp" data-tipo="' + esc(c.tipo)
+        : '<a class="lnk-comp" data-base="' + esc(c.baseNombre)
+            + '" data-tipo="' + esc(c.tipo)
             + '" data-prefijo="' + esc(c.prefijo) + '" data-numero="' + esc(c.numero)
             + '">' + esc(nombre) + '</a>';
 
@@ -451,7 +529,8 @@
       if (Number(c.cuotas) > 1) venc += ' <span class="cuotas">(' + c.cuotas + ' cuotas)</span>';
 
       tr.innerHTML =
-          '<td>' + esc(fecha(c.fecha)) + '</td>'
+          '<td><span class="basebadge ' + esc(c.baseNombre) + '">' + esc(c.baseNombre) + '</span></td>'
+        + '<td>' + esc(fecha(c.fecha)) + '</td>'
         + '<td>' + celdaComp + '</td>'
         + '<td>' + venc + '</td>'
         + '<td class="num">' + plata(c.total) + '</td>'
@@ -465,7 +544,7 @@
     cuerpo.querySelectorAll("a.lnk-comp").forEach(a => {
       a.addEventListener("mouseenter", () => {
         a._ht = setTimeout(() =>
-          precargarDetalle(a.dataset.tipo, a.dataset.prefijo, a.dataset.numero), 150);
+          precargarDetalle(a.dataset.base, a.dataset.tipo, a.dataset.prefijo, a.dataset.numero), 150);
       });
       a.addEventListener("mouseleave", () => clearTimeout(a._ht));
     });
@@ -531,6 +610,7 @@
   function pintarDetalle(d) {
     $("detTitulo").textContent = comprobNombre(d.tipo, d.prefijo, d.numero) || "Comprobante";
     const enc = [par("Fecha", fecha(d.fecha))];
+    if (d.baseNombre) enc.push(par("Base", d.baseNombre));
     if (d.moneda) enc.push(par("Moneda", d.moneda));
     if (d.observacion) enc.push(par("Observación", d.observacion));
     $("detEncabezado").innerHTML = enc.join("");
@@ -568,9 +648,9 @@
     $("detTotales").innerHTML = tot.join("");
   }
 
-  async function verComprobante(tipo, prefijo, numero) {
+  async function verComprobante(base, tipo, prefijo, numero) {
     limpiarFoco();
-    const key = claveComprob(tipo, prefijo, numero);
+    const key = claveComprob(base, tipo, prefijo, numero);
     ultimoComprobanteKey = key;
 
     $("ccVista").classList.add("hidden");
@@ -585,7 +665,7 @@
 
     let d;
     try {
-      d = await fetchDetalle(tipo, prefijo, numero);
+      d = await fetchDetalle(base, tipo, prefijo, numero);
     } catch (err) {
       if (ultimoComprobanteKey !== key) return;
       mostrarCargando(false);
@@ -626,7 +706,7 @@
   $("cuerpoCC").addEventListener("click", e => {
     const a = e.target.closest("a.lnk-comp");
     if (!a) return;
-    verComprobante(a.dataset.tipo, a.dataset.prefijo, a.dataset.numero);
+    verComprobante(a.dataset.base, a.dataset.tipo, a.dataset.prefijo, a.dataset.numero);
   });
 
   actualizarVista();

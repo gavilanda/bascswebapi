@@ -16,18 +16,20 @@ public class BasComprobantesService
     private readonly BasAuthService _auth;
     private readonly BasWebApiOptions _opt;
     private readonly IMemoryCache _cache;
+    private readonly BasDestinosService _destinos;
 
     // Cuanto tiempo recordamos un comprobante ya consultado.
     private static readonly TimeSpan DuracionCache = TimeSpan.FromMinutes(30);
 
     public BasComprobantesService(
         IHttpClientFactory factory, BasAuthService auth,
-        IOptions<BasWebApiOptions> opt, IMemoryCache cache)
+        IOptions<BasWebApiOptions> opt, IMemoryCache cache, BasDestinosService destinos)
     {
         _factory = factory;
         _auth = auth;
         _opt = opt.Value;
         _cache = cache;
+        _destinos = destinos;
     }
 
     // Detalle de un comprobante de venta por tipo/prefijo/numero.
@@ -70,6 +72,34 @@ public class BasComprobantesService
         if (resultado is not null)
             _cache.Set(cacheKey, resultado, DuracionCache);
 
+        return resultado;
+    }
+
+    // Igual que ConsultaVentaAsync pero contra una BASE puntual (BARK, PRUEBAB...),
+    // ruteando por BasDestinosService con la Empresa/Sucursal de ese destino.
+    public async Task<ComprobanteVentaBas?> ConsultaVentaEnBaseAsync(
+        string destino, string tipo, string prefijo, string numero, CancellationToken ct = default)
+    {
+        var cfg = _destinos.Config(destino)
+            ?? throw new InvalidOperationException($"Destino BAS desconocido: {destino}");
+
+        var cacheKey = $"compVenta|{destino}|{cfg.Empresa}|{cfg.Sucursal}|{tipo}|{prefijo}|{numero}";
+        if (_cache.TryGetValue(cacheKey, out ComprobanteVentaBas? enCache))
+            return enCache;
+
+        var url = $"/api/ConsultaComprobanteVenta"
+                + $"?Empresa={cfg.Empresa}"
+                + $"&Sucursal={cfg.Sucursal}"
+                + $"&Comprobante={Uri.EscapeDataString(tipo)}"
+                + $"&Prefijo={Uri.EscapeDataString(prefijo)}"
+                + $"&Numero={Uri.EscapeDataString(numero)}";
+
+        var json = await _destinos.GetAsync(destino, url, ct);
+        if (string.IsNullOrWhiteSpace(json)) return null;
+
+        var resultado = JsonSerializer.Deserialize<ComprobanteVentaBas>(json, JsonOpts);
+        if (resultado is not null)
+            _cache.Set(cacheKey, resultado, DuracionCache);
         return resultado;
     }
 

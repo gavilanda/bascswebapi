@@ -12,13 +12,16 @@ public class BasCuentaCorrienteService
     private readonly IHttpClientFactory _factory;
     private readonly BasAuthService _auth;
     private readonly BasWebApiOptions _opt;
+    private readonly BasDestinosService _destinos;
 
     public BasCuentaCorrienteService(
-        IHttpClientFactory factory, BasAuthService auth, IOptions<BasWebApiOptions> opt)
+        IHttpClientFactory factory, BasAuthService auth, IOptions<BasWebApiOptions> opt,
+        BasDestinosService destinos)
     {
         _factory = factory;
         _auth = auth;
         _opt = opt.Value;
+        _destinos = destinos;
     }
 
     // Estado de cuenta del cliente a una fecha dada.
@@ -52,6 +55,27 @@ public class BasCuentaCorrienteService
 
         var json = await resp.Content.ReadAsStringAsync(ct);
         return JsonSerializer.Deserialize<EstadoCtaCteBas>(json, JsonOpts);
+    }
+
+    // Estado de cuenta del cliente en una BASE puntual (BARK, PRUEBAB...), ruteando
+    // por BasDestinosService y usando la Empresa/Sucursal de ese destino. Devuelve
+    // null si la base no responde con datos (404/204).
+    public async Task<EstadoCtaCteBas?> EstadoClienteEnBaseAsync(
+        string destino, string codCliente, string fecha, CancellationToken ct = default)
+    {
+        var cfg = _destinos.Config(destino)
+            ?? throw new InvalidOperationException($"Destino BAS desconocido: {destino}");
+
+        var url = $"/api/EstadoCtaCteCliente"
+                + $"?Empresa={cfg.Empresa}"
+                + $"&Sucursal={cfg.Sucursal}"
+                + $"&CodCliente={Uri.EscapeDataString(codCliente)}"
+                + $"&Fecha={Uri.EscapeDataString(fecha)}";
+
+        var json = await _destinos.GetAsync(destino, url, ct);
+        return string.IsNullOrWhiteSpace(json)
+            ? null
+            : JsonSerializer.Deserialize<EstadoCtaCteBas>(json, JsonOpts);
     }
 
     // Tolerante: acepta numeros que vengan como texto (BAS lo hace en varios campos).

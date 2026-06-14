@@ -182,10 +182,6 @@ public class BasFacturaIngresoService
         // La cuenta sale del proveedor (la marcada PorDefecto). Si no trae ninguna,
         // cae a la cuenta configurada por base.
         var imputacion = imputacionProv ?? cfg.FacturaImputacionContable;
-        _log.LogInformation(
-            "Datos compra proveedor {Cod}: condición={Cond}; cuenta del proveedor (PorDefecto)={CtaProv}; cuenta usada={CtaUsada}.",
-            proveedorCodigo, condicion,
-            imputacionProv?.ToString() ?? "(ninguna marcada -> fallback config)", imputacion);
 
         // ---- Cabecera ----
         var body = new Dictionary<string, object?>
@@ -239,7 +235,6 @@ public class BasFacturaIngresoService
             body["ObservacionComprobante"] = observaciones!.Trim();
 
         var json = JsonSerializer.Serialize(body);
-        _log.LogInformation("FACTURA -> BAS {Base} {Ruta}: {Json}", destino, RutaFactura, json);
 
         // ---- POST a BAS ----
         string? respuesta;

@@ -12,6 +12,7 @@ public class ClienteBas
     public string? TratImpositivo { get; set; }               // codigo de tratamiento impositivo
     public string? NumeroImpositivoTipo { get; set; }
     public string? NumeroImpositivo1 { get; set; }            // el CUIT
+    public string? AdministradaPor { get; set; }              // si tiene valor es sucursal; vacío = casa central
     public List<DomicilioBas> Domicilios { get; set; } = new();
 }
 

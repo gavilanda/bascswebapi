@@ -2189,10 +2189,10 @@
 
   async function cambiarClave(id, identUsuario) {
     limpiar($("msgLista"));
-    const nueva = prompt("Nueva contraseña para " + identUsuario + " (mínimo 6 caracteres):");
+    const nueva = prompt("Nueva contraseña para " + identUsuario + " (mínimo 5 caracteres):");
     if (nueva === null) return;
-    if (nueva.trim().length < 6) {
-      mostrar($("msgLista"), "La contraseña debe tener al menos 6 caracteres.", "err");
+    if (nueva.trim().length < 5) {
+      mostrar($("msgLista"), "La contraseña debe tener al menos 5 caracteres.", "err");
       return;
     }
     const r = await fetch("/api/admin/usuarios/" + id + "/password", {
