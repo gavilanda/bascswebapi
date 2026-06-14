@@ -1,18 +1,16 @@
 namespace PortalClientes.Models;
 
 // Configuración por base BAS, editable desde la intranet (sección "Configuración
-// de bases"). Persiste los parámetros de NEGOCIO con los que se graban los
-// comprobantes en esa base.
-//
-// La CONEXIÓN (nombre + BaseUrl) NO vive acá: sigue en appsettings, porque define
-// los HttpClients que se arman al arranque. El Nombre de esta fila coincide con la
-// clave del destino en appsettings (ej. "BARK"); es la llave para cruzar la fila
-// con el DestinoBas que vive en memoria y que consume el grabado.
+// de bases"). Persiste TODA la definición de la base: conexión (nombre + BaseUrl +
+// tipo de talonario) y parámetros de negocio. La tabla es la FUENTE DE VERDAD: al
+// arrancar, el diccionario de DestinoBas en memoria se arma desde acá (appsettings
+// sólo siembra las filas que falten la primera vez). El Nombre es la clave del
+// destino.
 public class ConfiguracionBase
 {
     public int Id { get; set; }
 
-    // Nombre de la base BAS (= clave del destino en appsettings). No editable.
+    // Nombre de la base BAS (= clave del destino). Se define al crear; no se renombra.
     public string Nombre { get; set; } = "";
 
     // Nombre amigable para mostrar en la UI (ej. "BARK · Producción").
@@ -22,12 +20,19 @@ public class ConfiguracionBase
     // contra ella. Pensado para deshabilitar bases de prueba (BARKTEST) en producción.
     public bool Activa { get; set; } = true;
 
+    // ---- Conexión (ahora editable desde la intranet) ----
+    // URL base del WebAPI de esa base BAS (ej. http://localhost:5081).
+    public string BaseUrl { get; set; } = "";
+    // Tipo de comprobante del talonario de ingreso ("N" = ingreso de compra directo).
+    public string RemitoTipo { get; set; } = "N";
+    // Incluir esta base en la cuenta corriente CONSOLIDADA del portal de clientes.
+    public bool IncluirEnPortal { get; set; } = false;
+
     // ---- Parámetros de negocio ----
     public int Empresa { get; set; } = 1;
     public int Sucursal { get; set; } = 1;
 
-    // Remito de ingreso. (El "Tipo" del talonario —hoy "N"— NO es editable: queda
-    // fijo en la config del destino.)
+    // Remito de ingreso. (El "Tipo" del talonario se edita en la conexión, arriba.)
     public string RemitoPrefijo { get; set; } = "1";
     public string RemitoConcepto { get; set; } = "com";
     public int RemitoDeposito { get; set; } = 1;

@@ -4,14 +4,14 @@ namespace PortalClientes.Bas;
 // son compartidas (viven en BasWebApi); cada destino aporta su URL, su
 // Empresa/Sucursal y los parámetros del comprobante de ingreso.
 //
-// Esta clase es la "vista en memoria" de la config de cada base: se arma al
-// arranque desde appsettings (que aporta la CONEXIÓN: BaseUrl) y luego la tabla
-// ConfiguracionesBase la pisa con los parámetros de negocio editados desde la
-// intranet. El grabado de ingresos lee de acá, así que actualizar la tabla se
-// refleja sin reiniciar.
+// Esta clase es la "vista en memoria" de la config de cada base. La tabla
+// ConfiguracionesBase es la FUENTE DE VERDAD: al arranque se arma desde la tabla
+// (appsettings sólo siembra las filas que falten la primera vez) e incluye TODO,
+// conexión incluida (BaseUrl). El grabado de ingresos y las consultas leen de acá,
+// así que editar la tabla se refleja sin reiniciar.
 public class DestinoBas
 {
-    // ---- Conexión (sólo desde appsettings; no editable en runtime) ----
+    // ---- Conexión (editable desde la tabla / intranet) ----
     public string BaseUrl { get; set; } = "";
 
     // ---- Presentación / habilitación (editables desde la tabla) ----
@@ -19,6 +19,9 @@ public class DestinoBas
     public string? Descripcion { get; set; }
     // Si está inactiva, no se ofrece para cargar ingresos ni se puede grabar.
     public bool Activa { get; set; } = true;
+
+    // Si la base se incluye en la cuenta corriente CONSOLIDADA del portal de clientes.
+    public bool IncluirEnPortal { get; set; } = false;
 
     // ---- Parámetros de negocio (editables desde la tabla) ----
     public int Empresa { get; set; } = 1;
@@ -33,7 +36,7 @@ public class DestinoBas
     public string RemitoPrefijo { get; set; } = "1";
     // Tipo de comprobante del talonario de ingreso. "N" = ingreso de compra directo
     // (confirmado contra BAS: el "S" pedía un remito de egreso de contrapartida).
-    // NO editable desde la tabla: queda fijo en la config del destino.
+    // Editable desde la tabla (forma parte de la conexión del destino).
     public string RemitoTipo { get; set; } = "N";
     // Concepto del comprobante: "com" = compra.
     public string RemitoConcepto { get; set; } = "com";

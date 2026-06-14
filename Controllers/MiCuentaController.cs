@@ -14,20 +14,27 @@ public class MiCuentaController : ControllerBase
     private readonly BasCuentaCorrienteService _ctaCte;
     private readonly BasClientesService _clientes;
     private readonly BasComprobantesService _comprobantes;
-
-    // Bases que se consolidan en el portal del cliente. La cuenta corriente trae
-    // y mergea estas dos; el codigo de cliente se resuelve por CUIT en cada una.
-    private static readonly string[] PortalBases = { "BARK", "PRUEBAB" };
+    private readonly BasDestinosService _destinos;
 
     public MiCuentaController(
         BasCuentaCorrienteService ctaCte,
         BasClientesService clientes,
-        BasComprobantesService comprobantes)
+        BasComprobantesService comprobantes,
+        BasDestinosService destinos)
     {
         _ctaCte = ctaCte;
         _clientes = clientes;
         _comprobantes = comprobantes;
+        _destinos = destinos;
     }
+
+    // Bases que se consolidan en el portal del cliente: las ACTIVAS marcadas para
+    // incluir en el portal (configurable por base desde la intranet, sin hardcodear).
+    private IReadOnlyList<string> PortalBases()
+        => _destinos.Nombres
+            .Where(n => _destinos.Config(n) is { Activa: true, IncluirEnPortal: true })
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     // GET /api/mi-cuenta/perfil  -> datos del token.
     [HttpGet("perfil")]
@@ -111,7 +118,7 @@ public class MiCuentaController : ControllerBase
 
         // Traemos cada base en paralelo, con error aislado por base.
         var resultados = await Task.WhenAll(
-            PortalBases.Select(b => TraerEstadoBaseAsync(b, cuit!, f)));
+            PortalBases().Select(b => TraerEstadoBaseAsync(b, cuit!, f)));
 
         var comprobantes = resultados
             .SelectMany(r => r.Comprobantes)
@@ -210,7 +217,7 @@ public class MiCuentaController : ControllerBase
         if (string.IsNullOrWhiteSpace(tipo) || string.IsNullOrWhiteSpace(prefijo) || string.IsNullOrWhiteSpace(numero))
             return BadRequest(new { mensaje = "Faltan datos del comprobante." });
 
-        var bn = PortalBases.FirstOrDefault(b =>
+        var bn = PortalBases().FirstOrDefault(b =>
             string.Equals(b, (baseNombre ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
         if (bn is null)
             return BadRequest(new { mensaje = "Base inválida." });

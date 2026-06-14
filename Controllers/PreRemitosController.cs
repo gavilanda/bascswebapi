@@ -112,6 +112,11 @@ public class PreRemitosController : ControllerBase
         {
             destinos = _destinos.Nombres
                 .Where(n => _destinos.Config(n)?.Activa ?? true)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase),
+            // Bases que existen pero están inactivas: sirve para distinguir, en la
+            // lista de ingresos, un destino INACTIVO (negro) de uno ELIMINADO (rojo).
+            inactivas = _destinos.Nombres
+                .Where(n => !(_destinos.Config(n)?.Activa ?? true))
                 .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
         });
 

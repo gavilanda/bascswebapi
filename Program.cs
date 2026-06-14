@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -82,15 +83,15 @@ builder.Services.AddScoped<BasComprobantesService>();
 // Timeout amplio para la carga del padrón (la carga es secuencial y en segundo
 // plano; una base lenta puede tardar). La consulta EN VIVO se topea aparte,
 // corto (8s), en BasResolucionService.
-var basDestinos = builder.Configuration
-    .GetSection(BasDestinosConfig.Seccion)
-    .Get<Dictionary<string, DestinoBas>>() ?? new();
-foreach (var (nombre, cfg) in basDestinos)
-    builder.Services.AddHttpClient($"bas-{nombre}", c =>
-    {
-        c.BaseAddress = new Uri(cfg.BaseUrl);
-        c.Timeout = TimeSpan.FromSeconds(120);
-    });
+var basDestinos = new ConcurrentDictionary<string, DestinoBas>(
+    builder.Configuration
+        .GetSection(BasDestinosConfig.Seccion)
+        .Get<Dictionary<string, DestinoBas>>() ?? new());
+// Un único cliente multi-base, SIN BaseAddress fija: la URL de cada request se
+// arma desde la BaseUrl (editable) de la base. Así se pueden dar de alta bases
+// nuevas en runtime sin registrar clientes al arranque. Timeout amplio para la
+// carga del padrón (la consulta en vivo se topea aparte, corto, por CancellationToken).
+builder.Services.AddHttpClient("bas-multi", c => c.Timeout = TimeSpan.FromSeconds(120));
 builder.Services.AddSingleton(basDestinos);
 builder.Services.AddSingleton<BasDestinosService>();
 builder.Services.AddScoped<BasResolucionService>();
@@ -224,6 +225,18 @@ using (var scope = app.Services.CreateScope())
     AgregarColumnaSiFalta("ConfiguracionesBase", "FacturaConcepto", "TEXT NOT NULL DEFAULT 'com'");
     AgregarColumnaSiFalta("ConfiguracionesBase", "FacturaDeposito", "INTEGER NOT NULL DEFAULT 1");
     AgregarColumnaSiFalta("ConfiguracionesBase", "FacturaImputacionContable", "INTEGER NOT NULL DEFAULT 21001001");
+    // Conexión editable + flag de portal (la tabla pasó a ser la fuente de verdad de las bases).
+    AgregarColumnaSiFalta("ConfiguracionesBase", "BaseUrl", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "RemitoTipo", "TEXT NOT NULL DEFAULT 'N'");
+    // IncluirEnPortal: al CREAR la columna por primera vez, backfill de las bases que
+    // HOY forman la cuenta corriente del portal (BARK + PRUEBAB), para preservar el
+    // comportamiento existente. De ahí en más lo controla el admin (checkbox por base);
+    // por eso el UPDATE corre sólo en la creación de la columna, no en cada arranque.
+    if (!ColumnaExiste("ConfiguracionesBase", "IncluirEnPortal"))
+    {
+        db.Database.ExecuteSqlRaw(@"ALTER TABLE ""ConfiguracionesBase"" ADD COLUMN ""IncluirEnPortal"" INTEGER NOT NULL DEFAULT 0;");
+        db.Database.ExecuteSqlRaw(@"UPDATE ""ConfiguracionesBase"" SET ""IncluirEnPortal"" = 1 WHERE ""Nombre"" IN ('BARK','PRUEBAB');");
+    }
 
     var configBases = scope.ServiceProvider.GetRequiredService<ConfigBasesService>();
     configBases.SembrarFaltantesAsync().GetAwaiter().GetResult();

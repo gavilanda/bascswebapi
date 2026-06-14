@@ -70,6 +70,10 @@
   .badge.ev-grabado { background:#cffafe; color:#0e7490; }
   /* Insignia chica para el destino de grabación en la lista. */
   .badge.dest { background:#ede9fe; color:#5b21b6; }
+  /* Destino de una base INACTIVA (existe, deshabilitada): negro con texto blanco. */
+  .badge.dest-inactiva { background:#18181b; color:#fff; }
+  /* Destino de una base ELIMINADA (ya no existe): rojo (movimiento huérfano). */
+  .badge.dest-baja { background:#fde8e8; color:var(--rojo); }
   /* Insignia para el tipo de comprobante (Remito / Factura). */
   .badge.tipo-remito { background:#e0f2fe; color:#075985; }
   .badge.tipo-factura { background:#fae8ff; color:#86198f; }
@@ -439,14 +443,23 @@
         <!-- CONFIGURACIÓN DE BASES (solo administradores) -->
         <div id="secConfig" class="seccion hidden">
 
-          <!-- Formulario de edición (oculto hasta elegir una base) -->
+          <!-- Formulario de alta / edición (oculto hasta elegir o crear una base) -->
           <div id="cfgForm" class="card hidden">
             <h2 id="cfgFormTitulo">Editar base</h2>
             <div class="row compacta-form">
-              <div style="flex:0 0 130px"><label>Base</label><input id="cfgNombre" type="text" readonly /></div>
+              <div style="flex:0 0 160px"><label>Base (nombre)</label><input id="cfgNombre" type="text" readonly placeholder="ej. BARK" /></div>
               <div style="flex:1 1 220px"><label>Descripción</label><input id="cfgDescripcion" type="text" placeholder="Nombre para mostrar (ej. BARK · Producción)" /></div>
               <div style="flex:0 0 150px; align-self:center; margin-top:18px">
                 <label class="check"><input id="cfgActiva" type="checkbox" /> Base activa</label>
+              </div>
+            </div>
+
+            <div class="subt compacta-form">Conexión</div>
+            <div class="row compacta-form">
+              <div style="flex:1 1 240px"><label>URL del WebAPI</label><input id="cfgBaseUrl" type="text" placeholder="http://localhost:5081" /></div>
+              <div style="flex:0 0 110px"><label>Tipo remito</label><input id="cfgRemitoTipo" type="text" placeholder="N" /></div>
+              <div style="flex:0 0 230px; align-self:center; margin-top:18px">
+                <label class="check"><input id="cfgIncluirPortal" type="checkbox" /> Incluir en portal de clientes</label>
               </div>
             </div>
 
@@ -482,18 +495,21 @@
 
           <!-- Lista de bases -->
           <div class="card">
-            <h2>Configuración de bases</h2>
-            <div class="nota">Definen con qué datos se graban los ingresos en cada base BAS. La conexión (URL) y el tipo de remito se configuran en el servidor y se muestran solo como referencia. Una base <strong>inactiva</strong> no aparece para cargar ingresos ni se puede grabar (útil para deshabilitar bases de prueba en producción).</div>
+            <div class="cab">
+              <h2>Configuración de bases</h2>
+              <button id="btnNuevaCfg">Nueva base</button>
+            </div>
+            <div class="nota">Definen la conexión (URL del WebAPI, tipo de remito) y los datos de negocio con los que se graban los ingresos en cada base BAS. Una base <strong>inactiva</strong> no aparece para cargar ingresos ni se puede grabar. El badge <strong>portal</strong> indica que la base entra en la cuenta corriente consolidada del portal de clientes. Al dar de <strong>alta</strong> una base nueva, su padrón (productos y proveedores) se carga en segundo plano.</div>
             <table style="margin-top:12px">
               <thead>
                 <tr>
-                  <th style="width:16%">Base</th>
-                  <th style="width:8%" class="right">Estado</th>
-                  <th style="width:10%" class="right">Empresa / Suc.</th>
-                  <th style="width:22%">Remito (pref. · concepto · dep.)</th>
-                  <th style="width:22%">Factura (pref · concepto · dep · cta)</th>
+                  <th style="width:15%">Base</th>
+                  <th style="width:9%" class="right">Estado</th>
+                  <th style="width:9%" class="right">Empresa / Suc.</th>
+                  <th style="width:19%">Remito (pref. · concepto · dep.)</th>
+                  <th style="width:20%">Factura (pref · concepto · dep · cta)</th>
                   <th style="width:14%">Conexión</th>
-                  <th style="width:8%"></th>
+                  <th style="width:14%"></th>
                 </tr>
               </thead>
               <tbody id="cfgTabla"></tbody>
@@ -606,6 +622,27 @@
       </div>
     </div>
   </div>
+
+  <!-- MODAL: eliminar base -->
+  <div id="modalDelBase" class="modal-overlay hidden">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-cab">
+        <h2 id="modalDelTitulo">Eliminar base</h2>
+        <span class="modal-x" id="modalDelCerrar" title="Cerrar (Esc)">✕</span>
+      </div>
+      <div id="modalDelTexto" style="font-size:14px; line-height:1.5; margin:4px 0 12px"></div>
+      <div id="modalDelOpciones">
+        <label class="check" style="margin-bottom:8px"><input id="modalDelIngresos" type="checkbox" /> Borrar también los ingresos asociados</label>
+        <label class="check" style="margin-bottom:8px"><input id="modalDelAuditoria" type="checkbox" disabled /> Borrar también la auditoría de esos ingresos</label>
+        <div class="nota" id="modalDelNota"></div>
+      </div>
+      <div id="modalDelMsg" class="msg"></div>
+      <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end">
+        <button class="sec" id="modalDelCancelar">Cancelar</button>
+        <button id="modalDelConfirmar" style="background:var(--rojo); color:#fff; border:none">Eliminar base</button>
+      </div>
+    </div>
+  </div>
 </main>
 
 <script>
@@ -633,10 +670,14 @@
   let remRowVersion = null;
   let destinosCargados = false;   // ya se llenaron alguna vez los dropdowns de destino
   let listaDestinos = [];         // nombres de bases ACTIVAS (para el filtro y el form)
+  let listaInactivas = [];        // nombres de bases inactivas que aún existen (para el badge)
   let filtrosRemInit = false;     // las fechas por defecto se setean una sola vez
 
   // Configuración de bases.
   let configBasesActuales = [];
+  let cfgModo = "editar";   // editar | nuevo
+  let delBaseNombre = null;     // base que se está por eliminar (modal)
+  let delBaseIngresos = 0;      // cantidad de ingresos de esa base
 
   // Buscador modal (F3).
   let modalKind = "producto";    // producto | proveedor
@@ -869,6 +910,7 @@
     if (!r.ok) return;
     const d = await r.json();
     listaDestinos = d.destinos || [];
+    listaInactivas = d.inactivas || [];
 
     // Filtro de la lista: dejamos sólo "Todos" (primera option) y volvemos a
     // cargar las bases activas, preservando la selección si sigue siendo válida.
@@ -948,9 +990,14 @@
         compCell = "—";
       }
 
-      const destCell = p.destinoBase
-        ? '<span class="badge dest">' + esc(p.destinoBase) + '</span>'
-        : "—";
+      const destEstado = estadoDestino(p.destinoBase);
+      let destCell = "—";
+      if (p.destinoBase) {
+        const cls = destEstado === "activa" ? "dest" : destEstado === "inactiva" ? "dest-inactiva" : "dest-baja";
+        const ttl = destEstado === "inactiva" ? "Base inactiva" : destEstado === "eliminada" ? "Base eliminada" : "";
+        destCell = '<span class="badge ' + cls + '"' + (ttl ? ' title="' + ttl + '"' : '') + '>'
+          + esc(p.destinoBase) + '</span>';
+      }
 
       const acc = [];
       if (p.estado === "Borrador" && puedeEditarRemitos())
@@ -1064,6 +1111,17 @@
   // marcar todo como inactivo antes de tener la info.
   function baseInactiva(nombre) {
     return listaDestinos.length > 0 && !listaDestinos.includes(nombre);
+  }
+
+  // Clasifica el destino de un ingreso para la lista: "activa" (base activa),
+  // "inactiva" (existe pero deshabilitada) o "eliminada" (la base ya no existe).
+  function estadoDestino(nombre) {
+    if (!nombre) return "ninguno";
+    if (listaDestinos.includes(nombre)) return "activa";
+    if (listaInactivas.includes(nombre)) return "inactiva";
+    // Si todavía no cargamos la lista de destinos, no lo marcamos como eliminada.
+    if (listaDestinos.length === 0 && listaInactivas.length === 0) return "activa";
+    return "eliminada";
   }
 
   function pintarCoberturaCompacta(cont, bases) {
@@ -1752,12 +1810,13 @@
     }
 
     for (const b of configBasesActuales) {
-      const estado = b.activa
+      const estado = (b.activa
         ? '<span class="badge on">Activa</span>'
-        : '<span class="badge inactiva">Inactiva</span>';
+        : '<span class="badge inactiva">Inactiva</span>')
+        + (b.incluirEnPortal ? ' <span class="badge dest">portal</span>' : '');
       const remito = esc(b.remitoPrefijo || "—") + " · " + esc(b.remitoConcepto || "—") + " · dep " + esc(String(b.remitoDeposito));
       const factura = esc(b.facturaPrefijo || "—") + " · " + esc(b.facturaConcepto || "—") + " · dep " + esc(String(b.facturaDeposito)) + " · cta " + esc(String(b.facturaImputacionContable));
-      const conexion = esc(b.baseUrl || "—") + (b.conectada ? "" : " (no conectada)");
+      const conexion = esc(b.baseUrl || "—");
       const nombreCell = '<strong>' + esc(b.nombre) + '</strong>'
         + (b.descripcion && b.descripcion !== b.nombre ? '<br><span class="nota">' + esc(b.descripcion) + '</span>' : '');
       const tr = document.createElement("tr");
@@ -1768,23 +1827,61 @@
         + '<td>' + remito + '</td>'
         + '<td>' + factura + '</td>'
         + '<td title="' + esc(b.baseUrl || "") + '">' + conexion + '</td>'
-        + '<td><button class="sec" data-act="editar-cfg" data-nombre="' + esc(b.nombre) + '">Editar</button></td>';
+        + '<td><div class="acciones">'
+          + '<button class="sec" data-act="editar-cfg" data-nombre="' + esc(b.nombre) + '">Editar</button>'
+          + '<button class="del" data-act="eliminar-cfg" data-nombre="' + esc(b.nombre) + '">Eliminar</button>'
+        + '</div></td>';
       tbody.appendChild(tr);
     }
 
     tbody.querySelectorAll("button[data-act='editar-cfg']").forEach(btn => {
       btn.addEventListener("click", () => editarConfigBase(btn.dataset.nombre));
     });
+    tbody.querySelectorAll("button[data-act='eliminar-cfg']").forEach(btn => {
+      btn.addEventListener("click", () => eliminarConfigBase(btn.dataset.nombre));
+    });
+  }
+
+  // Valores por defecto para una base nueva (nombre editable).
+  function nuevaConfigBase() {
+    cfgModo = "nuevo";
+    limpiar($("cfgMsgForm"));
+    $("cfgFormTitulo").textContent = "Nueva base";
+    $("cfgNombre").value = "";
+    $("cfgNombre").readOnly = false;
+    $("cfgDescripcion").value = "";
+    $("cfgActiva").checked = true;
+    $("cfgBaseUrl").value = "";
+    $("cfgRemitoTipo").value = "N";
+    $("cfgIncluirPortal").checked = false;
+    $("cfgEmpresa").value = 1;
+    $("cfgSucursal").value = 1;
+    $("cfgRemPrefijo").value = "1";
+    $("cfgRemConcepto").value = "com";
+    $("cfgRemDeposito").value = 1;
+    $("cfgFacPrefijo").value = "1";
+    $("cfgFacConcepto").value = "com";
+    $("cfgFacDeposito").value = 1;
+    $("cfgFacImputacion").value = 21001001;
+    $("cfgInfoConexion").textContent = "Al guardar, el padrón de la base nueva (productos y proveedores) se carga en segundo plano; puede tardar unos minutos.";
+    $("cfgForm").classList.remove("hidden");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setTimeout(() => $("cfgNombre").focus(), 0);
   }
 
   function editarConfigBase(nombre) {
     const b = configBasesActuales.find(x => x.nombre === nombre);
     if (!b) return;
+    cfgModo = "editar";
     limpiar($("cfgMsgForm"));
     $("cfgFormTitulo").textContent = "Editar base · " + b.nombre;
     $("cfgNombre").value = b.nombre;
+    $("cfgNombre").readOnly = true;   // el nombre es la clave: no se renombra
     $("cfgDescripcion").value = b.descripcion || "";
     $("cfgActiva").checked = !!b.activa;
+    $("cfgBaseUrl").value = b.baseUrl || "";
+    $("cfgRemitoTipo").value = b.remitoTipo || "N";
+    $("cfgIncluirPortal").checked = !!b.incluirEnPortal;
     $("cfgEmpresa").value = b.empresa;
     $("cfgSucursal").value = b.sucursal;
     $("cfgRemPrefijo").value = b.remitoPrefijo || "";
@@ -1794,11 +1891,7 @@
     $("cfgFacConcepto").value = b.facturaConcepto || "";
     $("cfgFacDeposito").value = b.facturaDeposito;
     $("cfgFacImputacion").value = b.facturaImputacionContable;
-    const info = [];
-    if (b.baseUrl) info.push("Conexión: " + b.baseUrl);
-    if (b.remitoTipo) info.push("Tipo de remito: " + b.remitoTipo + " (fijo)");
-    if (!b.conectada) info.push("⚠ Esta base no está conectada en el servidor (no figura en appsettings).");
-    $("cfgInfoConexion").textContent = info.join("  ·  ");
+    $("cfgInfoConexion").textContent = "Si cambiás la URL de conexión, el próximo pedido a esa base usa la nueva dirección (se reintenta el login).";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => $("cfgDescripcion").focus(), 0);
@@ -1809,12 +1902,88 @@
     limpiar($("cfgMsgForm"));
   }
 
+  // Abre el modal de eliminación con las dos opciones (destildadas por default).
+  function eliminarConfigBase(nombre) {
+    const b = configBasesActuales.find(x => x.nombre === nombre);
+    delBaseNombre = nombre;
+    delBaseIngresos = b ? (b.ingresos || 0) : 0;
+    limpiar($("modalDelMsg"));
+    $("modalDelTitulo").textContent = "Eliminar base · " + nombre;
+    $("modalDelIngresos").checked = false;
+    $("modalDelAuditoria").checked = false;
+    const hayIngresos = delBaseIngresos > 0;
+    $("modalDelOpciones").classList.toggle("hidden", !hayIngresos);
+    $("modalDelTexto").innerHTML = hayIngresos
+      ? 'La base <strong>' + esc(nombre) + '</strong> tiene <strong>' + delBaseIngresos + '</strong> ingreso(s) asociado(s). Eleg\u00ed qu\u00e9 borrar adem\u00e1s de la base:'
+      : 'La base <strong>' + esc(nombre) + '</strong> no tiene ingresos asociados. \u00bfEliminarla?';
+    actualizarModalDel();
+    $("modalDelBase").classList.remove("hidden");
+    setTimeout(() => $("modalDelCancelar").focus(), 0);
+  }
+
+  // Ajusta la habilitación del tilde de auditoría, el texto del botón y la nota
+  // según lo que esté tildado. Auditoría sólo aplica si se borran los ingresos.
+  function actualizarModalDel() {
+    const borrarIng = $("modalDelIngresos").checked;
+    const aud = $("modalDelAuditoria");
+    aud.disabled = !borrarIng;
+    if (!borrarIng) aud.checked = false;
+    const n = delBaseIngresos;
+    $("modalDelConfirmar").textContent =
+      (n > 0 && borrarIng) ? ("Eliminar base + " + n + " ingreso(s)") : "Eliminar base";
+    if (n > 0) {
+      $("modalDelNota").textContent = borrarIng
+        ? (aud.checked
+            ? "Se borran la base, los " + n + " ingreso(s) (renglones y percepciones) y su auditoría. No se puede deshacer."
+            : "Se borran la base y los " + n + " ingreso(s); la auditoría se conserva. No se puede deshacer.")
+        : "Se elimina solo la base; los " + n + " ingreso(s) quedan con el destino marcado en rojo.";
+    }
+  }
+
+  function cerrarModalDelBase() {
+    $("modalDelBase").classList.add("hidden");
+    delBaseNombre = null;
+  }
+
+  async function confirmarEliminarBase() {
+    if (!delBaseNombre) return;
+    const nombre = delBaseNombre;
+    const borrarRegistros = $("modalDelIngresos").checked;
+    const borrarAuditoria = $("modalDelAuditoria").checked;
+    limpiar($("modalDelMsg"));
+    $("modalDelConfirmar").disabled = true;
+    let r;
+    try {
+      r = await fetch("/api/admin/config-bases/" + encodeURIComponent(nombre)
+        + "?borrarRegistros=" + (borrarRegistros ? "true" : "false")
+        + "&borrarAuditoria=" + (borrarAuditoria ? "true" : "false"), {
+        method: "DELETE", headers: { "Authorization": "Bearer " + token }
+      });
+    } catch (e) { $("modalDelConfirmar").disabled = false; mostrar($("modalDelMsg"), "No se pudo conectar.", "err"); return; }
+    $("modalDelConfirmar").disabled = false;
+    if (r.ok) {
+      const d = await r.json().catch(() => ({}));
+      cerrarModalDelBase();
+      destinosCargados = false;   // la lista de destinos pudo cambiar
+      await cargarConfigBases();
+      mostrar($("cfgMsgLista"), d.mensaje || "Base eliminada.", "ok");
+      return;
+    }
+    const d = await r.json().catch(() => ({}));
+    mostrar($("modalDelMsg"), d.mensaje || "No se pudo eliminar.", "err");
+  }
+
   async function guardarConfigBase() {
     limpiar($("cfgMsgForm"));
-    const nombre = $("cfgNombre").value;
+    const nombre = $("cfgNombre").value.trim();
+    if (cfgModo === "nuevo" && !nombre) { mostrar($("cfgMsgForm"), "Poné un nombre para la base.", "err"); return; }
+    if (!$("cfgBaseUrl").value.trim()) { mostrar($("cfgMsgForm"), "Poné la URL de conexión (ej. http://localhost:5081).", "err"); return; }
     const body = {
       descripcion: $("cfgDescripcion").value || null,
       activa: $("cfgActiva").checked,
+      baseUrl: $("cfgBaseUrl").value.trim(),
+      remitoTipo: $("cfgRemitoTipo").value.trim() || "N",
+      incluirEnPortal: $("cfgIncluirPortal").checked,
       empresa: parseInt($("cfgEmpresa").value, 10) || 0,
       sucursal: parseInt($("cfgSucursal").value, 10) || 0,
       remitoPrefijo: $("cfgRemPrefijo").value || "",
@@ -1827,16 +1996,24 @@
     };
     let r;
     try {
-      r = await fetch("/api/admin/config-bases/" + encodeURIComponent(nombre), {
-        method: "PUT", headers: hdrJson(), body: JSON.stringify(body)
-      });
+      if (cfgModo === "nuevo") {
+        body.nombre = nombre;
+        r = await fetch("/api/admin/config-bases", {
+          method: "POST", headers: hdrJson(), body: JSON.stringify(body)
+        });
+      } else {
+        r = await fetch("/api/admin/config-bases/" + encodeURIComponent(nombre), {
+          method: "PUT", headers: hdrJson(), body: JSON.stringify(body)
+        });
+      }
     } catch (e) { mostrar($("cfgMsgForm"), "No se pudo conectar.", "err"); return; }
 
     if (r.ok) {
-      mostrar($("cfgMsgForm"), "Configuración guardada.", "ok");
+      const d = await r.json().catch(() => ({}));
+      mostrar($("cfgMsgForm"), d.mensaje || "Configuración guardada.", "ok");
       $("btnGuardarCfg").disabled = true;
-      // Como pudo cambiar el estado activa/inactiva de una base, forzamos que la
-      // próxima vez que se entre a Ingresos se recarguen los destinos.
+      // Pudo cambiar el estado/alta/baja de una base: forzamos recargar destinos
+      // la próxima vez que se entre a Ingresos.
       destinosCargados = false;
       setTimeout(() => {
         $("btnGuardarCfg").disabled = false;
@@ -2289,8 +2466,17 @@
   $("remCompNumero").addEventListener("blur", () => { $("remCompNumero").value = padNum($("remCompNumero").value, 8); });
 
   // Configuración de bases
+  $("btnNuevaCfg").addEventListener("click", nuevaConfigBase);
   $("btnGuardarCfg").addEventListener("click", guardarConfigBase);
   $("btnCancelarCfg").addEventListener("click", cancelarConfigBase);
+  // Modal de eliminación de base
+  $("modalDelIngresos").addEventListener("change", actualizarModalDel);
+  $("modalDelAuditoria").addEventListener("change", actualizarModalDel);
+  $("modalDelCancelar").addEventListener("click", cerrarModalDelBase);
+  $("modalDelCerrar").addEventListener("click", cerrarModalDelBase);
+  $("modalDelConfirmar").addEventListener("click", confirmarEliminarBase);
+  $("modalDelBase").addEventListener("click", e => { if (e.target === $("modalDelBase")) cerrarModalDelBase(); });
+  $("modalDelBase").addEventListener("keydown", e => { if (e.key === "Escape") { e.preventDefault(); cerrarModalDelBase(); } });
 
   // Auditoría: los filtros sólo se aplican al tocar "Buscar" (o Enter en un campo de texto).
   $("btnAudBuscar").addEventListener("click", buscarAuditoria);

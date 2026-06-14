@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -14,32 +15,45 @@ public class BasDestinosService
 {
     private readonly IHttpClientFactory _factory;
     private readonly BasWebApiOptions _cred;                       // credenciales compartidas
-    private readonly Dictionary<string, DestinoBas> _destinos;
+    private readonly ConcurrentDictionary<string, DestinoBas> _destinos;
 
-    private readonly Dictionary<string, (string token, DateTimeOffset expira)> _tokens = new();
+    private readonly ConcurrentDictionary<string, (string token, DateTimeOffset expira)> _tokens = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public BasDestinosService(
         IHttpClientFactory factory,
         IOptions<BasWebApiOptions> cred,
-        Dictionary<string, DestinoBas> destinos)
+        ConcurrentDictionary<string, DestinoBas> destinos)
     {
         _factory = factory;
         _cred = cred.Value;
         _destinos = destinos;
     }
 
-    public IReadOnlyCollection<string> Nombres => _destinos.Keys;
+    public IReadOnlyCollection<string> Nombres => _destinos.Keys.ToArray();
     public bool Existe(string destino) => _destinos.ContainsKey(destino);
     public DestinoBas? Config(string destino) => _destinos.TryGetValue(destino, out var d) ? d : null;
+
+    // Alta/baja de una base en memoria (las usa ConfigBasesService al crear/eliminar).
+    public void Definir(string destino, DestinoBas cfg) => _destinos[destino] = cfg;
+    public void Quitar(string destino) { _destinos.TryRemove(destino, out _); InvalidarToken(destino); }
+
+    // Olvida el token cacheado de una base (al cambiar su BaseUrl o al eliminarla).
+    public void InvalidarToken(string destino) => _tokens.TryRemove(destino, out _);
+
+    // URL absoluta a partir de la BaseUrl de la base (ahora dinámica/editable), en
+    // vez de depender de un HttpClient nombrado armado al arranque.
+    private static Uri AbsUrl(DestinoBas cfg, string path) => new(new Uri(cfg.BaseUrl), path);
 
     // GET autenticado contra un destino. Devuelve el cuerpo, o null si 404/204.
     public async Task<string?> GetAsync(string destino, string path, CancellationToken ct = default)
     {
+        var cfg = Config(destino)
+            ?? throw new InvalidOperationException($"Destino BAS desconocido: {destino}");
         var token = await GetTokenAsync(destino, ct);
-        var http = _factory.CreateClient("bas-" + destino);
+        var http = _factory.CreateClient("bas-multi");
 
-        using var req = new HttpRequestMessage(HttpMethod.Get, path);
+        using var req = new HttpRequestMessage(HttpMethod.Get, AbsUrl(cfg, path));
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var resp = await http.SendAsync(req, ct);
@@ -59,10 +73,12 @@ public class BasDestinosService
     // o null si 404/204.
     public async Task<string?> PostAsync(string destino, string path, string jsonBody, CancellationToken ct = default)
     {
+        var cfg = Config(destino)
+            ?? throw new InvalidOperationException($"Destino BAS desconocido: {destino}");
         var token = await GetTokenAsync(destino, ct);
-        var http = _factory.CreateClient("bas-" + destino);
+        var http = _factory.CreateClient("bas-multi");
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, path)
+        using var req = new HttpRequestMessage(HttpMethod.Post, AbsUrl(cfg, path))
         {
             Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
         };
@@ -92,10 +108,10 @@ public class BasDestinosService
             if (_tokens.TryGetValue(destino, out var t2) && DateTimeOffset.UtcNow < t2.expira.AddSeconds(-60))
                 return t2.token;
 
-            if (!Existe(destino))
-                throw new InvalidOperationException($"Destino BAS desconocido: {destino}");
+            var cfg = Config(destino)
+                ?? throw new InvalidOperationException($"Destino BAS desconocido: {destino}");
 
-            var http = _factory.CreateClient("bas-" + destino);
+            var http = _factory.CreateClient("bas-multi");
 
             using var form = new MultipartFormDataContent
             {
@@ -106,7 +122,7 @@ public class BasDestinosService
                 { new StringContent(_cred.Password), "password" }
             };
 
-            using var resp = await http.PostAsync("/auth/token", form, ct);
+            using var resp = await http.PostAsync(AbsUrl(cfg, "/auth/token"), form, ct);
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadAsStringAsync(ct);
