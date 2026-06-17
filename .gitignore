@@ -1,6 +1,7 @@
 # ---- .NET / build ----
 bin/
 obj/
+publish/
 *.user
 *.suo
 .vs/

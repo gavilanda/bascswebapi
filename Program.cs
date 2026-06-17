@@ -13,13 +13,35 @@ using PortalClientes.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Permite que la app funcione como Servicio de Windows: le avisa al Administrador
+// de Servicios (SCM) que arrancó (sin esto, SCM cree que nunca inició y reporta
+// error aunque el proceso esté vivo) y fija el directorio base en la carpeta del
+// .exe (para encontrar appsettings, wwwroot, etc.). Es NO-OP cuando se corre por
+// consola (dotnet run / .exe a mano), así que no afecta el desarrollo.
+builder.Host.UseWindowsService();
+
 // ---- Configuracion del token del portal ----
 builder.Services.Configure<JwtPortalOptions>(
     builder.Configuration.GetSection(JwtPortalOptions.Seccion));
 
 // ---- Base de datos de usuarios del portal ----
+// Si la ruta del archivo SQLite es RELATIVA, la anclamos a la carpeta del
+// ejecutable (AppContext.BaseDirectory), NO a la carpeta de trabajo del proceso.
+// Asi la base queda en el mismo lugar con `dotnet run` (carpeta del proyecto) y
+// como Servicio de Windows (carpeta del .exe, ya que el servicio arranca con la
+// carpeta de trabajo en System32). Si la ruta ya es absoluta, se respeta tal cual.
+var connPortal = builder.Configuration.GetConnectionString("PortalDb")
+                 ?? "Data Source=portal-clientes.db";
+var csbPortal = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connPortal);
+if (!string.IsNullOrWhiteSpace(csbPortal.DataSource)
+    && !csbPortal.DataSource.StartsWith(":")            // no tocar :memory: u otros especiales
+    && !Path.IsPathRooted(csbPortal.DataSource))
+{
+    csbPortal.DataSource = Path.Combine(AppContext.BaseDirectory, csbPortal.DataSource);
+    connPortal = csbPortal.ConnectionString;
+}
 builder.Services.AddDbContext<PortalDbContext>(opciones =>
-    opciones.UseSqlite(builder.Configuration.GetConnectionString("PortalDb")));
+    opciones.UseSqlite(connPortal));
 
 // ---- Servicios de autenticacion del portal ----
 builder.Services.AddScoped<IPasswordHasher<UsuarioPortal>, PasswordHasher<UsuarioPortal>>();
