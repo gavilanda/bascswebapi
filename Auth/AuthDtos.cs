@@ -17,6 +17,7 @@ public record RespuestaLogin(
     string? CodigoProveedor,
     string? RazonSocial,
     List<string> Permisos,
+    bool AccedePortal,
     DateTimeOffset Expira);
 
 // Alta de un usuario desde la administracion.
@@ -32,7 +33,9 @@ public record CrearUsuarioRequest(
     string? CodigoProveedor,
     string? Email,
     string? RazonSocial,
-    List<string>? Permisos);
+    List<string>? Permisos,
+    bool AccedePortalClientes,
+    List<string>? BasesPortal);
 
 // Modificacion de un usuario existente. Password opcional: si viene, se cambia;
 // si va vacio, se mantiene la actual. El Tipo no se cambia (lo toma del existente).
@@ -44,7 +47,9 @@ public record ModificarUsuarioRequest(
     string? CodigoProveedor,
     string? Email,
     string? RazonSocial,
-    List<string>? Permisos);
+    List<string>? Permisos,
+    bool AccedePortalClientes,
+    List<string>? BasesPortal);
 
 // Cambio de estado (activo/inactivo).
 public record CambiarEstadoRequest(bool Activo);

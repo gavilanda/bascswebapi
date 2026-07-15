@@ -84,10 +84,40 @@ public class BasClientesService
         return cliente;
     }
 
+    // Todas las cuentas "casa central / independientes" de un CUIT en una base:
+    // las que NO están administradas por otra (AdministradaPor vacío). Una sola
+    // regla cubre los dos escenarios:
+    //  - Cabecera con sucursales: solo la cabecera tiene AdministradaPor vacío, así
+    //    que devuelve SOLO la cabecera (las administradas quedan afuera; su cuenta
+    //    corriente vive en la cabecera, no se cuenta doble).
+    //  - Varias cuentas INDEPENDIENTES con el mismo CUIT: todas tienen
+    //    AdministradaPor vacío -> las devuelve TODAS (cada una con su cta cte).
+    // La cache incluye el destino en la clave (el código difiere por base).
+    public async Task<List<ClienteBas>> BuscarCuentasPorCuitEnBaseAsync(
+        string destino, string cuit, CancellationToken ct = default)
+    {
+        var cacheKey = $"cuentasPorCuit|{destino}|{cuit}";
+        if (_cache.TryGetValue(cacheKey, out List<ClienteBas>? enCache))
+            return enCache!;
+
+        var json = await _destinos.GetAsync(
+            destino, $"/api/Clientes/documento={Uri.EscapeDataString(cuit)}", ct);
+        if (string.IsNullOrWhiteSpace(json)) return new();
+
+        var lista = JsonSerializer.Deserialize<List<ClienteBas>>(json, JsonOpts) ?? new();
+        var cuentas = lista.Where(c => string.IsNullOrWhiteSpace(c.AdministradaPor)).ToList();
+        // Si por algún motivo ninguna viene sin marcar, caemos a la primera (no romper).
+        if (cuentas.Count == 0 && lista.Count > 0) cuentas.Add(lista[0]);
+
+        _cache.Set(cacheKey, cuentas, DuracionCache);
+        return cuentas;
+    }
+
     // Cuando un CUIT tiene sucursales, BAS devuelve varios clientes con el mismo
     // documento. La cuenta corriente real es la de la CASA CENTRAL: la que NO está
     // administrada por otra (campo AdministradaPor vacío). Si por algún motivo
     // ninguna viniera sin marcar, caemos al primero para no romper.
+    // (Usado por endpoints que necesitan UNA sola cuenta representativa, ej. "datos".)
     private static ClienteBas? ElegirCasaCentral(List<ClienteBas>? lista)
     {
         if (lista is null || lista.Count == 0) return null;

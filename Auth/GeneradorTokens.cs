@@ -27,6 +27,7 @@ public class GeneradorTokens
             new("identificador", usuario.Identificador),
             new("tipo", usuario.Tipo.ToString()),
             new("esAdmin", usuario.EsAdmin ? "true" : "false"),
+            new("accedePortal", usuario.AccedePortalClientes ? "true" : "false"),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
@@ -34,6 +35,11 @@ public class GeneradorTokens
         // (ver Program.cs) chequean que exista el claim con ese valor.
         foreach (var permiso in usuario.Permisos)
             claims.Add(new Claim("permiso", permiso));
+
+        // Un claim "basePortal" por cada base que el usuario puede ver en el portal.
+        // Si la lista va vacía, no se agrega ninguno y el portal interpreta "todas".
+        foreach (var basePortal in usuario.BasesPortal)
+            claims.Add(new Claim("basePortal", basePortal));
 
         // Para extranet sumamos los roles y los codigos de BAS (cliente y/o proveedor).
         if (usuario.Tipo == TipoUsuario.Extranet)

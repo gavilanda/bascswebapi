@@ -20,6 +20,8 @@
   .card { background:#fff; border:1px solid var(--borde); border-radius:10px;
     padding:20px; margin-bottom:20px; }
   .card h2 { font-size:15px; margin:0 0 14px; font-weight:600; }
+  /* Login compacto: tarjeta angosta y centrada, al tamaño de los campos */
+  #vistaLogin { max-width:360px; margin:48px auto; }
   label { display:block; font-size:13px; color:var(--txt2); margin:10px 0 4px; }
   input, select { width:100%; padding:9px 10px; border:1px solid var(--bordeInput);
     border-radius:7px; font-size:14px; background:#fff; color:var(--txt); }
@@ -108,6 +110,9 @@
   .permisos { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:4px; }
   .permisos label { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--txt); margin:0; }
   .permisos input { width:auto; }
+  .bases-portal { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:4px; }
+  .bases-portal label { display:inline-flex; align-items:center; gap:6px; margin:0; font-size:14px; color:var(--txt); cursor:pointer; }
+  .bases-portal input { width:auto; }
   .liniaext { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:6px; }
   .liniaext .f-cuit { flex:0 0 150px; }
   .liniaext .f-cod { flex:1 1 130px; }
@@ -218,6 +223,7 @@
         <a data-sec="auditoria" id="navAuditoria" tabindex="0" class="hidden">Auditoría</a>
         <div class="sidebar-sep hidden" id="navAdminSep"></div>
         <a data-sec="config" id="navConfig" tabindex="0" class="hidden">Configuración</a>
+        <a data-sec="funciones" id="navFunciones" tabindex="0" class="hidden">Programas para el Portal</a>
         <a data-sec="usuarios" id="navUsuarios" tabindex="0" class="hidden">Usuarios</a>
       </nav>
 
@@ -518,6 +524,30 @@
           </div>
         </div>
 
+        <!-- FUNCIONES DEL PORTAL (solo administradores) -->
+        <div id="secFunciones" class="seccion hidden">
+          <div class="card">
+            <div class="cab">
+              <h2>Programas para el Portal</h2>
+            </div>
+            <div class="nota">Controlan qué consultas aparecen en el menú del <strong>portal de clientes</strong> y a qué público. La <strong>lógica</strong> de cada programa es código (se programa y se publica); acá configurás su <strong>etiqueta</strong>, <strong>orden</strong>, <strong>público</strong> y si está <strong>activa</strong>. La <strong>clave</strong> es interna (el vínculo con el código) y no se edita. Los cambios aplican cuando el usuario recarga el portal.</div>
+            <table style="margin-top:12px">
+              <thead>
+                <tr>
+                  <th style="width:26%">Etiqueta</th>
+                  <th style="width:16%">Clave</th>
+                  <th style="width:12%" class="right">Orden</th>
+                  <th style="width:20%">Público</th>
+                  <th style="width:10%" class="right">Activa</th>
+                  <th style="width:12%"></th>
+                </tr>
+              </thead>
+              <tbody id="funcTabla"></tbody>
+            </table>
+            <div id="funcMsg" class="msg"></div>
+          </div>
+        </div>
+
         <!-- USUARIOS (solo administradores) -->
         <div id="secUsuarios" class="seccion hidden">
           <div class="card">
@@ -552,6 +582,14 @@
               <label style="margin-top:10px">Permisos</label>
               <div id="permisosBox" class="permisos"></div>
               <div class="nota">El administrador gestiona usuarios; los permisos habilitan las funciones internas. Se pueden combinar.</div>
+            </div>
+
+            <!-- Portal de clientes: acceso (solo interno) + bases visibles (ambos tipos) -->
+            <div id="campoPortal" style="margin-top:12px; border-top:1px solid var(--borde); padding-top:12px">
+              <label class="check hidden" id="wrapAccedePortal"><input id="nuevoAccedePortal" type="checkbox" /> Puede usar el portal de clientes (consulta de staff)</label>
+              <label style="margin-top:10px">Bases que puede ver en el portal</label>
+              <div id="basesPortal" class="bases-portal"><span class="nota">Cargando bases…</span></div>
+              <div class="nota">El usuario ve <strong>solo las bases tildadas</strong>. Si no marcás ninguna, no verá ninguna base.</div>
             </div>
 
             <div class="row" style="margin-top:6px">
@@ -663,6 +701,7 @@
   let razonSocialCargada = "";
   let editandoId = null;
   let usuariosActuales = [];
+  let basesDisponibles = [];    // bases del portal (para el multi-select por usuario)
 
   // Estado del formulario de ingreso.
   let remModo = "nuevo";   // nuevo | editar | ver
@@ -763,6 +802,7 @@
       $("inicioNombre").textContent = ident;
       $("navUsuarios").classList.toggle("hidden", !esAdmin);
       $("navConfig").classList.toggle("hidden", !esAdmin);
+      $("navFunciones").classList.toggle("hidden", !esAdmin);
       $("navAdminSep").classList.toggle("hidden", !esAdmin);
       $("navRemitos").classList.toggle("hidden", !puedeVerRemitos());
       $("navAuditoria").classList.toggle("hidden", !puedeAuditar());
@@ -778,10 +818,11 @@
   async function mostrarSeccion(sec) {
     if (sec === "usuarios" && !esAdmin) sec = "inicio";
     if (sec === "config" && !esAdmin) sec = "inicio";
+    if (sec === "funciones" && !esAdmin) sec = "inicio";
     if (sec === "remitos" && !puedeVerRemitos()) sec = "inicio";
     if (sec === "auditoria" && !puedeAuditar()) sec = "inicio";
 
-    const mapa = { inicio: "secInicio", usuarios: "secUsuarios", remitos: "secRemitos", auditoria: "secAuditoria", config: "secConfig" };
+    const mapa = { inicio: "secInicio", usuarios: "secUsuarios", remitos: "secRemitos", auditoria: "secAuditoria", config: "secConfig", funciones: "secFunciones" };
     document.querySelectorAll(".seccion").forEach(s => s.classList.add("hidden"));
     const destino = $(mapa[sec] || "secInicio");
     if (destino) destino.classList.remove("hidden");
@@ -792,6 +833,7 @@
     if (sec === "usuarios") {
       actualizarCamposTipo();
       if (catalogoPermisos.length === 0) await cargarCatalogoPermisos();
+      cargarBasesPortal();
       cargarUsuarios();
     } else if (sec === "remitos") {
       $("remForm").classList.add("hidden");
@@ -811,6 +853,8 @@
       buscarAuditoria();
     } else if (sec === "config") {
       cargarConfigBases();
+    } else if (sec === "funciones") {
+      cargarFunciones();
     }
   }
 
@@ -818,6 +862,42 @@
     const t = $("nuevoTipo").value;
     $("campoExtranet").classList.toggle("hidden", t !== "Extranet");
     $("campoInterno").classList.toggle("hidden", t !== "Interno");
+    // El acceso como staff sólo aplica a internos; las bases visibles, a ambos.
+    $("wrapAccedePortal").classList.toggle("hidden", t !== "Interno");
+  }
+
+  // ---- Bases del portal (multi-select por usuario) ----
+  async function cargarBasesPortal() {
+    try {
+      const r = await fetch("/api/admin/bases-portal", { headers: { "Authorization": "Bearer " + token } });
+      if (!r.ok) return;
+      const d = await r.json();
+      basesDisponibles = d.bases || [];
+    } catch (e) { return; }
+    renderBasesPortal();
+  }
+
+  function renderBasesPortal() {
+    const cont = $("basesPortal");
+    if (basesDisponibles.length === 0) {
+      cont.innerHTML = '<span class="nota">No hay bases configuradas en el portal.</span>';
+      return;
+    }
+    cont.innerHTML = basesDisponibles.map(b =>
+      '<label><input type="checkbox" data-base="' + esc(b) + '"> ' + esc(b) + '</label>'
+    ).join("");
+  }
+
+  function basesSeleccionadas() {
+    return Array.from($("basesPortal").querySelectorAll('input[type="checkbox"]:checked'))
+      .map(c => c.dataset.base);
+  }
+
+  function setBasesSeleccionadas(lista) {
+    const set = new Set((lista || []).map(x => (x || "").toUpperCase()));
+    $("basesPortal").querySelectorAll('input[type="checkbox"]').forEach(c => {
+      c.checked = set.has((c.dataset.base || "").toUpperCase());
+    });
   }
 
   async function cargarCatalogoPermisos() {
@@ -1790,6 +1870,80 @@
   }
 
   // ===================== CONFIGURACIÓN DE BASES =====================
+  // ---------- Funciones del portal (admin) ----------
+  // Metadata del menú del portal de clientes. La clave es de sólo lectura (es el
+  // vínculo con el código); acá se edita etiqueta, orden, público y activa.
+  let funcionesCache = [];
+
+  async function cargarFunciones() {
+    limpiar($("funcMsg"));
+    $("funcTabla").innerHTML = "";
+    let r;
+    try {
+      r = await fetch("/api/admin/funciones", { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { mostrar($("funcMsg"), "No se pudo conectar.", "err"); return; }
+    if (r.status === 401 || r.status === 403) { salir(); return; }
+    if (!r.ok) { mostrar($("funcMsg"), "No se pudieron cargar las funciones.", "err"); return; }
+    const d = await r.json();
+    funcionesCache = d.funciones || [];
+    pintarFunciones();
+  }
+
+  function optAud(val, etiqueta, sel) {
+    return '<option value="' + val + '"' + (val === sel ? " selected" : "") + '>' + etiqueta + '</option>';
+  }
+
+  function pintarFunciones() {
+    const tabla = $("funcTabla");
+    if (funcionesCache.length === 0) {
+      tabla.innerHTML = '<tr><td colspan="6" class="nota">No hay programas registrados todavía.</td></tr>';
+      return;
+    }
+    tabla.innerHTML = "";
+    for (const f of funcionesCache) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+          '<td><input type="text" data-k="etiqueta" value="' + esc(f.etiqueta) + '" style="width:100%"></td>'
+        + '<td><span class="nota">' + esc(f.clave) + '</span></td>'
+        + '<td class="right"><input type="number" data-k="orden" value="' + (Number(f.orden) || 0) + '" style="width:70px; text-align:right"></td>'
+        + '<td><select data-k="audiencia">'
+            + optAud("externo", "Externo (clientes)", f.audiencia)
+            + optAud("interno", "Interno (personal)", f.audiencia)
+            + optAud("ambos", "Ambos", f.audiencia)
+          + '</select></td>'
+        + '<td class="right"><input type="checkbox" data-k="activa"' + (f.activa ? " checked" : "") + '></td>'
+        + '<td class="right"><button data-id="' + f.id + '">Guardar</button></td>';
+      tabla.appendChild(tr);
+    }
+    tabla.querySelectorAll("button[data-id]").forEach(b =>
+      b.addEventListener("click", () => guardarFuncion(b.dataset.id, b.closest("tr"))));
+  }
+
+  async function guardarFuncion(id, tr) {
+    const etiqueta = tr.querySelector('[data-k="etiqueta"]').value.trim();
+    const orden = parseInt(tr.querySelector('[data-k="orden"]').value, 10) || 0;
+    const audiencia = tr.querySelector('[data-k="audiencia"]').value;
+    const activa = tr.querySelector('[data-k="activa"]').checked;
+    if (!etiqueta) { mostrar($("funcMsg"), "La etiqueta no puede quedar vacía.", "err"); return; }
+
+    let r;
+    try {
+      r = await fetch("/api/admin/funciones/" + id, {
+        method: "PUT",
+        headers: hdrJson(),
+        body: JSON.stringify({ etiqueta, orden, audiencia, activa })
+      });
+    } catch (e) { mostrar($("funcMsg"), "No se pudo conectar.", "err"); return; }
+    if (r.status === 401 || r.status === 403) { salir(); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      mostrar($("funcMsg"), d.mensaje || "No se pudo guardar.", "err");
+      return;
+    }
+    mostrar($("funcMsg"), "Programa “" + etiqueta + "” actualizado.", "ok");
+    cargarFunciones();
+  }
+
   async function cargarConfigBases() {
     limpiar($("cfgMsgLista"));
     $("cfgForm").classList.add("hidden");
@@ -2261,6 +2415,8 @@
       $("nuevoCodigoProveedor").value = u.codigoProveedor || "";
     }
     $("nuevoEmail").value = u.email || "";
+    $("nuevoAccedePortal").checked = !!u.accedePortalClientes;
+    setBasesSeleccionadas(u.basesPortal || []);
     $("nuevoPass").value = "";
     $("lblPass").textContent = "Nueva contraseña (opcional)";
     $("nuevoPass").placeholder = "dejar vacío para no cambiar";
@@ -2279,6 +2435,8 @@
     $("nuevoUsuario").value = ""; $("nuevoEmail").value = ""; $("nuevoPass").value = "";
     $("nuevoEsAdmin").checked = false;
     setPermisos([]);
+    $("nuevoAccedePortal").checked = false;
+    setBasesSeleccionadas([]);
     $("lblPass").textContent = "Contraseña inicial";
     $("nuevoPass").placeholder = "";
     $("cardTitulo").textContent = "Crear usuario";
@@ -2306,6 +2464,8 @@
         body.codigoProveedor = $("nuevoCodigoProveedor").value || null;
         body.razonSocial = razonCliente || razonProveedor || null;
       }
+      body.accedePortalClientes = (t === "Interno") ? $("nuevoAccedePortal").checked : false;
+      body.basesPortal = basesSeleccionadas();
       const r = await fetch("/api/admin/usuarios", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
@@ -2328,6 +2488,8 @@
         body.codigoProveedor = $("nuevoCodigoProveedor").value || null;
         body.razonSocial = razonCliente || razonProveedor || razonSocialCargada || null;
       }
+      body.accedePortalClientes = (t === "Interno") ? $("nuevoAccedePortal").checked : false;
+      body.basesPortal = basesSeleccionadas();
       const r = await fetch("/api/admin/usuarios/" + editandoId, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },

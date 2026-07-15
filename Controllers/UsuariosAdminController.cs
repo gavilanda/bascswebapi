@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PortalClientes.Auth;
+using PortalClientes.Bas;
 using PortalClientes.Data;
 using PortalClientes.Models;
 
@@ -17,17 +18,33 @@ public class UsuariosAdminController : ControllerBase
 {
     private readonly PortalDbContext _db;
     private readonly IPasswordHasher<UsuarioPortal> _hasher;
+    private readonly BasDestinosService _destinos;
 
-    public UsuariosAdminController(PortalDbContext db, IPasswordHasher<UsuarioPortal> hasher)
+    public UsuariosAdminController(
+        PortalDbContext db,
+        IPasswordHasher<UsuarioPortal> hasher,
+        BasDestinosService destinos)
     {
         _db = db;
         _hasher = hasher;
+        _destinos = destinos;
     }
 
     // GET /api/admin/permisos  -> catalogo de permisos funcionales (codigo + etiqueta).
     // El front lo usa para armar los checkboxes solo.
     [HttpGet("/api/admin/permisos")]
     public ActionResult CatalogoPermisos() => Ok(PortalClientes.Auth.Permisos.Catalogo);
+
+    // GET /api/admin/bases-portal  -> nombres de las bases que participan del portal
+    // de clientes (activas + IncluirEnPortal). El front arma con esto el multi-select
+    // de "bases que puede ver" por usuario.
+    [HttpGet("/api/admin/bases-portal")]
+    public ActionResult BasesPortal() => Ok(new
+    {
+        bases = _destinos.Nombres
+            .Where(n => _destinos.Config(n) is { Activa: true, IncluirEnPortal: true })
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+    });
 
     // GET /api/admin/usuarios?estado=activos|inactivos|todos&tipo=internos|externos|todos
     [HttpGet]
@@ -60,6 +77,8 @@ public class UsuariosAdminController : ControllerBase
             Tipo = u.Tipo,
             u.EsAdmin,
             u.Permisos,
+            u.AccedePortalClientes,
+            u.BasesPortal,
             u.EsCliente,
             u.EsProveedor,
             u.CodigoCliente,
@@ -120,6 +139,10 @@ public class UsuariosAdminController : ControllerBase
 
         usuario.PasswordHash = _hasher.HashPassword(usuario, req.Password);
 
+        // Comunes a ambos tipos: acceso al portal + bases visibles del portal.
+        usuario.AccedePortalClientes = req.AccedePortalClientes;
+        usuario.BasesPortal = LimpiarBases(req.BasesPortal);
+
         _db.Usuarios.Add(usuario);
         await _db.SaveChangesAsync();
 
@@ -168,6 +191,10 @@ public class UsuariosAdminController : ControllerBase
             usuario.Email = string.IsNullOrWhiteSpace(req.Email) ? null : req.Email.Trim();
             usuario.RazonSocial = string.IsNullOrWhiteSpace(req.RazonSocial) ? null : req.RazonSocial.Trim();
         }
+
+        // Comunes a ambos tipos: acceso al portal + bases visibles del portal.
+        usuario.AccedePortalClientes = req.AccedePortalClientes;
+        usuario.BasesPortal = LimpiarBases(req.BasesPortal);
 
         // Password opcional: solo si vino algo.
         if (!string.IsNullOrWhiteSpace(req.Password))
@@ -239,4 +266,14 @@ public class UsuariosAdminController : ControllerBase
             .CountAsync(u => u.EsAdmin && u.Activo && u.Id != id);
         return otros == 0;
     }
+
+    // Normaliza la lista de bases del portal: recorta, saca vacíos y duplicados
+    // (sin distinguir mayúsculas). No valida contra las bases existentes: una base
+    // que no exista simplemente nunca matchea en la intersección del portal.
+    private static List<string> LimpiarBases(IEnumerable<string>? bases) =>
+        (bases ?? Enumerable.Empty<string>())
+            .Select(b => (b ?? string.Empty).Trim())
+            .Where(b => b.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 }

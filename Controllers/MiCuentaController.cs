@@ -15,26 +15,120 @@ public class MiCuentaController : ControllerBase
     private readonly BasClientesService _clientes;
     private readonly BasComprobantesService _comprobantes;
     private readonly BasDestinosService _destinos;
+    private readonly BasCacheMaestros _cache;
 
     public MiCuentaController(
         BasCuentaCorrienteService ctaCte,
         BasClientesService clientes,
         BasComprobantesService comprobantes,
-        BasDestinosService destinos)
+        BasDestinosService destinos,
+        BasCacheMaestros cache)
     {
         _ctaCte = ctaCte;
         _clientes = clientes;
         _comprobantes = comprobantes;
         _destinos = destinos;
+        _cache = cache;
     }
 
     // Bases que se consolidan en el portal del cliente: las ACTIVAS marcadas para
-    // incluir en el portal (configurable por base desde la intranet, sin hardcodear).
+    // incluir en el portal (configurable por base desde la intranet), INTERSECTADAS
+    // con las bases que el usuario tiene TILDADAS (claims "basePortal").
+    // El usuario ve SOLO las bases tildadas: si no tiene ninguna, no ve ninguna.
     private IReadOnlyList<string> PortalBases()
-        => _destinos.Nombres
+    {
+        var delPortal = _destinos.Nombres
             .Where(n => _destinos.Config(n) is { Activa: true, IncluirEnPortal: true })
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        var delUsuario = User.FindAll("basePortal")
+            .Select(c => c.Value)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Sólo las tildadas por el usuario (sin fallback a "todas").
+        return delPortal.Where(n => delUsuario.Contains(n)).ToList();
+    }
+
+    // ¿El usuario es staff interno habilitado a consultar el portal? (interno + accedePortal).
+    private bool EsStaff()
+        => User.FindFirstValue("tipo") == "Interno"
+           && User.FindFirstValue("accedePortal") == "true";
+
+    // CUIT del cliente a consultar:
+    //  - Staff: el ?cuit= elegido en la búsqueda (obligatorio; sin él, que elija).
+    //  - Cliente extranet: su propio CUIT (identificador), ignorando cualquier ?cuit=.
+    //  - Otro: sin acceso.
+    private (string? cuit, string? error) ResolverCuitObjetivo(string? cuitParam)
+    {
+        if (EsStaff())
+        {
+            var c = (cuitParam ?? "").Trim();
+            return string.IsNullOrWhiteSpace(c)
+                ? (null, "Elegí un cliente para ver su cuenta.")
+                : (c, null);
+        }
+        var esCliente = User.FindFirstValue("esCliente") == "true";
+        var propio = User.FindFirstValue("identificador");
+        if (esCliente && !string.IsNullOrWhiteSpace(propio))
+            return (propio, null);
+        return (null, "Tu usuario no tiene una cuenta corriente de cliente asociada.");
+    }
+
+    // GET /api/mi-cuenta/buscar-clientes?q=&limit=
+    // Solo staff. Busca en el caché de clientes de las bases del usuario, dedup por
+    // CUIT (un mismo cliente puede estar en varias bases con distinto código).
+    [HttpGet("buscar-clientes")]
+    public ActionResult BuscarClientes([FromQuery] string q = "", [FromQuery] int limit = 30)
+    {
+        if (!EsStaff())
+            return StatusCode(403, new { mensaje = "Solo el personal interno puede buscar clientes." });
+
+        var texto = (q ?? "").Trim();
+        limit = Math.Clamp(limit, 1, 100);
+
+        var porCuit = new Dictionary<string, ClienteAgrupado>(StringComparer.OrdinalIgnoreCase);
+        foreach (var b in PortalBases())
+        {
+            foreach (var cli in _cache.Obtener(b).Clientes.Values)
+            {
+                var cuit = (cli.Cuit ?? "").Trim();
+                if (cuit.Length == 0) continue;
+                if (!porCuit.TryGetValue(cuit, out var acc))
+                {
+                    acc = new ClienteAgrupado { RazonSocial = cli.RazonSocial ?? "" };
+                    porCuit[cuit] = acc;
+                }
+                if (string.IsNullOrEmpty(acc.RazonSocial) && !string.IsNullOrEmpty(cli.RazonSocial))
+                    acc.RazonSocial = cli.RazonSocial;
+                acc.Bases.Add(b);
+            }
+        }
+
+        IEnumerable<KeyValuePair<string, ClienteAgrupado>> filtrados = porCuit;
+        if (texto.Length > 0)
+            filtrados = filtrados.Where(kv =>
+                kv.Key.Contains(texto, StringComparison.OrdinalIgnoreCase)
+                || kv.Value.RazonSocial.Contains(texto, StringComparison.OrdinalIgnoreCase));
+
+        var ordenados = filtrados.OrderBy(kv => kv.Value.RazonSocial, StringComparer.OrdinalIgnoreCase).ToList();
+        var total = ordenados.Count;
+        var items = ordenados.Take(limit).Select(kv => new
+        {
+            cuit = kv.Key,
+            razonSocial = kv.Value.RazonSocial,
+            bases = kv.Value.Bases.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList()
+        }).ToList();
+
+        return Ok(new { total, mostrando = items.Count, hayMas = total > items.Count, items });
+    }
+
+    private sealed class ClienteAgrupado
+    {
+        public string RazonSocial = "";
+        public HashSet<string> Bases = new(StringComparer.OrdinalIgnoreCase);
+    }
 
     // GET /api/mi-cuenta/perfil  -> datos del token.
     [HttpGet("perfil")]
@@ -51,22 +145,26 @@ public class MiCuentaController : ControllerBase
         });
     }
 
-    // GET /api/mi-cuenta/datos  -> datos del cliente (desde BAS, por su CUIT).
+    // GET /api/mi-cuenta/datos?cuit=  -> datos del cliente (desde BAS, por su CUIT).
+    // Extranet: su propio CUIT. Staff: el ?cuit= del cliente elegido.
     [HttpGet("datos")]
-    public async Task<ActionResult> Datos()
+    public async Task<ActionResult> Datos([FromQuery] string? cuit)
     {
-        var esCliente = User.FindFirstValue("esCliente") == "true";
-        var cuit = User.FindFirstValue("identificador");
-        var codigo = User.FindFirstValue("codigoCliente");
-
-        if (!esCliente || string.IsNullOrWhiteSpace(cuit))
-            return BadRequest(new { mensaje = "Tu usuario no tiene datos de cliente asociados." });
+        var (objetivo, err) = ResolverCuitObjetivo(cuit);
+        if (objetivo is null) return BadRequest(new { mensaje = err });
+        var codigo = EsStaff() ? null : User.FindFirstValue("codigoCliente");
 
         try
         {
-            var c = await _clientes.BuscarPorCuitAsync(cuit);
+            // Buscamos el cliente en las bases del usuario (la primera que lo tenga).
+            ClienteBas? c = null;
+            foreach (var bb in PortalBases())
+            {
+                c = await _clientes.BuscarPorCuitEnBaseAsync(bb, objetivo);
+                if (c is not null) break;
+            }
             if (c is null)
-                return NotFound(new { mensaje = "No se encontraron tus datos en BAS." });
+                return NotFound(new { mensaje = "No se encontraron los datos del cliente en BAS." });
 
             var dom = c.Domicilios.FirstOrDefault();
             object? domicilio = dom is null ? null : new
@@ -83,7 +181,7 @@ public class MiCuentaController : ControllerBase
             {
                 razonSocial = c.RazonSocial,
                 nombreFantasia = c.NombreFantasia,
-                cuit = string.IsNullOrWhiteSpace(c.NumeroImpositivo1) ? cuit : c.NumeroImpositivo1,
+                cuit = string.IsNullOrWhiteSpace(c.NumeroImpositivo1) ? objetivo : c.NumeroImpositivo1,
                 codigoCliente = string.IsNullOrWhiteSpace(codigo) ? c.Codigo : codigo,
                 email = c.Email,
                 paginaWeb = c.PaginaWeb,
@@ -104,13 +202,10 @@ public class MiCuentaController : ControllerBase
     // uno etiquetado con su base. El saldo de cada comprobante es sumable, asi que
     // el total y la columna acumulada combinan ambas bases naturalmente.
     [HttpGet("cuenta-corriente")]
-    public async Task<ActionResult> CuentaCorriente([FromQuery] string? fecha)
+    public async Task<ActionResult> CuentaCorriente([FromQuery] string? fecha, [FromQuery] string? cuit)
     {
-        var esCliente = User.FindFirstValue("esCliente") == "true";
-        var cuit = User.FindFirstValue("identificador");
-
-        if (!esCliente || string.IsNullOrWhiteSpace(cuit))
-            return BadRequest(new { mensaje = "Tu usuario no tiene una cuenta corriente de cliente asociada." });
+        var (objetivo, err) = ResolverCuitObjetivo(cuit);
+        if (objetivo is null) return BadRequest(new { mensaje = err });
 
         var f = string.IsNullOrWhiteSpace(fecha)
             ? DateTime.Today.ToString("yyyy-MM-dd")
@@ -118,7 +213,7 @@ public class MiCuentaController : ControllerBase
 
         // Traemos cada base en paralelo, con error aislado por base.
         var resultados = await Task.WhenAll(
-            PortalBases().Select(b => TraerEstadoBaseAsync(b, cuit!, f)));
+            PortalBases().Select(b => TraerEstadoBaseAsync(b, objetivo, f)));
 
         var comprobantes = resultados
             .SelectMany(r => r.Comprobantes)
@@ -128,6 +223,8 @@ public class MiCuentaController : ControllerBase
             .Select(c => new
             {
                 baseNombre = c.Base,
+                codigoCliente = c.CodigoCliente,
+                razonSocial = c.RazonSocial,
                 fecha = c.Fecha,
                 tipo = c.Tipo,
                 prefijo = c.Prefijo,
@@ -159,28 +256,47 @@ public class MiCuentaController : ControllerBase
     {
         try
         {
-            var cliente = await _clientes.BuscarPorCuitEnBaseAsync(baseNombre, cuit);
-            if (cliente is null || string.IsNullOrWhiteSpace(cliente.Codigo))
+            // Todas las cuentas casa-central/independientes del CUIT en esta base.
+            var cuentas = await _clientes.BuscarCuentasPorCuitEnBaseAsync(baseNombre, cuit);
+            if (cuentas.Count == 0)
                 // El cliente no existe en esta base: no es error, simplemente no aporta movimientos.
                 return new EstadoBaseResultado(baseNombre, true, null, 0m, null, new());
 
-            var estado = await _ctaCte.EstadoClienteEnBaseAsync(baseNombre, cliente.Codigo, fecha);
-            var comps = estado?.Comprobantes ?? new();
+            var lista = new List<CompCtaCte>();
+            decimal totalSaldo = 0m;
+            string? fechaActualizacion = null;
 
-            var lista = comps.Select(c => new CompCtaCte(
-                baseNombre,
-                ParseFecha(c.Fecha),
-                c.Fecha,
-                c.TipoComprobante,
-                c.Prefijo,
-                c.Numero,
-                c.Vencimientos.FirstOrDefault()?.FechaVencimiento,
-                c.Vencimientos.Count,
-                c.TotalCtaCte,
-                c.Saldo)).ToList();
+            // Cada cuenta tiene su propia cuenta corriente; las traemos (secuencial,
+            // BAS no tolera paralelo por base) y mergeamos, etiquetando cada
+            // movimiento con el código de la cuenta a la que pertenece.
+            foreach (var cuenta in cuentas)
+            {
+                var codigo = (cuenta.Codigo ?? "").Trim();
+                if (codigo.Length == 0) continue;
 
-            return new EstadoBaseResultado(
-                baseNombre, true, null, comps.Sum(c => c.Saldo), estado?.FechaActualizacion, lista);
+                var estado = await _ctaCte.EstadoClienteEnBaseAsync(baseNombre, codigo, fecha);
+                var comps = estado?.Comprobantes ?? new();
+
+                lista.AddRange(comps.Select(c => new CompCtaCte(
+                    baseNombre,
+                    codigo,
+                    cuenta.RazonSocial,
+                    ParseFecha(c.Fecha),
+                    c.Fecha,
+                    c.TipoComprobante,
+                    c.Prefijo,
+                    c.Numero,
+                    c.Vencimientos.FirstOrDefault()?.FechaVencimiento,
+                    c.Vencimientos.Count,
+                    c.TotalCtaCte,
+                    c.Saldo)));
+
+                totalSaldo += comps.Sum(c => c.Saldo);
+                if (!string.IsNullOrWhiteSpace(estado?.FechaActualizacion))
+                    fechaActualizacion = estado.FechaActualizacion;
+            }
+
+            return new EstadoBaseResultado(baseNombre, true, null, totalSaldo, fechaActualizacion, lista);
         }
         catch (Exception ex)
         {
@@ -193,8 +309,8 @@ public class MiCuentaController : ControllerBase
             ? d : DateTime.MaxValue;
 
     private sealed record CompCtaCte(
-        string Base, DateTime OrdenFecha, string? Fecha, string? Tipo, string? Prefijo,
-        int Numero, string? Vencimiento, int Cuotas, decimal Total, decimal Saldo);
+        string Base, string? CodigoCliente, string? RazonSocial, DateTime OrdenFecha, string? Fecha, string? Tipo,
+        string? Prefijo, int Numero, string? Vencimiento, int Cuotas, decimal Total, decimal Saldo);
 
     private sealed record EstadoBaseResultado(
         string Base, bool Ok, string? Error, decimal TotalSaldo, string? FechaActualizacion,
@@ -206,13 +322,10 @@ public class MiCuentaController : ControllerBase
     [HttpGet("comprobante")]
     public async Task<ActionResult> Comprobante(
         [FromQuery] string tipo, [FromQuery] string prefijo, [FromQuery] string numero,
-        [FromQuery(Name = "base")] string? baseNombre)
+        [FromQuery(Name = "base")] string? baseNombre, [FromQuery(Name = "cuit")] string? cuitParam)
     {
-        var esCliente = User.FindFirstValue("esCliente") == "true";
-        var cuit = User.FindFirstValue("identificador");
-
-        if (!esCliente || string.IsNullOrWhiteSpace(cuit))
-            return BadRequest(new { mensaje = "Tu usuario no tiene comprobantes de cliente asociados." });
+        var (objetivo, err) = ResolverCuitObjetivo(cuitParam);
+        if (objetivo is null) return BadRequest(new { mensaje = err });
 
         if (string.IsNullOrWhiteSpace(tipo) || string.IsNullOrWhiteSpace(prefijo) || string.IsNullOrWhiteSpace(numero))
             return BadRequest(new { mensaje = "Faltan datos del comprobante." });
@@ -224,19 +337,23 @@ public class MiCuentaController : ControllerBase
 
         try
         {
-            // Codigo del cliente EN esa base, para el control de acceso.
-            var cliente = await _clientes.BuscarPorCuitEnBaseAsync(bn, cuit!);
-            var cod = (cliente?.Codigo ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(cod))
+            // Códigos del cliente EN esa base (puede tener varias cuentas con el
+            // mismo CUIT), para el control de acceso.
+            var cuentas = await _clientes.BuscarCuentasPorCuitEnBaseAsync(bn, objetivo);
+            var codigos = cuentas
+                .Select(x => (x.Codigo ?? "").Trim())
+                .Where(x => x.Length > 0)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (codigos.Count == 0)
                 return StatusCode(403, new { mensaje = "No tenés cuenta en esta base." });
 
             var c = await _comprobantes.ConsultaVentaEnBaseAsync(bn, tipo, prefijo, numero);
             if (c is null)
                 return NotFound(new { mensaje = "No se encontró el comprobante." });
 
-            // Control de acceso: el comprobante tiene que ser de este cliente.
+            // Control de acceso: el comprobante tiene que ser de alguna de sus cuentas.
             var dueno = (c.CodClienteCtaCte ?? "").Trim();
-            if (!string.Equals(dueno, cod, StringComparison.OrdinalIgnoreCase))
+            if (!codigos.Contains(dueno))
                 return StatusCode(403, new { mensaje = "Este comprobante no corresponde a tu cuenta." });
 
             var items = c.LineasItem.Select(l => new

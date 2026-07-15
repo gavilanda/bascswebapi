@@ -99,7 +99,11 @@ public class BasRemitoIngresoService
                 ["NumeroUnidadMedida"] = "1"
             };
 
-            if (!string.IsNullOrWhiteSpace(r.Partida))
+            // La partida se envía SÓLO si el producto administra partidas EN ESTA BASE.
+            // Si la base no maneja partidas para ese producto, se graba igual sin
+            // partida (evita el rechazo de BAS al mandar partida en un bien que no
+            // la administra). Si no se pudo resolver el artículo, se omite por las dudas.
+            if (!string.IsNullOrWhiteSpace(r.Partida) && (r.Articulo?.AdministraPartidas ?? false))
                 item["Partida"] = r.Partida!.Trim();
 
             // Series: texto libre separado por coma/; -> ExplosionSeries.

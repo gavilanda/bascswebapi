@@ -507,7 +507,12 @@ public class PreRemitosController : ControllerBase
         for (int i = 0; i < lineasOrdenadas.Count; i++)
         {
             var l = lineasOrdenadas[i];
-            if (l.FechaVencimiento.HasValue)
+            // La partida se usa sólo si: (a) el usuario cargó un vencimiento, Y (b) el
+            // producto ADMINISTRA PARTIDAS en la base destino. Si la base no maneja
+            // partidas para ese artículo, se graba igual sin partida: no se llama a
+            // /api/Partidas (que rechazaría con "el ítem debe manejar partidas").
+            var administraPartidas = bienes[l.Id]?.AdministraPartidas ?? false;
+            if (l.FechaVencimiento.HasValue && administraPartidas)
             {
                 if (numeroPartida.Length > LargoMaxPartida)
                     return BadRequest(new { mensaje = $"La partida calculada '{numeroPartida}' supera los {LargoMaxPartida} caracteres. Revisá el código de proveedor." });

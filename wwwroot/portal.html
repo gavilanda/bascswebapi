@@ -12,14 +12,20 @@
   * { box-sizing: border-box; }
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     margin:0; background:var(--bg); color:var(--txt); }
-  header { background:#fff; border-bottom:1px solid var(--borde); padding:16px 24px;
-    display:flex; justify-content:space-between; align-items:center; }
+  /* El header comparte la misma caja que main (max-width + centrado + padding),
+     y la barra visual (.header-inner) queda inset igual que las cards de abajo,
+     así alinean a cualquier ancho de pantalla. */
+  header { max-width:1500px; margin:24px auto 0; padding:0 24px; }
+  .header-inner { background:#fff; border:1px solid var(--borde); border-radius:10px;
+    padding:16px 24px; display:flex; justify-content:space-between; align-items:center; }
   header h1 { font-size:16px; margin:0; font-weight:600; }
   .sub { color:var(--txt2); font-size:13px; }
   main { max-width:1500px; margin:24px auto; padding:0 24px; }
   .card { background:#fff; border:1px solid var(--borde); border-radius:10px;
     padding:20px; margin-bottom:20px; }
   .card h2 { font-size:15px; margin:0 0 14px; font-weight:600; }
+  /* Login compacto: tarjeta angosta y centrada, al tamaño de los campos */
+  #vistaLogin { max-width:360px; margin:48px auto; }
   label { display:block; font-size:13px; color:var(--txt2); margin:10px 0 4px; }
   input { width:100%; padding:9px 10px; border:1px solid var(--borde);
     border-radius:7px; font-size:14px; background:#fff; }
@@ -38,7 +44,7 @@
   .msg.ok { background:#e7f6ec; color:var(--verde); display:block; }
   .hidden { display:none !important; }
   .topinfo { font-size:13px; color:var(--txt2); margin-right:10px; }
-  .layout { display:flex; gap:20px; align-items:flex-start; }
+  .layout { display:flex; gap:6px; align-items:flex-start; }
   .sidebar { width:210px; flex:0 0 210px; background:#fff; border:1px solid var(--borde);
     border-radius:10px; padding:8px; }
   .sidebar a { display:block; padding:10px 12px; border-radius:7px; font-size:14px;
@@ -50,13 +56,13 @@
     .layout { flex-direction:column; }
     .sidebar { width:100%; flex-basis:auto; }
   }
-  .resumen { display:flex; justify-content:space-between; align-items:flex-start;
-    flex-wrap:wrap; gap:14px; margin-bottom:6px; }
+  .resumen { display:flex; justify-content:space-between; align-items:center;
+    flex-wrap:wrap; gap:6px 14px; margin-bottom:6px; }
   .resumen .montos { text-align:right; }
   .saldo { font-size:24px; font-weight:700; }
+  .saldo-lbl { font-size:24px; font-weight:400; color:var(--txt); }
   .saldo.deuda { color:var(--rojo); }
   .saldo.aldia { color:var(--verde); }
-  .actu { font-size:12px; color:var(--txt2); margin-top:2px; }
   .vacio { color:var(--txt2); font-size:14px; padding:16px 4px; }
   .datos { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:4px 24px; margin:0; }
   .datos .item dt { font-size:12px; color:var(--txt2); margin-top:12px; }
@@ -74,17 +80,91 @@
   .lnk-comp:hover { text-decoration:underline; }
   /* Identificación de base (cuenta corriente consolidada BARK + PRUEBAB) */
   .basebadge { font-size:11px; padding:2px 7px; border-radius:6px; font-weight:600; white-space:nowrap; }
+  .cod-cli { color:var(--txt2); font-size:12px; white-space:nowrap; cursor:help; }
+  /* Estadísticas de venta */
+  .vtafiltros { display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px; }
+  .vtafiltros label { display:flex; flex-direction:column; font-size:12px; color:var(--txt2); gap:4px; margin:0; }
+  .vtafiltros input { width:auto; }
+  .vta-totales { margin-left:auto; display:flex; align-items:center; gap:16px; }
+  .vt-stat { display:flex; flex-direction:column; text-align:center; }
+  .vt-lbl { font-size:12px; color:var(--txt2); }
+  .vt-val { font-size:22px; font-weight:700; }
+  /* Línea de bases + Unificar, con divisoria debajo */
+  .vta-vista-filtros { display:flex; align-items:center; gap:40px; flex-wrap:wrap;
+    margin:2px 0 12px; padding-bottom:12px; border-bottom:1px solid var(--borde); }
+  .vta-unificar { display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+    font-weight:700; font-size:13px; white-space:nowrap; }
+  /* La leyenda trae margen propio que descentra; lo anulamos para alinear con "Unificar". */
+  .vta-vista-filtros .leyenda-bases { margin:0; }
+  /* Botón Gráfico/Listado: negro con letra blanca, al lado de Consultar. */
+  #btnVtaVista { background:var(--txt); color:#fff; }
+  .vta-sub { font-size:14px; margin:18px 0 8px; color:var(--txt); font-weight:600; }
+  /* Barras HTML (gráfico de clientes y de meses): finas y con scroll cuando hay muchas */
+  /* Un solo contenedor de scroll (desde "Evolución por mes"); gutter estable para
+     que el ancho no cambie entre gráfico y listado. */
+  #vtaScroll { overflow-y:auto; scrollbar-gutter:stable; padding-right:14px; }
+  .hbars { display:flex; flex-direction:column; }
+  /* Filas del gráfico al mismo alto que las del listado (para igualar la cantidad visible). */
+  .hbar-row { display:flex; align-items:center; gap:8px; font-size:14px; height:30px; border-bottom:1px solid var(--borde); }
+  .hbar-label { flex:0 0 190px; color:var(--txt2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hbar-track { flex:1 1 60px; height:9px; background:var(--bg); border-radius:4px; overflow:hidden; }
+  .hbar-fill { height:100%; background:var(--azul); border-radius:4px; }
+  .hbar-fill.neg { background:var(--rojo); }
+  .hbar-val { flex:0 0 auto; white-space:nowrap; font-weight:600; color:var(--txt); }
+  .hbar-pct { color:var(--txt2); font-weight:400; }
+  #tablaVtaCli thead th { position:sticky; top:0; background:#fff; z-index:1; }
+  #tablaVtaCli th, #tablaVtaCli td { padding:5px 8px; }
+  #vtaClienteSel { margin:2px 0 10px; font-size:14px; }
+  #vtaClienteSel .chip { background:var(--activo); color:var(--activotxt); padding:4px 10px; border-radius:6px; font-weight:600; }
+  #vtaClienteSel a { color:var(--azul); cursor:pointer; margin-left:10px; font-size:13px; }
   .basebadge.BARK { background:#dbeafe; color:#1e40af; }
   .basebadge.PRUEBAB { background:#e7f6ec; color:#15803d; }
-  #cuerpoCC tr.base-BARK td:first-child { box-shadow: inset 3px 0 0 #2563eb; }
-  #cuerpoCC tr.base-PRUEBAB td:first-child { box-shadow: inset 3px 0 0 #16a34a; }
+  /* Cuenta corriente: filas compactas (mismo tamaño de letra) */
+  #tablaCC th, #tablaCC td { padding:4px 6px; }
+  /* Scroll cuando hay muchas filas; encabezado fijo arriba */
+  #ccScroll { overflow:auto; }
+  #tablaCC thead th { position:sticky; top:0; background:#fff; z-index:1; }
+  /* Fondo suave por base (solo staff); el amarillo del último elegido gana */
+  #cuerpoCC tr.basebg-0 { background:#eff4ff; }
+  #cuerpoCC tr.basebg-1 { background:#eefaf1; }
+  #cuerpoCC tr.basebg-2 { background:#fdf2f8; }
+  #cuerpoCC tr.basebg-3 { background:#fff7ed; }
+  #cuerpoCC tr.basebg-4 { background:#f5f3ff; }
+  #cuerpoCC tr.basebg-5 { background:#f0fdfa; }
+  /* Encabezado "Fecha" clickeable para ordenar */
+  #thFecha { cursor:pointer; user-select:none; white-space:nowrap; }
   .leyenda-bases { display:flex; gap:14px; align-items:center; font-size:12px; color:var(--txt2); margin:2px 0 12px; flex-wrap:wrap; }
   .base-check { display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; color:var(--txt); }
   .leyenda-bases input[type="checkbox"] { width:auto; padding:0; margin:0; cursor:pointer; accent-color:var(--azul); }
   .aviso { background:#fef9c3; color:#854d0e; font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; }
+  /* Usuario externo: no se le muestra la estructura interna de bases
+     (ni el filtro "Ver bases:" ni la columna Base de la tabla). */
+  .externo #leyendaBases { display:none !important; }
+  .externo #tablaCC th:nth-child(-n+2),
+  .externo #tablaCC td:nth-child(-n+2) { display:none; }
+  /* Barra de consulta de staff (búsqueda de clientes) */
+  /* Resultados como dropdown flotante: se superpone, no empuja lo de abajo */
+  .buscador-wrap { position:relative; }
+  .staff-res { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:30;
+    background:#fff; border:1px solid var(--borde); border-radius:8px; max-height:280px;
+    overflow:auto; box-shadow:0 8px 24px rgba(0,0,0,.12); }
+  .staff-res .item { padding:9px 12px; cursor:pointer; border-bottom:1px solid var(--borde); font-size:14px; }
+  .staff-res .item:last-child { border-bottom:none; }
+  .staff-res .item:hover { background:var(--activo); }
+  .staff-res .item .cuit { color:var(--txt2); font-size:12px; margin-left:6px; }
+  .staff-res .vacio { padding:10px 12px; color:var(--txt2); font-size:13px; }
+  /* Card de cliente: buscador (angosto) a la izquierda + datos del cliente al lado */
+  .cliente-ctx { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+  #buscadorCliente { flex:0 0 320px; max-width:100%; }
+  #datosCliente { flex:1 1 380px; min-width:0; }
+  #datosCliente .datos { grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); }
+  /* Card de cliente minimizada: poco padding y datos sin margen superior */
+  #staffBar { padding:14px 18px; }
+  #datosCliente .datos .item dt { margin-top:0; }
+  #datosCliente .datos .item dd { font-size:14px; }
   /* Resaltado fijo de la fila del último comprobante visto */
   #cuerpoCC tr { transition: background-color .3s ease; }
-  #cuerpoCC tr.fila-foco { background:#fef9c3; }
+  #cuerpoCC tr.fila-foco { background:#fef9c3 !important; }
   /* Indicador de carga */
   .cargando { color:var(--txt2); font-size:14px; padding:18px 2px; display:flex; align-items:center; gap:10px; }
   .cargando::before { content:""; width:16px; height:16px; border:2px solid var(--borde);
@@ -94,13 +174,15 @@
 </head>
 <body>
 <header>
-  <div>
-    <h1>Portal de Clientes</h1>
-    <div class="sub">Mi cuenta</div>
-  </div>
-  <div id="sesion" class="hidden">
-    <span class="topinfo" id="quien"></span>
-    <button class="sec" id="btnSalir">Salir</button>
+  <div class="header-inner">
+    <div>
+      <h1>Portal de Clientes</h1>
+      <div class="sub">Mi cuenta</div>
+    </div>
+    <div id="sesion" class="hidden">
+      <span class="topinfo" id="quien"></span>
+      <button class="sec" id="btnSalir">Salir</button>
+    </div>
   </div>
 </header>
 
@@ -119,12 +201,40 @@
   <!-- PORTAL (cáscara con barra lateral) -->
   <section id="vistaPortal" class="hidden">
     <div class="layout">
-      <nav class="sidebar">
-        <a data-sec="cuenta" class="activo">Cuenta corriente</a>
-        <a data-sec="datos">Mis datos</a>
-      </nav>
+      <!-- El menú se dibuja por JS desde la tabla FuncionesPortal, según el
+           público del usuario (externo / interno). Ver construirMenu(). -->
+      <nav class="sidebar" id="menu"></nav>
 
       <div class="contenido">
+
+        <!-- Card de cliente: es el CONTEXTO de la función, no del portal entero.
+             Aparece cuando la función pide cliente (requiereCliente), para
+             internos Y externos. Contiene, al lado del buscador, los datos del
+             cliente (lo que antes era "Mis datos", que dejó de ser un programa
+             del menú). El BUSCADOR es sólo para el staff interno; el externo es
+             el cliente, así que ve sólo sus datos. Ver mostrarSeccion(). -->
+        <div id="staffBar" class="card hidden">
+          <div class="cliente-ctx">
+            <!-- Buscador de cliente: sólo staff interno. Sin título. Los
+                 resultados salen en un dropdown flotante (no empujan la card). -->
+            <div id="buscadorCliente" class="hidden">
+              <div class="buscador-wrap">
+                <input id="staffBuscar" type="text" placeholder="Buscar por razón social o CUIT" autocomplete="off" />
+                <div id="staffResultados" class="staff-res hidden"></div>
+              </div>
+            </div>
+            <!-- Datos del cliente, sin título. Externo: razón social + código.
+                 Interno (staff): además el CUIT (#itemCuit se muestra según esStaff). -->
+            <div id="datosCliente">
+              <div id="msgDatos" class="msg"></div>
+              <dl class="datos">
+                <div class="item"><dt>Razón social</dt><dd id="datoNombre">—</dd></div>
+                <div class="item" id="itemCod"><dt>Su código de cliente</dt><dd id="datoCod">—</dd></div>
+                <div class="item" id="itemCuit"><dt>CUIT</dt><dd id="datoCuit">—</dd></div>
+              </dl>
+            </div>
+          </div>
+        </div>
 
         <!-- CUENTA CORRIENTE -->
         <div id="secCuenta" class="card seccion">
@@ -132,34 +242,32 @@
           <!-- Vista: cuenta corriente -->
           <div id="ccVista">
             <div class="resumen">
-              <div>
-                <h2 style="margin:0">Cuenta corriente</h2>
-                <div class="sub" id="ccCod"></div>
-              </div>
+              <h2 style="margin:0; font-size:24px; font-weight:400">Cuenta corriente</h2>
               <div class="montos">
-                <div class="sub">Saldo total</div>
-                <div id="saldoTotal" class="saldo">—</div>
-                <div id="actualizacion" class="actu"></div>
+                <span class="saldo-lbl">Saldo actual&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;&nbsp;</span><span id="saldoTotal" class="saldo">—</span>
               </div>
             </div>
             <div id="msgCuenta" class="msg"></div>
             <div id="avisoBases" class="aviso hidden"></div>
             <div id="ccCargando" class="cargando hidden">Cargando cuenta corriente…</div>
             <div id="leyendaBases" class="leyenda-bases hidden"></div>
-            <table id="tablaCC" class="hidden">
-              <thead>
-                <tr>
-                  <th>Base</th>
-                  <th>Fecha</th>
-                  <th>Comprobante</th>
-                  <th>Vencimiento</th>
-                  <th class="num">Total</th>
-                  <th class="num">Saldo</th>
-                  <th class="num">Saldo acumulado</th>
-                </tr>
-              </thead>
-              <tbody id="cuerpoCC"></tbody>
-            </table>
+            <div id="ccScroll">
+              <table id="tablaCC" class="hidden">
+                <thead>
+                  <tr>
+                    <th>Base</th>
+                    <th>Cód. cliente</th>
+                    <th id="thFecha">Fecha <span id="fechaArrow"></span></th>
+                    <th>Comprobante</th>
+                    <th>Vencimiento</th>
+                    <th class="num">Total</th>
+                    <th class="num">Saldo</th>
+                    <th class="num">Saldo acumulado</th>
+                  </tr>
+                </thead>
+                <tbody id="cuerpoCC"></tbody>
+              </table>
+            </div>
             <div id="ccVacio" class="vacio hidden">No hay comprobantes para mostrar.</div>
           </div>
 
@@ -192,20 +300,46 @@
 
         </div>
 
-        <!-- MIS DATOS -->
-        <div id="secDatos" class="card seccion hidden">
-          <h2>Mis datos</h2>
-          <div id="msgDatos" class="msg"></div>
-          <dl class="datos">
-            <div class="item"><dt>Razón social</dt><dd id="datoNombre">—</dd></div>
-            <div class="item"><dt>Nombre de fantasía</dt><dd id="datoFantasia">—</dd></div>
-            <div class="item"><dt>CUIT</dt><dd id="datoCuit">—</dd></div>
-            <div class="item"><dt>Código de cliente</dt><dd id="datoCod">—</dd></div>
-            <div class="item"><dt>Email</dt><dd id="datoEmail">—</dd></div>
-            <div class="item"><dt>Teléfono</dt><dd id="datoTel">—</dd></div>
-            <div class="item"><dt>Domicilio</dt><dd id="datoDom">—</dd></div>
-            <div class="item"><dt>Condición impositiva (cód. BAS)</dt><dd id="datoCondicion">—</dd></div>
-          </dl>
+        <!-- ESTADÍSTICAS DE VENTA (función interna) -->
+        <div id="secVentas" class="card seccion hidden">
+          <div class="vtafiltros">
+            <label>Desde <input id="vtaDesde" type="date"></label>
+            <label>Hasta <input id="vtaHasta" type="date"></label>
+            <label>Cliente (opcional)
+              <div class="buscador-wrap">
+                <input id="vtaBuscarCli" type="text" placeholder="Buscar por razón social o CUIT" autocomplete="off">
+                <div id="vtaResBuscar" class="staff-res hidden"></div>
+              </div>
+            </label>
+            <button id="btnVtaConsultar">Consultar</button>
+            <button id="btnVtaVista">Gráfico</button>
+            <div class="vta-totales">
+              <div class="vt-stat"><span class="vt-lbl">Total vendido</span><span class="vt-val" id="kpiTotal">—</span></div>
+              <div class="vt-stat"><span class="vt-lbl">Comprobantes</span><span class="vt-val" id="kpiCant">—</span></div>
+            </div>
+          </div>
+          <div id="vtaClienteSel" class="staff-elegido hidden"></div>
+          <div id="vtaMsg" class="msg"></div>
+          <div id="vtaAviso" class="aviso hidden"></div>
+          <div id="vtaCargando" class="cargando hidden">Consultando ventas… (los rangos largos o bases grandes pueden tardar varios minutos)</div>
+
+          <div id="vtaResultado" class="hidden">
+            <div class="vta-vista-filtros">
+              <div id="vtaLeyendaBases" class="leyenda-bases hidden"></div>
+              <label class="vta-unificar"><input type="checkbox" id="vtaUnificar" checked> Unificar por CUIT</label>
+            </div>
+
+            <div id="vtaScroll">
+              <h3 class="vta-sub" style="margin-top:0">Evolución por mes</h3>
+              <div id="chartMes"></div>
+              <h3 class="vta-sub">Top clientes</h3>
+              <div id="chartClientes"></div>
+              <table id="tablaVtaCli" class="hidden">
+                <thead><tr><th>Bases</th><th>Cód. cliente</th><th>Cliente</th><th class="num">Importe</th><th class="num">%</th></tr></thead>
+                <tbody id="cuerpoVtaCli"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -217,8 +351,15 @@
   const $ = id => document.getElementById(id);
   let token = localStorage.getItem("pc_token") || "";
   let ident = localStorage.getItem("pc_ident") || "";
+  // Tipo del usuario ("Interno" | "Extranet"): define qué público es y, por lo
+  // tanto, qué funciones del menú ve. Ver FEATURES / audienciaUsuario().
+  let tipo = localStorage.getItem("pc_tipo") || "";
   let codcli = localStorage.getItem("pc_codcli") || "";
   let razon = localStorage.getItem("pc_razon") || "";
+  // Staff interno: puede buscar un cliente y ver su cuenta (pivotea por CUIT).
+  let esStaff = localStorage.getItem("pc_staff") === "true";
+  let clienteCuit = localStorage.getItem("pc_cli_cuit") || "";
+  let clienteRazon = localStorage.getItem("pc_cli_razon") || "";
 
   // Tipos que NO son documentos (recibos, etc.): se muestran en la cuenta
   // corriente pero sin link al detalle (BAS no los devuelve como comprobante de venta).
@@ -232,6 +373,7 @@
   let ccCache = null;      // última cuenta corriente traída
   let datosCache = null;   // últimos "mis datos" traídos
   let basesVisibles = {};  // qué bases están tildadas en la cuenta corriente
+  let ordenFechaAsc = false;  // orden del listado por fecha (false = más nuevo primero)
 
   function mostrar(el, t, tipo) { el.textContent = t; el.className = "msg " + tipo; }
   function limpiar(el) { el.textContent = ""; el.className = "msg"; }
@@ -253,6 +395,8 @@
     const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     return m ? (m[3] + "/" + m[2] + "/" + m[1]) : d;
   }
+  // Clave ordenable por fecha: yyyy-MM-dd (ordena lexicográficamente = cronológico).
+  function claveFecha(s) { return String(s || "").split("T")[0].split(" ")[0]; }
   function par(label, val) {
     return '<div class="par"><span class="parlbl">' + esc(label) + ':</span><span>' + esc(val) + '</span></div>';
   }
@@ -289,7 +433,8 @@
     const q = "?tipo=" + encodeURIComponent(tipo)
             + "&prefijo=" + encodeURIComponent(prefijo)
             + "&numero=" + encodeURIComponent(numero)
-            + "&base=" + encodeURIComponent(base);
+            + "&base=" + encodeURIComponent(base)
+            + cuitQ("&");
 
     const p = (async () => {
       const r = await fetch("/api/mi-cuenta/comprobante" + q, { headers: { "Authorization": "Bearer " + token } });
@@ -317,20 +462,71 @@
 
   function pintarEncabezado() {
     $("quien").textContent = razon || ident;
-    $("ccCod").textContent = codcli ? ("Código de cliente: " + codcli) : "";
   }
 
-  function mostrarSeccion(sec) {
-    const mapa = { cuenta: "secCuenta", datos: "secDatos" };
+  // ---------- Menú por datos (tabla FuncionesPortal del backend) ----------
+  // El QUÉ aparece y a QUIÉN lo decide la tabla del backend (configurable desde
+  // la intranet, sin publicar). El CÓMO —la consulta en sí— es código: cada
+  // función se implementa acá y se registra en IMPLEMENTACIONES con su clave.
+  // El menú se arma cruzando lo que devuelve /api/funciones-portal con este
+  // catálogo. Para sumar una función nueva: 1) programá su sección + init,
+  // 2) registrala acá con su clave, 3) sembrá su fila en Program.cs. La
+  // etiqueta/orden/público/activa los maneja después el admin desde la intranet.
+  // requiereCliente: la función consulta datos de un cliente puntual, así que
+  // para el staff interno necesita la barra de búsqueda de cliente. Una función
+  // que no dependa de un cliente (ej. una consulta general) va en false y no
+  // muestra esa barra.
+  const IMPLEMENTACIONES = {
+    cuenta: { sec: "secCuenta", init: cargarCuenta, requiereCliente: true },
+    ventas: { sec: "secVentas", init: iniciarVentas, requiereCliente: false },
+  };
+
+  // Funciones del menú del usuario, como las devolvió el backend: [{clave, etiqueta}].
+  // Se filtran a las que además tengan implementación local (por las dudas).
+  let menuFunciones = [];
+
+  // Pide al backend el menú del usuario (ya filtrado por su público y por activa)
+  // y dibuja la barra lateral. Ante error deja el menú vacío (no rompe la app).
+  async function construirMenu() {
+    menuFunciones = [];
+    try {
+      const r = await fetch("/api/funciones-portal", { headers: { "Authorization": "Bearer " + token } });
+      if (r.status === 401) { salir(); return; }
+      if (r.ok) {
+        const d = await r.json();
+        menuFunciones = (d.funciones || []).filter(f => IMPLEMENTACIONES[f.clave]);
+      }
+    } catch (e) { /* sin conexión: menú vacío */ }
+
+    const menu = $("menu");
+    menu.innerHTML = menuFunciones.map(f =>
+      '<a data-sec="' + esc(f.clave) + '">' + esc(f.etiqueta) + '</a>').join("");
+    menu.querySelectorAll("a").forEach(a =>
+      a.addEventListener("click", () => mostrarSeccion(a.dataset.sec)));
+  }
+
+  function mostrarSeccion(clave) {
+    // Si no vino clave o no está en el menú, caemos a la primera función disponible.
+    const f = menuFunciones.find(x => x.clave === clave) || menuFunciones[0];
+    if (!f) return;
+    const impl = IMPLEMENTACIONES[f.clave];
+    if (!impl) return;
+
+    // La card de cliente (buscador + datos) es el contexto de la función: se
+    // muestra cuando la función pide cliente, para internos y externos. El
+    // BUSCADOR de adentro es sólo para el staff interno (el externo es el cliente).
+    $("staffBar").classList.toggle("hidden", !impl.requiereCliente);
+    $("buscadorCliente").classList.toggle("hidden", !esStaff);
+
     document.querySelectorAll(".seccion").forEach(s => s.classList.add("hidden"));
-    const destino = $(mapa[sec] || "secCuenta");
-    if (destino) destino.classList.remove("hidden");
+    $(impl.sec).classList.remove("hidden");
 
-    document.querySelectorAll(".sidebar a").forEach(a =>
-      a.classList.toggle("activo", a.dataset.sec === sec));
+    $("menu").querySelectorAll("a").forEach(a =>
+      a.classList.toggle("activo", a.dataset.sec === f.clave));
 
-    if (sec === "cuenta") cargarCuenta();
-    else if (sec === "datos") cargarDatos();
+    // Los datos del cliente acompañan a toda función que pida cliente.
+    if (impl.requiereCliente) cargarDatos();
+    if (impl.init) impl.init();
   }
 
   function actualizarVista() {
@@ -338,8 +534,13 @@
       $("vistaLogin").classList.add("hidden");
       $("vistaPortal").classList.remove("hidden");
       $("sesion").classList.remove("hidden");
+      // Al externo no se le muestra la estructura interna de bases (ver CSS .externo).
+      $("vistaPortal").classList.toggle("externo", !esStaff);
       pintarEncabezado();
-      mostrarSeccion("cuenta");
+      construirMenu().then(() => {
+        const primera = menuFunciones[0];
+        if (primera) mostrarSeccion(primera.clave);
+      });
     } else {
       $("vistaPortal").classList.add("hidden");
       $("vistaLogin").classList.remove("hidden");
@@ -362,57 +563,66 @@
     const data = await r.json();
 
     token = data.token; ident = data.identificador;
+    tipo = data.tipo || "";
     codcli = data.codigoCliente || ""; razon = data.razonSocial || "";
+    esStaff = (data.tipo === "Interno" && data.accedePortal === true);
+    // Al loguear no hay cliente elegido todavía (el staff lo busca).
+    clienteCuit = ""; clienteRazon = "";
     localStorage.setItem("pc_token", token);
     localStorage.setItem("pc_ident", ident);
+    localStorage.setItem("pc_tipo", tipo);
     localStorage.setItem("pc_codcli", codcli);
     localStorage.setItem("pc_razon", razon);
+    localStorage.setItem("pc_staff", esStaff ? "true" : "false");
+    localStorage.removeItem("pc_cli_cuit");
+    localStorage.removeItem("pc_cli_razon");
     actualizarVista();
   }
 
   function salir() {
-    token = ""; ident = ""; codcli = ""; razon = "";
+    token = ""; ident = ""; tipo = ""; codcli = ""; razon = "";
+    esStaff = false; clienteCuit = ""; clienteRazon = "";
     ultimoComprobanteKey = ""; cacheDetalle = {}; enVuelo = {}; ccCache = null; datosCache = null;
     basesVisibles = {};
-    ["pc_token", "pc_ident", "pc_codcli", "pc_razon"].forEach(k => localStorage.removeItem(k));
+    ["pc_token", "pc_ident", "pc_tipo", "pc_codcli", "pc_razon", "pc_staff", "pc_cli_cuit", "pc_cli_razon"].forEach(k => localStorage.removeItem(k));
     actualizarVista();
   }
 
   // ---------- Mis datos ----------
   function pintarDatos(d) {
     if (d.razonSocial) $("datoNombre").textContent = d.razonSocial;
-    $("datoFantasia").textContent = d.nombreFantasia || "—";
     if (d.cuit) $("datoCuit").textContent = d.cuit;
-    if (d.codigoCliente) $("datoCod").textContent = d.codigoCliente;
-    $("datoEmail").textContent = d.email || "—";
-    $("datoCondicion").textContent = d.condicionImpositiva || "—";
-    if (d.domicilio) {
-      $("datoTel").textContent = d.domicilio.telefono || "—";
-      const partes = [
-        d.domicilio.calle,
-        d.domicilio.localidad,
-        d.domicilio.codigoPostal ? ("CP " + d.domicilio.codigoPostal) : ""
-      ].filter(Boolean);
-      $("datoDom").textContent = partes.join(", ") || "—";
-    } else {
-      $("datoTel").textContent = "—";
-      $("datoDom").textContent = "—";
-    }
   }
 
   function cargarDatos() {
-    $("datoNombre").textContent = razon || "—";
-    $("datoCuit").textContent = ident || "—";
-    $("datoCod").textContent = codcli || "—";
-    if (datosCache) pintarDatos(datosCache);
+    // El código de cliente lo ve SOLO el externo (es el propio); el staff lo tiene
+    // por columna en el listado. El CUIT, al revés: sólo el staff.
+    $("itemCod").classList.toggle("hidden", esStaff);
+    $("itemCuit").classList.toggle("hidden", !esStaff);
     limpiar($("msgDatos"));
+
+    if (!esStaff) {
+      // Externo: razón social + su código, directo del login (sin llamada a BAS).
+      $("datoNombre").textContent = razon || "—";
+      $("datoCod").textContent = codcli || "—";
+      return;
+    }
+    if (!clienteCuit) {
+      // Staff sin cliente elegido: campos vacíos, sin mensajes (card mínima).
+      ["datoNombre", "datoCuit"].forEach(id => $(id).textContent = "—");
+      return;
+    }
+    // Staff con cliente: razón y CUIT al instante (los tenemos de la búsqueda).
+    $("datoNombre").textContent = clienteRazon || "—";
+    $("datoCuit").textContent = clienteCuit || "—";
+    if (datosCache) pintarDatos(datosCache);
     actualizarDatosFondo(!datosCache);
   }
 
   async function actualizarDatosFondo(foreground) {
     let r;
     try {
-      r = await fetch("/api/mi-cuenta/datos", { headers: { "Authorization": "Bearer " + token } });
+      r = await fetch("/api/mi-cuenta/datos" + cuitQ("?"), { headers: { "Authorization": "Bearer " + token } });
     } catch (e) { return; }
 
     if (r.status === 401) { salir(); return; }
@@ -425,7 +635,7 @@
     }
     const d = await r.json();
     datosCache = d;
-    if (!$("secDatos").classList.contains("hidden")) pintarDatos(d);
+    if (!$("staffBar").classList.contains("hidden")) pintarDatos(d);
   }
 
   // ---------- Cuenta corriente ----------
@@ -470,9 +680,11 @@
     const basesFallidas = (d.bases || []).filter(b => b && b.ok === false);
     const avisoEl = $("avisoBases");
     if (basesFallidas.length > 0) {
-      avisoEl.textContent = "No se pudo consultar: "
-        + basesFallidas.map(b => b.baseNombre).join(", ")
-        + ". Se muestran las bases disponibles.";
+      // Al externo no le revelamos nombres de bases: aviso genérico.
+      avisoEl.textContent = esStaff
+        ? ("No se pudo consultar: " + basesFallidas.map(b => b.baseNombre).join(", ")
+            + ". Se muestran las bases disponibles.")
+        : "Algunos movimientos podrían no estar disponibles en este momento.";
       avisoEl.classList.remove("hidden");
     } else {
       avisoEl.classList.add("hidden");
@@ -494,13 +706,13 @@
     const total = comps.reduce((s, c) => s + (Number(c.saldo) || 0), 0);
     $("saldoTotal").textContent = plata(total);
     $("saldoTotal").className = "saldo " + (Math.abs(total) < 0.005 ? "aldia" : "deuda");
-    $("actualizacion").textContent = d.fechaActualizacion ? ("Actualizado: " + fecha(d.fechaActualizacion)) : "";
 
     const cuerpo = $("cuerpoCC");
     cuerpo.innerHTML = "";
 
     if (comps.length === 0) {
       $("tablaCC").classList.add("hidden");
+      $("ccScroll").style.maxHeight = "";
       $("ccVacio").textContent = todos.length > 0
         ? "Seleccioná al menos una base para ver movimientos."
         : "No hay comprobantes para mostrar.";
@@ -509,12 +721,30 @@
     }
     $("ccVacio").classList.add("hidden");
 
-    let acumulado = 0;
-    for (const c of comps) {
-      acumulado += Number(c.saldo) || 0;
+    // Color de fondo por base (estable): índice calculado sobre TODAS las bases del
+    // resultado, no solo las visibles, para que no cambie al tildar/destildar.
+    const basesTodas = [...new Set(todos.map(c => c.baseNombre).filter(Boolean))].sort();
+    const colorDeBase = {};
+    basesTodas.forEach((b, i) => colorDeBase[b] = i % 6);
+
+    // El saldo acumulado se calcula SIEMPRE en orden cronológico (viejo -> nuevo),
+    // así el acumulado de cada fila es correcto sin importar cómo se muestre.
+    const cron = comps.slice().sort((a, b) => {
+      const fa = claveFecha(a.fecha), fb = claveFecha(b.fecha);
+      return fa < fb ? -1 : fa > fb ? 1 : 0;
+    });
+    let acum = 0;
+    for (const c of cron) { acum += Number(c.saldo) || 0; c._acum = acum; }
+
+    // Presentación: por defecto más nuevo primero (descendente). La flecha lo indica.
+    const mostrar = ordenFechaAsc ? cron : cron.slice().reverse();
+    $("fechaArrow").textContent = ordenFechaAsc ? "▲" : "▼";
+
+    for (const c of mostrar) {
       const tr = document.createElement("tr");
       tr.dataset.key = claveComprob(c.baseNombre, c.tipo, c.prefijo, c.numero);
-      if (c.baseNombre) tr.classList.add("base-" + c.baseNombre);
+      // Color por base solo para staff (el externo no ve la estructura de bases).
+      if (esStaff && c.baseNombre) tr.classList.add("basebg-" + colorDeBase[c.baseNombre]);
       if (tr.dataset.key === ultimoComprobanteKey) tr.classList.add("fila-foco");
 
       const nombre = comprobNombre(c.tipo, c.prefijo, c.numero);
@@ -530,15 +760,27 @@
 
       tr.innerHTML =
           '<td><span class="basebadge ' + esc(c.baseNombre) + '">' + esc(c.baseNombre) + '</span></td>'
+        + '<td class="cod-cli"' + (c.razonSocial ? ' title="' + esc(c.razonSocial) + '"' : '') + '>' + esc(c.codigoCliente || "") + '</td>'
         + '<td>' + esc(fecha(c.fecha)) + '</td>'
         + '<td>' + celdaComp + '</td>'
         + '<td>' + venc + '</td>'
         + '<td class="num">' + plata(c.total) + '</td>'
         + '<td class="num">' + plata(c.saldo) + '</td>'
-        + '<td class="acum">' + plata(acumulado) + '</td>';
+        + '<td class="acum">' + plata(c._acum) + '</td>';
       cuerpo.appendChild(tr);
     }
     $("tablaCC").classList.remove("hidden");
+
+    // Scroll cuando hay más de 22 filas: fijamos el alto a 22 filas + encabezado.
+    const filas = cuerpo.querySelectorAll("tr");
+    if (filas.length > 22) {
+      const thead = $("tablaCC").tHead;
+      let h = thead ? thead.getBoundingClientRect().height : 0;
+      for (let i = 0; i < 22; i++) h += filas[i].getBoundingClientRect().height;
+      $("ccScroll").style.maxHeight = Math.ceil(h) + "px";
+    } else {
+      $("ccScroll").style.maxHeight = "";
+    }
 
     // Precarga al pasar el mouse.
     cuerpo.querySelectorAll("a.lnk-comp").forEach(a => {
@@ -553,6 +795,18 @@
   function cargarCuenta() {
     $("ccDetalle").classList.add("hidden");
     $("ccVista").classList.remove("hidden");
+
+    if (esStaff && !clienteCuit) {
+      // Staff sin cliente elegido: no consultamos, pedimos que busque.
+      $("ccCargando").classList.add("hidden");
+      $("tablaCC").classList.add("hidden");
+      $("leyendaBases").classList.add("hidden");
+      $("saldoTotal").textContent = "—";
+      $("saldoTotal").className = "saldo";
+      $("ccVacio").textContent = "Buscá y elegí un cliente para ver su cuenta corriente.";
+      $("ccVacio").classList.remove("hidden");
+      return;
+    }
 
     if (ccCache) {
       pintarCuenta(ccCache);
@@ -569,13 +823,12 @@
       $("ccVacio").classList.add("hidden");
       $("saldoTotal").textContent = "—";
       $("saldoTotal").className = "saldo";
-      $("actualizacion").textContent = "";
       $("ccCargando").classList.remove("hidden");
     }
 
     let r;
     try {
-      r = await fetch("/api/mi-cuenta/cuenta-corriente", { headers: { "Authorization": "Bearer " + token } });
+      r = await fetch("/api/mi-cuenta/cuenta-corriente" + cuitQ("?"), { headers: { "Authorization": "Bearer " + token } });
     } catch (e) {
       if (foreground) { $("ccCargando").classList.add("hidden"); mostrar($("msgCuenta"), "No se pudo conectar.", "err"); }
       return;
@@ -697,12 +950,288 @@
     }
   }
 
+  // ---------- Staff: búsqueda de clientes ----------
+  let staffTimer = null;
+
+  // Devuelve el sufijo ?cuit=/&cuit= cuando el staff tiene un cliente elegido; "" si no.
+  function cuitQ(sep) {
+    return (esStaff && clienteCuit) ? (sep + "cuit=" + encodeURIComponent(clienteCuit)) : "";
+  }
+
+  async function buscarClientesStaff() {
+    const q = $("staffBuscar").value.trim();
+    const cont = $("staffResultados");
+    if (q.length < 2) { cont.classList.add("hidden"); cont.innerHTML = ""; return; }
+    let r;
+    try {
+      r = await fetch("/api/mi-cuenta/buscar-clientes?q=" + encodeURIComponent(q), { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { return; }
+    if (r.status === 401) { salir(); return; }
+    if (!r.ok) { cont.innerHTML = '<div class="vacio">No se pudo buscar.</div>'; cont.classList.remove("hidden"); return; }
+    const d = await r.json();
+    const items = d.items || [];
+    if (items.length === 0) {
+      cont.innerHTML = '<div class="vacio">Sin resultados para “' + esc(q) + '”.</div>';
+    } else {
+      cont.innerHTML = items.map(it =>
+        '<div class="item" data-cuit="' + esc(it.cuit) + '" data-razon="' + esc(it.razonSocial) + '">'
+        + esc(it.razonSocial || "(sin razón social)")
+        + '<span class="cuit">' + esc(it.cuit) + '</span></div>'
+      ).join("") + (d.hayMas ? '<div class="vacio">Afiná la búsqueda para ver más.</div>' : "");
+    }
+    cont.classList.remove("hidden");
+    cont.querySelectorAll(".item").forEach(el =>
+      el.addEventListener("click", () => elegirCliente(el.dataset.cuit, el.dataset.razon)));
+  }
+
+  function elegirCliente(cuit, razonCli) {
+    clienteCuit = cuit || "";
+    clienteRazon = razonCli || "";
+    localStorage.setItem("pc_cli_cuit", clienteCuit);
+    localStorage.setItem("pc_cli_razon", clienteRazon);
+    // Reiniciamos las cachés: eran del cliente anterior.
+    ccCache = null; datosCache = null; cacheDetalle = {}; enVuelo = {};
+    basesVisibles = {}; ultimoComprobanteKey = "";
+    $("staffResultados").classList.add("hidden");
+    $("staffResultados").innerHTML = "";
+    $("staffBuscar").value = "";
+    mostrarSeccion("cuenta");
+  }
+
+  // ---------- Estadísticas de venta (interno) ----------
+  function iniciarVentas() {
+    // Fechas por defecto: primer día del mes actual → hoy (sólo si están vacías).
+    if (!$("vtaDesde").value) {
+      const hoy = new Date(); const p = n => String(n).padStart(2, "0");
+      $("vtaDesde").value = hoy.getFullYear() + "-" + p(hoy.getMonth() + 1) + "-01";
+      $("vtaHasta").value = hoy.getFullYear() + "-" + p(hoy.getMonth() + 1) + "-" + p(hoy.getDate());
+    }
+    // No auto-consulta (la query pega en vivo a BAS y puede tardar); el usuario aprieta Consultar.
+  }
+
+  let ventasData = null;        // último resultado (desglose por base)
+  let basesVtaVisibles = {};    // qué bases están tildadas en estadísticas
+  let vtaCuit = "";             // CUIT del cliente elegido en el buscador (vacío = todos)
+  let vtaClienteRazon = "";
+  let vtaBuscarTimer = null;
+  let vtaVista = "grafico";     // "grafico" | "listado" (toggle del botón)
+
+  async function cargarVentas() {
+    const desde = $("vtaDesde").value, hasta = $("vtaHasta").value;
+    if (!desde || !hasta) { mostrar($("vtaMsg"), "Elegí el rango de fechas.", "err"); return; }
+    limpiar($("vtaMsg"));
+    $("vtaAviso").classList.add("hidden");
+    $("vtaResultado").classList.add("hidden");
+    $("vtaCargando").classList.remove("hidden");
+
+    let r;
+    try {
+      const url = "/api/estadisticas/ventas?desde=" + encodeURIComponent(desde) + "&hasta=" + encodeURIComponent(hasta)
+        + (vtaCuit ? "&cuit=" + encodeURIComponent(vtaCuit) : "");
+      r = await fetch(url, { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { $("vtaCargando").classList.add("hidden"); mostrar($("vtaMsg"), "No se pudo conectar.", "err"); return; }
+
+    $("vtaCargando").classList.add("hidden");
+    if (r.status === 401) { salir(); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      mostrar($("vtaMsg"), d.mensaje || "No se pudo consultar.", "err");
+      return;
+    }
+    ventasData = await r.json();
+    basesVtaVisibles = {};
+    construirControlesBasesVta();
+    renderVentas();
+  }
+
+  // Tilde por base (igual que la cuenta corriente): destildar quita esa base de los
+  // KPIs, gráficos y tabla, recalculando sobre lo visible.
+  function construirControlesBasesVta() {
+    const cont = $("vtaLeyendaBases");
+    const bases = (ventasData?.bases || []).filter(b => b.ok);
+    if (bases.length === 0) { cont.innerHTML = ""; cont.classList.add("hidden"); return; }
+    for (const b of bases) if (basesVtaVisibles[b.baseNombre] === undefined) basesVtaVisibles[b.baseNombre] = true;
+    cont.innerHTML = '<span>Ver bases:</span>' + bases.map(b =>
+      '<label class="base-check"><input type="checkbox" data-base="' + esc(b.baseNombre) + '"'
+        + (basesVtaVisibles[b.baseNombre] ? ' checked' : '') + '> '
+        + '<span class="basebadge ' + esc(b.baseNombre) + '">' + esc(b.baseNombre) + '</span></label>').join("");
+    cont.classList.remove("hidden");
+    cont.querySelectorAll('input[type="checkbox"]').forEach(chk =>
+      chk.addEventListener("change", () => { basesVtaVisibles[chk.dataset.base] = chk.checked; renderVentas(); }));
+  }
+
+  function renderVentas() {
+    if (!ventasData) return;
+    $("vtaResultado").classList.remove("hidden");
+
+    const bases = (ventasData.bases || []).filter(b => b.ok && basesVtaVisibles[b.baseNombre] !== false);
+    const fallidas = (ventasData.bases || []).filter(b => !b.ok);
+
+    // "Unificar por CUIT": tildado agrupa un cliente real (varios códigos/bases) en una
+    // fila; destildado muestra cada código por separado.
+    const unificar = $("vtaUnificar").checked;
+    let total = 0, cant = 0;
+    const porMes = {};
+    const map = {};
+    for (const b of bases) {
+      total += Number(b.total) || 0;
+      cant += Number(b.cantidad) || 0;
+      for (const m of (b.porMes || [])) porMes[m.mes] = (porMes[m.mes] || 0) + (Number(m.importe) || 0);
+      for (const c of (b.porCliente || [])) {
+        const key = unificar ? (c.cuit || ("cod:" + b.baseNombre + ":" + c.codigo)) : (b.baseNombre + "|" + c.codigo);
+        let e = map[key];
+        if (!e) e = map[key] = { razon: "", codigos: new Set(), basesSet: new Set(), importe: 0 };
+        e.importe += Number(c.importe) || 0;
+        if (c.codigo) e.codigos.add(c.codigo);
+        e.basesSet.add(b.baseNombre);
+        if (!e.razon && c.razonSocial) e.razon = c.razonSocial;
+      }
+    }
+    const clientes = Object.values(map).sort((a, b) => b.importe - a.importe);
+
+    $("kpiTotal").textContent = plata(total);
+    $("kpiCant").textContent = cant.toLocaleString("es-AR");
+
+    if (fallidas.length) {
+      $("vtaAviso").textContent = "No se pudo consultar: " + fallidas.map(b => b.baseNombre).join(", ") + ".";
+      $("vtaAviso").classList.remove("hidden");
+    } else { $("vtaAviso").classList.add("hidden"); }
+
+    const meses = Object.keys(porMes).sort();
+    $("chartMes").innerHTML = htmlBarras(meses.map(m => ({ label: mesLabel(m), valor: porMes[m] })));
+    // Gráfico de clientes: top 100, con el % respecto al total (todos los clientes).
+    $("chartClientes").innerHTML = htmlBarras(
+      clientes.slice(0, 100).map(c => ({ label: c.razon || [...c.codigos][0] || "", valor: c.importe })), total);
+
+    const cuerpo = $("cuerpoVtaCli"); cuerpo.innerHTML = "";
+    for (const c of clientes.slice(0, 100)) {
+      const badges = [...c.basesSet].sort().map(bn => '<span class="basebadge ' + esc(bn) + '">' + esc(bn) + '</span>').join(" ");
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td>' + badges + '</td>'
+        + '<td class="cod-cli">' + esc([...c.codigos].join(", ")) + '</td>'
+        + '<td>' + esc(c.razon || [...c.codigos][0] || "") + '</td>'
+        + '<td class="num">' + plata(c.importe) + '</td>'
+        + '<td class="num">' + (total ? (c.importe / total * 100).toFixed(1) : "0.0") + '%</td>';
+      cuerpo.appendChild(tr);
+    }
+    aplicarVistaVentas();
+  }
+
+  // Muestra el gráfico o el listado (toggle del botón), y limita a ~20 filas visibles
+  // (scroll para el resto, hasta el tope de 100).
+  function aplicarVistaVentas() {
+    const esGrafico = vtaVista === "grafico";
+    $("chartClientes").classList.toggle("hidden", !esGrafico);
+    $("tablaVtaCli").classList.toggle("hidden", esGrafico);
+    $("btnVtaVista").textContent = esGrafico ? "Gráfico" : "Listado";
+    ajustarScrollVentas();
+  }
+
+  // El scroll arranca en "Evolución por mes" y muestra ~18 filas de clientes. El
+  // encabezado (evolución + títulos) es igual en ambos modos, y las filas del gráfico
+  // igualan el alto de las del listado, así el alto y el ancho de la card no cambian.
+  function ajustarScrollVentas() {
+    const cont = $("vtaScroll");
+    const esGrafico = vtaVista === "grafico";
+    const filas = esGrafico
+      ? $("chartClientes").querySelectorAll(".hbar-row")
+      : $("cuerpoVtaCli").querySelectorAll("tr");
+    const n = esGrafico ? 18 : 17;   // el listado muestra una línea menos
+    if (filas.length <= n) { cont.style.maxHeight = ""; return; }
+    const encabezado = filas[0].getBoundingClientRect().top - cont.getBoundingClientRect().top;
+    let h = encabezado;
+    for (let i = 0; i < n; i++) h += filas[i].getBoundingClientRect().height;
+    cont.style.maxHeight = Math.ceil(h + 4) + "px";
+  }
+
+  // "2026-07" → "jul 2026"
+  function mesLabel(ym) {
+    const m = String(ym || "").split("-");
+    if (m.length < 2) return ym;
+    const meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+    return (meses[parseInt(m[1], 10) - 1] || m[1]) + " " + m[0];
+  }
+
+  // Gráfico de barras horizontales en HTML (sin dependencias). datos: [{label, valor}].
+  // Si 'total' > 0, agrega el % de cada barra respecto al total, entre paréntesis.
+  function htmlBarras(datos, total) {
+    if (!datos || datos.length === 0) return '<div class="vacio">Sin datos en el período.</div>';
+    const max = Math.max(1, ...datos.map(d => Math.abs(d.valor)));
+    return '<div class="hbars">' + datos.map(d => {
+      const w = Math.max(1, Math.abs(d.valor) / max * 100);
+      const pct = total ? ' <span class="hbar-pct">(' + (d.valor / total * 100).toFixed(1) + '%)</span>' : '';
+      return '<div class="hbar-row">'
+        + '<div class="hbar-label" title="' + esc(d.label) + '">' + esc(d.label) + '</div>'
+        + '<div class="hbar-track"><div class="hbar-fill' + (d.valor < 0 ? ' neg' : '') + '" style="width:' + w.toFixed(1) + '%"></div></div>'
+        + '<div class="hbar-val">' + plata(d.valor) + pct + '</div>'
+        + '</div>';
+    }).join('') + '</div>';
+  }
+
+  // Buscador de cliente para estadísticas (reusa /api/mi-cuenta/buscar-clientes).
+  async function buscarClientesVta() {
+    const q = $("vtaBuscarCli").value.trim();
+    const cont = $("vtaResBuscar");
+    if (q.length < 2) { cont.classList.add("hidden"); cont.innerHTML = ""; return; }
+    let r;
+    try { r = await fetch("/api/mi-cuenta/buscar-clientes?q=" + encodeURIComponent(q), { headers: { "Authorization": "Bearer " + token } }); }
+    catch (e) { return; }
+    if (r.status === 401) { salir(); return; }
+    if (!r.ok) { cont.innerHTML = '<div class="vacio">No se pudo buscar.</div>'; cont.classList.remove("hidden"); return; }
+    const d = await r.json();
+    const items = d.items || [];
+    cont.innerHTML = items.length
+      ? items.map(it => '<div class="item" data-cuit="' + esc(it.cuit) + '" data-razon="' + esc(it.razonSocial) + '">'
+          + esc(it.razonSocial || "(sin razón social)") + '<span class="cuit">' + esc(it.cuit) + '</span></div>').join("")
+        + (d.hayMas ? '<div class="vacio">Afiná la búsqueda para ver más.</div>' : "")
+      : '<div class="vacio">Sin resultados para “' + esc(q) + '”.</div>';
+    cont.classList.remove("hidden");
+    cont.querySelectorAll(".item").forEach(el =>
+      el.addEventListener("click", () => elegirClienteVta(el.dataset.cuit, el.dataset.razon)));
+  }
+
+  function elegirClienteVta(cuit, razon) {
+    vtaCuit = cuit || ""; vtaClienteRazon = razon || "";
+    $("vtaResBuscar").classList.add("hidden"); $("vtaResBuscar").innerHTML = "";
+    $("vtaBuscarCli").value = "";
+    pintarClienteVta();
+    cargarVentas();
+  }
+
+  function quitarClienteVta() {
+    vtaCuit = ""; vtaClienteRazon = "";
+    pintarClienteVta();
+    cargarVentas();
+  }
+
+  function pintarClienteVta() {
+    const cont = $("vtaClienteSel");
+    if (vtaCuit) {
+      cont.innerHTML = 'Cliente: <span class="chip">' + esc(vtaClienteRazon || vtaCuit) + '</span> '
+        + '<span class="sub">(' + esc(vtaCuit) + ')</span><a id="vtaQuitarCli">quitar</a>';
+      const a = $("vtaQuitarCli"); if (a) a.addEventListener("click", quitarClienteVta);
+      cont.classList.remove("hidden");
+    } else { cont.innerHTML = ""; cont.classList.add("hidden"); }
+  }
+
+  $("btnVtaConsultar").addEventListener("click", cargarVentas);
+  $("vtaBuscarCli").addEventListener("input", () => { clearTimeout(vtaBuscarTimer); vtaBuscarTimer = setTimeout(buscarClientesVta, 250); });
+  $("vtaUnificar").addEventListener("change", renderVentas);
+  $("btnVtaVista").addEventListener("click", () => {
+    vtaVista = vtaVista === "grafico" ? "listado" : "grafico";
+    aplicarVistaVentas();
+  });
   $("btnIngresar").addEventListener("click", ingresar);
   $("btnSalir").addEventListener("click", salir);
+  $("staffBuscar").addEventListener("input", () => {
+    clearTimeout(staffTimer);
+    staffTimer = setTimeout(buscarClientesStaff, 250);
+  });
   $("loginPass").addEventListener("keydown", e => { if (e.key === "Enter") ingresar(); });
-  document.querySelectorAll(".sidebar a").forEach(a =>
-    a.addEventListener("click", () => mostrarSeccion(a.dataset.sec)));
+  // (El menú lateral conecta sus propios clicks en construirMenu(), porque se
+  //  dibuja dinámicamente tras el login.)
   $("btnVolverCC").addEventListener("click", volverACuenta);
+  $("thFecha").addEventListener("click", () => { ordenFechaAsc = !ordenFechaAsc; renderMovimientos(); });
   $("cuerpoCC").addEventListener("click", e => {
     const a = e.target.closest("a.lnk-comp");
     if (!a) return;

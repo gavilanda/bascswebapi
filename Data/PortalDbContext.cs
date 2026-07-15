@@ -16,6 +16,7 @@ public class PortalDbContext : DbContext
     public DbSet<PreRemitoPercepcionIngBr> PreRemitoPercepcionesIngBr => Set<PreRemitoPercepcionIngBr>();
     public DbSet<AuditoriaPreRemito> AuditoriaPreRemitos => Set<AuditoriaPreRemito>();
     public DbSet<ConfiguracionBase> ConfiguracionesBase => Set<ConfiguracionBase>();
+    public DbSet<FuncionPortal> FuncionesPortal => Set<FuncionPortal>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +44,21 @@ public class PortalDbContext : DbContext
 
         e.Property(u => u.Permisos)
             .HasConversion(permisosConverter, permisosComparer);
+
+        // BasesPortal: misma estrategia que Permisos (lista -> texto separado por comas).
+        var basesConverter = new ValueConverter<List<string>, string>(
+            v => string.Join(',', v),
+            v => string.IsNullOrEmpty(v)
+                ? new List<string>()
+                : v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList());
+
+        var basesComparer = new ValueComparer<List<string>>(
+            (a, b) => (a ?? new List<string>()).SequenceEqual(b ?? new List<string>()),
+            v => v.Aggregate(0, (acc, s) => HashCode.Combine(acc, s.GetHashCode())),
+            v => v.ToList());
+
+        e.Property(u => u.BasesPortal)
+            .HasConversion(basesConverter, basesComparer);
 
         // ---- Ingresos (pre-remitos) ----
         var pr = modelBuilder.Entity<PreRemito>();
@@ -77,5 +93,10 @@ public class PortalDbContext : DbContext
         // ---- Configuración de bases ----
         var cb = modelBuilder.Entity<ConfiguracionBase>();
         cb.HasIndex(c => c.Nombre).IsUnique();
+
+        // ---- Funciones del portal (menú data-driven) ----
+        // La Clave es el vínculo con el código del front; no se repite.
+        var fp = modelBuilder.Entity<FuncionPortal>();
+        fp.HasIndex(f => f.Clave).IsUnique();
     }
 }

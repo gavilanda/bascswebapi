@@ -60,6 +60,7 @@ public class AuthController : ControllerBase
             usuario.CodigoProveedor,
             usuario.RazonSocial,
             usuario.Permisos,
+            usuario.AccedePortalClientes,
             DateTimeOffset.UtcNow.AddMinutes(_jwt.ExpiraMinutos)));
     }
 }

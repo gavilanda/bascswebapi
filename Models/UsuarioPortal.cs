@@ -28,6 +28,16 @@ public class UsuarioPortal
     // En extranet va vacia.
     public List<string> Permisos { get; set; } = new();
 
+    // Acceso al PORTAL DE CLIENTES. Para un usuario INTERNO, habilita usar el
+    // portal como "consulta de staff" (buscar un cliente y ver su cuenta). Para
+    // extranet el acceso lo define su rol de cliente; este flag no lo restringe.
+    public bool AccedePortalClientes { get; set; } = false;
+
+    // Bases que este usuario puede ver en el portal de clientes. Es un SUBCONJUNTO
+    // de las bases del portal (las activas marcadas IncluirEnPortal). Si va vacia,
+    // el usuario ve TODAS las bases del portal (comportamiento por defecto).
+    public List<string> BasesPortal { get; set; } = new();
+
     // Extranet: roles (uno, otro, o los dos) y su codigo en BAS para cada rol.
     public bool EsCliente { get; set; } = false;
     public bool EsProveedor { get; set; } = false;

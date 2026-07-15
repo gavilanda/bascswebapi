@@ -100,6 +100,7 @@ builder.Services.AddScoped<BasClientesService>();
 builder.Services.AddScoped<BasProveedoresService>();
 builder.Services.AddScoped<BasCuentaCorrienteService>();
 builder.Services.AddScoped<BasComprobantesService>();
+builder.Services.AddScoped<BasEstadisticasVentaService>();   // estadísticas de venta (multi-base)
 
 // ---- Destinos BAS (BARK, PRUEBAB) para ingresos ----
 // Timeout amplio para la carga del padrón (la carga es secuencial y en segundo
@@ -264,6 +265,40 @@ using (var scope = app.Services.CreateScope())
     configBases.SembrarFaltantesAsync().GetAwaiter().GetResult();
     configBases.SincronizarMemoriaAsync().GetAwaiter().GetResult();
 
+    // ---- Tabla de funciones del portal (menú data-driven) ----
+    // Gobierna qué consultas aparecen en el menú del portal y a qué público. La
+    // LÓGICA de cada función es código (front IMPLEMENTACIONES + endpoint); esta
+    // tabla sólo maneja etiqueta, orden, audiencia y activa. EnsureCreated no la
+    // agrega a una base que ya existe, así que la creamos acá (idempotente).
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS ""FuncionesPortal"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_FuncionesPortal"" PRIMARY KEY AUTOINCREMENT,
+            ""Clave"" TEXT NOT NULL,
+            ""Etiqueta"" TEXT NOT NULL,
+            ""Orden"" INTEGER NOT NULL DEFAULT 0,
+            ""Audiencia"" TEXT NOT NULL DEFAULT 'ambos',
+            ""Activa"" INTEGER NOT NULL DEFAULT 1
+        );");
+    db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_FuncionesPortal_Clave"" ON ""FuncionesPortal"" (""Clave"");");
+
+    // Siembra de las funciones que YA existen en el código del portal (idempotente
+    // por Clave). Cuando programemos una consulta nueva, se agrega su Clave acá en
+    // el MISMO publish; de ahí en más el admin la configura desde la intranet
+    // (etiqueta, orden, audiencia, activa) sin volver a publicar.
+    SembrarFuncionSiFalta("cuenta", "Cuenta corriente", 10, "ambos");
+    SembrarFuncionSiFalta("ventas", "Estadísticas de venta", 30, "interno");
+    // "Mis datos" dejó de ser un programa del menú: los datos del cliente ahora se
+    // muestran integrados en la card de consulta del portal (junto al buscador),
+    // para internos y externos. Quitamos su fila si venía sembrada de antes.
+    db.Database.ExecuteSqlRaw(@"DELETE FROM ""FuncionesPortal"" WHERE ""Clave"" = 'datos';");
+
+    // ---- Columnas nuevas de Usuarios (agregadas después de la creación original) ----
+    // AccedePortalClientes: habilita a un usuario interno a usar el portal de
+    // clientes como consulta de staff. BasesPortal: subconjunto de bases del portal
+    // que ve el usuario (vacío = todas). Sólo se agregan si faltan.
+    AgregarColumnaSiFalta("Usuarios", "AccedePortalClientes", "INTEGER NOT NULL DEFAULT 0");
+    AgregarColumnaSiFalta("Usuarios", "BasesPortal", "TEXT NOT NULL DEFAULT ''");
+
     if (!db.Usuarios.Any())
     {
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<UsuarioPortal>>();
@@ -324,6 +359,24 @@ using (var scope = app.Services.CreateScope())
     {
         if (!ColumnaExiste(tabla, columna))
             db.Database.ExecuteSqlRaw($@"ALTER TABLE ""{tabla}"" ADD COLUMN ""{columna}"" {definicion};");
+    }
+
+    // Siembra una función del portal si su Clave todavía no está en la tabla.
+    // Idempotente: al rearrancar no duplica ni pisa lo que el admin haya editado.
+    void SembrarFuncionSiFalta(string clave, string etiqueta, int orden, string audiencia)
+    {
+        if (!db.FuncionesPortal.Any(f => f.Clave == clave))
+        {
+            db.FuncionesPortal.Add(new FuncionPortal
+            {
+                Clave = clave,
+                Etiqueta = etiqueta,
+                Orden = orden,
+                Audiencia = audiencia,
+                Activa = true
+            });
+            db.SaveChanges();
+        }
     }
 
     bool ColumnaExiste(string tabla, string columna)

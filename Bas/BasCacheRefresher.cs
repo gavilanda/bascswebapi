@@ -32,6 +32,7 @@ public class BasCacheRefresher
         "AdministraPartidas", "AdministraSeries", "Impuesto"
     };
     private static readonly string[] CamposProveedor = { "Codigo", "RazonSocial" };
+    private static readonly string[] CamposCliente = { "Codigo", "RazonSocial", "NumeroImpositivo1", "AdministradaPor" };
 
     public BasCacheRefresher(
         BasDestinosService destinos, BasCacheMaestros cache,
@@ -60,6 +61,12 @@ public class BasCacheRefresher
                 GuardarProveedores(b, ap.Datos, ap.Actualizado);
                 _log.LogInformation("Caché BAS '{Base}': {N} proveedores (leídos de disco).", b, ap.Datos.Count);
             }
+            var ac = LeerArchivo<ClienteCache>(b, "clientes");
+            if (ac is not null)
+            {
+                GuardarClientes(b, ac.Datos, ac.Actualizado);
+                _log.LogInformation("Caché BAS '{Base}': {N} clientes (leídos de disco).", b, ac.Datos.Count);
+            }
         }
     }
 
@@ -76,6 +83,7 @@ public class BasCacheRefresher
         var edad = edadMaxima ?? EdadMaximaPorDefecto;
         await CargarBienesAsync(baseNombre, ct, soloVencidos, edad);
         await CargarProveedoresAsync(baseNombre, ct, soloVencidos, edad);
+        await CargarClientesAsync(baseNombre, ct, soloVencidos, edad);
     }
 
     private async Task CargarBienesAsync(string b, CancellationToken ct, bool soloVencidos, TimeSpan edad)
@@ -130,6 +138,38 @@ public class BasCacheRefresher
         catch (Exception ex) { MarcarError(b, "proveedores", ex); }
     }
 
+    private async Task CargarClientesAsync(string b, CancellationToken ct, bool soloVencidos, TimeSpan edad)
+    {
+        if (soloVencidos && Vigente(b, "clientes", edad))
+        {
+            _log.LogInformation("Caché BAS '{Base}' clientes: vigente (de disco), no se recarga.", b);
+            return;
+        }
+        try
+        {
+            var datos = await CargarConsultaGralAsync<ClienteCache>(b, "/api/CONSULTAGRAL/Cliente", CamposCliente, ct, el =>
+            {
+                var cod = BienInfo.Prop(el, "Codigo");
+                if (string.IsNullOrEmpty(cod)) return ((string, ClienteCache)?)null;
+                // Salteamos las sucursales (AdministradaPor con valor): la cuenta
+                // corriente vive en la casa central, y así evitamos duplicar el CUIT.
+                var admin = BienInfo.Prop(el, "AdministradaPor");
+                if (!string.IsNullOrWhiteSpace(admin)) return null;
+                return (cod, new ClienteCache
+                {
+                    Codigo = cod,
+                    RazonSocial = BienInfo.Prop(el, "RazonSocial") ?? "",
+                    Cuit = BienInfo.Prop(el, "NumeroImpositivo1") ?? ""
+                });
+            });
+            var ahora = DateTimeOffset.Now;
+            GuardarClientes(b, datos, ahora);
+            EscribirArchivo(b, "clientes", datos, ahora);
+            _log.LogInformation("Caché BAS '{Base}': {N} clientes (actualizado desde BAS).", b, datos.Count);
+        }
+        catch (Exception ex) { MarcarError(b, "clientes", ex); }
+    }
+
     // Carga la tabla de impuestos de la base (GET /api/Impuestos/{empresa}) y
     // devuelve un mapa código -> TasaIvaCompras. Tolerante a fallos: si algo sale
     // mal devuelve vacío (los bienes quedan sin tasa y se tipea a mano).
@@ -175,9 +215,12 @@ public class BasCacheRefresher
 
     private bool Vigente(string b, string maestro, TimeSpan edad)
     {
-        var cuando = maestro == "bienes"
-            ? LeerArchivo<BienInfo>(b, maestro)?.Actualizado
-            : LeerArchivo<string>(b, maestro)?.Actualizado;
+        DateTimeOffset? cuando = maestro switch
+        {
+            "bienes" => LeerArchivo<BienInfo>(b, maestro)?.Actualizado,
+            "clientes" => LeerArchivo<ClienteCache>(b, maestro)?.Actualizado,
+            _ => LeerArchivo<string>(b, maestro)?.Actualizado
+        };
         return cuando.HasValue && DateTimeOffset.Now - cuando.Value < edad;
     }
 
@@ -198,8 +241,10 @@ public class BasCacheRefresher
         {
             Bienes = dict,
             Proveedores = s.Proveedores,
+            Clientes = s.Clientes,
             BienesListo = true,
             ProveedoresListo = s.ProveedoresListo,
+            ClientesListo = s.ClientesListo,
             Actualizado = cuando,
             Error = s.Error
         });
@@ -216,8 +261,28 @@ public class BasCacheRefresher
         {
             Bienes = s.Bienes,
             Proveedores = dict,
+            Clientes = s.Clientes,
             BienesListo = s.BienesListo,
             ProveedoresListo = true,
+            ClientesListo = s.ClientesListo,
+            Actualizado = cuando,
+            Error = s.Error
+        });
+    }
+
+    private void GuardarClientes(string b, IReadOnlyDictionary<string, ClienteCache> datos, DateTimeOffset cuando)
+    {
+        var dict = new Dictionary<string, ClienteCache>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in datos) dict[kv.Key] = kv.Value;
+
+        _cache.Actualizar(b, s => new SnapshotMaestro
+        {
+            Bienes = s.Bienes,
+            Proveedores = s.Proveedores,
+            Clientes = dict,
+            BienesListo = s.BienesListo,
+            ProveedoresListo = s.ProveedoresListo,
+            ClientesListo = true,
             Actualizado = cuando,
             Error = s.Error
         });
@@ -229,8 +294,10 @@ public class BasCacheRefresher
         {
             Bienes = s.Bienes,
             Proveedores = s.Proveedores,
+            Clientes = s.Clientes,
             BienesListo = s.BienesListo,
             ProveedoresListo = s.ProveedoresListo,
+            ClientesListo = s.ClientesListo,
             Actualizado = s.Actualizado,
             Error = JuntarError(s.Error, $"{maestro}: {ex.Message}")
         });
