@@ -86,6 +86,10 @@
   .vtafiltros { display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px; }
   .vtafiltros label { display:flex; flex-direction:column; font-size:12px; color:var(--txt2); gap:4px; margin:0; }
   .vtafiltros input { width:auto; }
+  /* El <select> de bases igual a los inputs: alto 36px (= el que renderiza el input con este
+     padding/font) y box-sizing:border-box para que alineen exacto en la fila (flex-end). */
+  .vtafiltros select { padding:9px 10px; border:1px solid var(--borde); border-radius:7px;
+    font-size:14px; background:#fff; color:var(--txt); box-sizing:border-box; height:36px; }
   .vta-totales { margin-left:auto; display:flex; align-items:center; gap:16px; }
   .vt-stat { display:flex; flex-direction:column; text-align:center; }
   .vt-lbl { font-size:12px; color:var(--txt2); }
@@ -359,6 +363,26 @@
           </div>
         </div>
 
+        <!-- E-CHEQUES (función interna) -->
+        <div id="secEcheques" class="card seccion hidden">
+          <div class="vtafiltros">
+            <label>Base
+              <select id="echBase" style="width:140px"></select>
+            </label>
+            <label>Desde <input id="echDesde" type="date"></label>
+            <label>Hasta <input id="echHasta" type="date"></label>
+            <label>Cuenta bancaria <input id="echBanco" type="text" placeholder="011" style="width:90px"></label>
+            <label>Chequera <input id="echChequera" type="text" placeholder="801" style="width:90px"></label>
+            <label>Prefijo <input id="echPrefijo" type="text" placeholder="7259" style="width:100px"></label>
+            <label class="vta-unificar" style="align-self:flex-end; margin-bottom:6px"><input id="echUsaPrefijo" type="checkbox"> Usar prefijo</label>
+            <label>Cheque desde <input id="echChqDesde" type="text" placeholder="(vacío = todos)" style="width:120px"></label>
+            <label>Cheque hasta <input id="echChqHasta" type="text" style="width:120px"></label>
+            <button id="btnEchGenerar">Generar .xls</button>
+          </div>
+          <div id="echMsg" class="msg"></div>
+          <div id="echCargando" class="cargando hidden"><span>Consultando cheques y generando el archivo…</span></div>
+        </div>
+
       </div>
     </div>
   </section>
@@ -506,6 +530,7 @@
   const IMPLEMENTACIONES = {
     cuenta: { sec: "secCuenta", init: cargarCuenta, requiereCliente: true },
     ventas: { sec: "secVentas", init: iniciarVentas, requiereCliente: false },
+    echeques: { sec: "secEcheques", init: iniciarEcheques, requiereCliente: false },
   };
 
   // Funciones del menú del usuario, como las devolvió el backend: [{clave, etiqueta}].
@@ -1350,6 +1375,103 @@
   $("btnCcCancelar").addEventListener("click", () => { if (ccAbort) ccAbort.abort(); });
   $("vtaBuscarCli").addEventListener("input", () => { clearTimeout(vtaBuscarTimer); vtaBuscarTimer = setTimeout(buscarClientesVta, 250); });
   $("vtaUnificar").addEventListener("change", renderVentas);
+
+  // ---------- E-Cheques (interno) ----------
+  async function iniciarEcheques() {
+    const hoy = new Date(); const p = n => String(n).padStart(2, "0");
+    const hoyStr = hoy.getFullYear() + "-" + p(hoy.getMonth() + 1) + "-" + p(hoy.getDate());
+    if (!$("echDesde").value) $("echDesde").value = hoyStr;
+    if (!$("echHasta").value) $("echHasta").value = hoyStr;
+
+    // Últimos valores usados por navegador (como el .ini por PC del tool original).
+    const g = k => localStorage.getItem("ech_" + k) || "";
+    if (!$("echBanco").value) $("echBanco").value = g("banco");
+    if (!$("echChequera").value) $("echChequera").value = g("chequera");
+    if (!$("echPrefijo").value) $("echPrefijo").value = g("prefijo");
+    $("echUsaPrefijo").checked = g("usa") === "1";
+    limpiar($("echMsg"));
+
+    // Sólo se ofrecen las bases con la config de e-cheques COMPLETA (server + base + mail +
+    // credencial). Si no hay ninguna, se deshabilita y se avisa.
+    const sel = $("echBase");
+    const previa = sel.value || g("base");
+    let bases = [];
+    try {
+      const r = await fetch("/api/echeques/bases", { headers: { "Authorization": "Bearer " + token } });
+      if (r.ok) { const d = await r.json(); bases = Array.isArray(d.bases) ? d.bases : []; }
+    } catch (e) {}
+    if (bases.length) {
+      sel.innerHTML = bases.map(b => '<option value="' + esc(b) + '">' + esc(b) + '</option>').join("");
+      if (previa && bases.includes(previa)) sel.value = previa;
+      $("btnEchGenerar").disabled = false;
+    } else {
+      sel.innerHTML = '<option value="">(sin bases configuradas)</option>';
+      $("btnEchGenerar").disabled = true;
+      mostrar($("echMsg"), "Ninguna base tiene la conexión de e-cheques configurada. Cargala en la intranet (editor de bases).", "info");
+    }
+  }
+
+  async function generarEcheques() {
+    const base = $("echBase").value;
+    const desde = $("echDesde").value, hasta = $("echHasta").value;
+    const banco = $("echBanco").value.trim(), chequera = $("echChequera").value.trim();
+    const prefijo = $("echPrefijo").value.trim(), usa = $("echUsaPrefijo").checked;
+    const nDesde = $("echChqDesde").value.trim(), nHasta = $("echChqHasta").value.trim();
+
+    if (!base) { mostrar($("echMsg"), "Elegí una base.", "err"); return; }
+    if (!desde || !hasta) { mostrar($("echMsg"), "Completá las fechas.", "err"); return; }
+    if (desde > hasta) { mostrar($("echMsg"), 'La fecha "Desde" no puede ser mayor que "Hasta".', "err"); return; }
+    if (!banco || !chequera) { mostrar($("echMsg"), "Cuenta bancaria y chequera son obligatorias.", "err"); return; }
+    if ((nDesde !== "") !== (nHasta !== "")) { mostrar($("echMsg"), "Completá ambos números de cheque (Desde y Hasta) o dejá los dos vacíos.", "err"); return; }
+    if (nDesde && (!/^\d+$/.test(nDesde) || !/^\d+$/.test(nHasta))) { mostrar($("echMsg"), "Los números de cheque deben ser sólo dígitos.", "err"); return; }
+    if (nDesde && parseInt(nDesde, 10) > parseInt(nHasta, 10)) { mostrar($("echMsg"), 'El cheque "Desde" no puede ser mayor que "Hasta".', "err"); return; }
+
+    // Prefijo (igual que el .py): si "usar prefijo" y hay prefijo, se antepone al número.
+    const chqDesde = nDesde ? ((usa && prefijo) ? prefijo + nDesde : nDesde) : "";
+    const chqHasta = nHasta ? ((usa && prefijo) ? prefijo + nHasta : nHasta) : "";
+
+    const s = (k, v) => localStorage.setItem("ech_" + k, v);
+    s("base", base); s("banco", banco); s("chequera", chequera); s("prefijo", prefijo); s("usa", usa ? "1" : "0");
+
+    limpiar($("echMsg"));
+    $("echCargando").classList.remove("hidden");
+    $("btnEchGenerar").disabled = true;
+
+    const url = "/api/echeques/exportar?base=" + encodeURIComponent(base)
+      + "&desde=" + encodeURIComponent(desde) + "&hasta=" + encodeURIComponent(hasta)
+      + "&banco=" + encodeURIComponent(banco) + "&chequera=" + encodeURIComponent(chequera)
+      + (chqDesde ? "&chqDesde=" + encodeURIComponent(chqDesde) + "&chqHasta=" + encodeURIComponent(chqHasta) : "");
+
+    let r;
+    try {
+      r = await fetch(url, { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) {
+      $("echCargando").classList.add("hidden"); $("btnEchGenerar").disabled = false;
+      mostrar($("echMsg"), "No se pudo conectar.", "err"); return;
+    }
+    $("echCargando").classList.add("hidden"); $("btnEchGenerar").disabled = false;
+    if (r.status === 401) { salir(); return; }
+
+    const tipo = r.headers.get("content-type") || "";
+    if (!r.ok) {
+      const d = tipo.includes("json") ? await r.json().catch(() => ({})) : {};
+      mostrar($("echMsg"), d.mensaje || "No se pudo generar el archivo.", "err"); return;
+    }
+    if (tipo.includes("json")) {   // 200 con JSON = sin registros
+      await r.json().catch(() => ({}));
+      mostrar($("echMsg"), "No se encontraron cheques para esos filtros.", "info"); return;
+    }
+    // Es el .xls: lo descargamos.
+    const blob = await r.blob();
+    const cant = r.headers.get("X-Echeques-Cantidad") || "";
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objUrl; a.download = "e-cheques_EXPORTACION.xls";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(objUrl);
+    mostrar($("echMsg"), "Archivo generado" + (cant ? " (" + cant + " cheque" + (cant === "1" ? "" : "s") + ")" : "") + ". Se descargó e-cheques_EXPORTACION.xls.", "ok");
+  }
+  $("btnEchGenerar").addEventListener("click", generarEcheques);
   $("btnVtaVista").addEventListener("click", () => {
     vtaVista = vtaVista === "grafico" ? "listado" : "grafico";
     aplicarVistaVentas();

@@ -29,4 +29,14 @@ public class FuncionPortal
 
     // Si está apagada, no aparece en el menú de nadie (sin borrar la fila).
     public bool Activa { get; set; } = true;
+
+    // ---- Acceso para usuarios INTERNOS (independiente de los "Permisos" de intranet) ----
+    // Los EXTERNOS acceden solo por audiencia (externo/ambos). Para los INTERNOS, el acceso
+    // se asigna acá, desde "Programas para el Portal":
+    //   - TodosLosInternos = true  -> la usan todos los internos (función de uso general).
+    //   - TodosLosInternos = false -> solo los internos listados en UsuariosAsignados
+    //     (identificador de login). Ideal para funciones sensibles (ej. e-cheques).
+    // Un interno accede si: es admin · o TodosLosInternos · o está en UsuariosAsignados.
+    public bool TodosLosInternos { get; set; } = true;
+    public List<string> UsuariosAsignados { get; set; } = new();
 }

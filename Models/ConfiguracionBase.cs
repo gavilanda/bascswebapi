@@ -45,4 +45,22 @@ public class ConfiguracionBase
     // Cuenta contable a la que se imputa la compra (se manda como ImputacionContable
     // a BAS al grabar la factura). FK a dbo.CUENTAS.
     public long FacturaImputacionContable { get; set; } = 21001001;
+
+    // ---- E-Cheques (consulta directa al SQL Server de la base) ----
+    // La función "echeques" NO va por el WebAPI (BAS no expone esa consulta): se conecta
+    // directo al SQL Server de la base. Servidor + base de datos van acá (editables); el
+    // usuario/clave de SOLO LECTURA van por variable de entorno (Echeques__SqlUser /
+    // Echeques__SqlPassword), nunca en la base ni en el front. Vacío = función deshabilitada
+    // para esta base.
+    public string SqlServidor { get; set; } = "";
+    public string SqlBase { get; set; } = "";
+    // Usuario/clave de SOLO LECTURA (ej. portal_consultas) para el SQL directo. Si quedan
+    // vacíos, se cae a la variable de entorno SqlConsultas__User / SqlConsultas__Password.
+    // ⚠️ La clave queda en texto plano en la base del portal; sólo la ve el editor de bases
+    // (admin). Es read-only, pero igual: no exponerla en endpoints de usuarios comunes.
+    public string SqlUsuario { get; set; } = "";
+    public string SqlClave { get; set; } = "";
+    // Mail "propio" de la empresa a EXCLUIR de la consulta de cheques (en BARK:
+    // pagos@bark-sa.com.ar). Por base porque difiere entre empresas.
+    public string SqlEmailPropio { get; set; } = "";
 }

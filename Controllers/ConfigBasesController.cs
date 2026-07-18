@@ -45,6 +45,12 @@ public class ConfigBasesController : ControllerBase
             baseUrl = f.BaseUrl,
             remitoTipo = f.RemitoTipo,
             incluirEnPortal = f.IncluirEnPortal,
+            // SQL directo (e-cheques). La clave NO se devuelve: sólo si hay una cargada.
+            sqlServidor = f.SqlServidor,
+            sqlBase = f.SqlBase,
+            sqlUsuario = f.SqlUsuario,
+            sqlEmailPropio = f.SqlEmailPropio,
+            sqlTieneClave = !string.IsNullOrWhiteSpace(f.SqlClave),
             ingresos = conteos.TryGetValue(f.Nombre, out var n) ? n : 0,
             conectada = _svc.Memoria(f.Nombre) != null    // está viva en memoria
         });

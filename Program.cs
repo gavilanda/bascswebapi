@@ -104,6 +104,8 @@ builder.Services.AddScoped<BasProveedoresService>();
 builder.Services.AddScoped<BasCuentaCorrienteService>();
 builder.Services.AddScoped<BasComprobantesService>();
 builder.Services.AddScoped<BasEstadisticasVentaService>();   // estadísticas de venta (multi-base)
+builder.Services.AddScoped<BasEchequesService>();            // e-cheques (SQL directo a la base)
+builder.Services.AddScoped<PortalClientes.Auth.AccesoFuncionesService>();  // acceso por función (menú + endpoints)
 
 // ---- Destinos BAS (BARK, PRUEBAB) para ingresos ----
 // Timeout amplio para la carga del padrón (la carga es secuencial y en segundo
@@ -255,6 +257,12 @@ using (var scope = app.Services.CreateScope())
     // Conexión editable + flag de portal (la tabla pasó a ser la fuente de verdad de las bases).
     AgregarColumnaSiFalta("ConfiguracionesBase", "BaseUrl", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "RemitoTipo", "TEXT NOT NULL DEFAULT 'N'");
+    // SQL directo (e-cheques y futuras consultas): server + db + usuario/clave read-only + mail propio.
+    AgregarColumnaSiFalta("ConfiguracionesBase", "SqlServidor", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "SqlBase", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "SqlUsuario", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "SqlClave", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "SqlEmailPropio", "TEXT NOT NULL DEFAULT ''");
     // IncluirEnPortal: al CREAR la columna por primera vez, backfill de las bases que
     // HOY forman la cuenta corriente del portal (BARK + PRUEBAB), para preservar el
     // comportamiento existente. De ahí en más lo controla el admin (checkbox por base);
@@ -284,6 +292,11 @@ using (var scope = app.Services.CreateScope())
             ""Activa"" INTEGER NOT NULL DEFAULT 1
         );");
     db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_FuncionesPortal_Clave"" ON ""FuncionesPortal"" (""Clave"");");
+    // Acceso por función para internos. TodosLosInternos default 1: las funciones que YA
+    // existen quedan abiertas a todos los internos (no rompe nada). Luego el admin restringe
+    // las que quiera (ej. e-cheques) desde "Programas para el Portal".
+    AgregarColumnaSiFalta("FuncionesPortal", "TodosLosInternos", "INTEGER NOT NULL DEFAULT 1");
+    AgregarColumnaSiFalta("FuncionesPortal", "UsuariosAsignados", "TEXT NOT NULL DEFAULT ''");
 
     // Siembra de las funciones que YA existen en el código del portal (idempotente
     // por Clave). Cuando programemos una consulta nueva, se agrega su Clave acá en
@@ -291,6 +304,7 @@ using (var scope = app.Services.CreateScope())
     // (etiqueta, orden, audiencia, activa) sin volver a publicar.
     SembrarFuncionSiFalta("cuenta", "Cuenta corriente", 10, "ambos");
     SembrarFuncionSiFalta("ventas", "Estadísticas de venta", 30, "interno");
+    SembrarFuncionSiFalta("echeques", "E-Cheques", 40, "interno");
     // "Mis datos" dejó de ser un programa del menú: los datos del cliente ahora se
     // muestran integrados en la card de consulta del portal (junto al buscador),
     // para internos y externos. Quitamos su fila si venía sembrada de antes.

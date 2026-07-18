@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PortalClientes.Auth;
 using PortalClientes.Data;
 
 namespace PortalClientes.Controllers;
@@ -25,10 +26,6 @@ public class FuncionesPortalController : ControllerBase
 
     private static readonly string[] AudienciasValidas = { "externo", "interno", "ambos" };
 
-    // Público del usuario según su tipo. Interno -> "interno"; el resto -> "externo".
-    private string AudienciaUsuario()
-        => User.FindFirstValue("tipo") == "Interno" ? "interno" : "externo";
-
     // GET /api/funciones-portal -> funciones ACTIVAS visibles para este usuario,
     // ordenadas. Es lo que el portal usa para dibujar el menú (una entrada por
     // función, con su clave y etiqueta). El front cruza la clave con su catálogo
@@ -36,12 +33,15 @@ public class FuncionesPortalController : ControllerBase
     [HttpGet("api/funciones-portal")]
     public async Task<ActionResult> Menu()
     {
-        var aud = AudienciaUsuario();
-        var funciones = await _db.FuncionesPortal
-            .Where(f => f.Activa && (f.Audiencia == "ambos" || f.Audiencia == aud))
+        // Traemos las activas y filtramos EN MEMORIA con la regla de acceso (necesita
+        // UsuariosAsignados, que es una propiedad convertida). Es una tabla chica.
+        var activas = await _db.FuncionesPortal.AsNoTracking()
+            .Where(f => f.Activa)
             .OrderBy(f => f.Orden).ThenBy(f => f.Etiqueta)
-            .Select(f => new { f.Clave, f.Etiqueta })
             .ToListAsync(HttpContext.RequestAborted);
+        var funciones = activas
+            .Where(f => AccesoFuncionesService.PuedeUsar(f, User))
+            .Select(f => new { f.Clave, f.Etiqueta });
         return Ok(new { funciones });
     }
 
@@ -51,10 +51,14 @@ public class FuncionesPortalController : ControllerBase
     [Authorize(Policy = "Admin")]
     public async Task<ActionResult> Listar()
     {
-        var funciones = await _db.FuncionesPortal
+        var funciones = (await _db.FuncionesPortal.AsNoTracking()
             .OrderBy(f => f.Orden).ThenBy(f => f.Etiqueta)
-            .Select(f => new { f.Id, f.Clave, f.Etiqueta, f.Orden, f.Audiencia, f.Activa })
-            .ToListAsync(HttpContext.RequestAborted);
+            .ToListAsync(HttpContext.RequestAborted))
+            .Select(f => new
+            {
+                f.Id, f.Clave, f.Etiqueta, f.Orden, f.Audiencia, f.Activa,
+                f.TodosLosInternos, usuariosAsignados = f.UsuariosAsignados
+            });
         return Ok(new { funciones });
     }
 
@@ -80,6 +84,10 @@ public class FuncionesPortalController : ControllerBase
         f.Orden = req.Orden;
         f.Audiencia = audiencia;
         f.Activa = req.Activa;
+        f.TodosLosInternos = req.TodosLosInternos;
+        f.UsuariosAsignados = (req.UsuariosAsignados ?? new())
+            .Select(s => (s ?? "").Trim()).Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
         return Ok(new { mensaje = "Función actualizada.", f.Id });
@@ -87,4 +95,6 @@ public class FuncionesPortalController : ControllerBase
 }
 
 // Edición de una función desde la intranet. La Clave no viaja: no se edita.
-public record ActualizarFuncionRequest(string Etiqueta, int Orden, string Audiencia, bool Activa);
+public record ActualizarFuncionRequest(
+    string Etiqueta, int Orden, string Audiencia, bool Activa,
+    bool TodosLosInternos = true, List<string>? UsuariosAsignados = null);

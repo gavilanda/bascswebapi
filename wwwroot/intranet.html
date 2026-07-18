@@ -490,6 +490,16 @@
               <div style="flex:0 0 160px"><label>Cuenta contable</label><input id="cfgFacImputacion" type="number" min="1" placeholder="21001001" /></div>
             </div>
 
+            <div class="subt compacta-form">E-Cheques — conexión SQL directa (solo lectura)</div>
+            <div class="row compacta-form">
+              <div style="flex:0 0 180px"><label>Servidor SQL</label><input id="cfgSqlServidor" type="text" placeholder="gabriel" /></div>
+              <div style="flex:0 0 160px"><label>Base de datos</label><input id="cfgSqlBase" type="text" placeholder="bark" /></div>
+              <div style="flex:0 0 180px"><label>Usuario (read-only)</label><input id="cfgSqlUsuario" type="text" placeholder="portal_consultas" /></div>
+              <div style="flex:0 0 180px"><label>Clave</label><input id="cfgSqlClave" type="password" autocomplete="new-password" placeholder="(vacío = no cambiar)" /></div>
+              <div style="flex:1 1 220px"><label>Mail propio a excluir</label><input id="cfgSqlEmail" type="text" placeholder="pagos@bark-sa.com.ar" /></div>
+            </div>
+            <div class="nota" style="margin-top:4px; font-size:12px">Vacío = e-cheques deshabilitado para esta base. La clave no se muestra por seguridad; dejala vacía para conservar la actual.</div>
+
             <div class="nota" id="cfgInfoConexion" style="margin-top:12px"></div>
 
             <div style="margin-top:16px; display:flex; gap:8px">
@@ -534,11 +544,12 @@
             <table style="margin-top:12px">
               <thead>
                 <tr>
-                  <th style="width:26%">Etiqueta</th>
-                  <th style="width:16%">Clave</th>
-                  <th style="width:12%" class="right">Orden</th>
-                  <th style="width:20%">Público</th>
-                  <th style="width:10%" class="right">Activa</th>
+                  <th style="width:22%">Etiqueta</th>
+                  <th style="width:13%">Clave</th>
+                  <th style="width:8%" class="right">Orden</th>
+                  <th style="width:16%">Público</th>
+                  <th style="width:7%" class="right">Activa</th>
+                  <th style="width:22%">Acceso interno</th>
                   <th style="width:12%"></th>
                 </tr>
               </thead>
@@ -678,6 +689,22 @@
       <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end">
         <button class="sec" id="modalDelCancelar">Cancelar</button>
         <button id="modalDelConfirmar" style="background:var(--rojo); color:#fff; border:none">Eliminar base</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: asignar usuarios internos a una función del portal -->
+  <div id="modalAsignar" class="modal-overlay hidden">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-cab">
+        <h2 id="modalAsignarTitulo">Asignar usuarios</h2>
+        <span class="modal-x" id="modalAsignarCerrar" title="Cerrar (Esc)">✕</span>
+      </div>
+      <div class="nota" style="margin-bottom:8px">Internos que pueden usar esta función. Los cambios se guardan al apretar <strong>Guardar</strong> en la fila.</div>
+      <div id="modalAsignarLista" class="modal-lista" style="max-height:340px; overflow:auto"></div>
+      <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end">
+        <button class="sec" id="modalAsignarCancelar">Cancelar</button>
+        <button id="modalAsignarOk">Aceptar</button>
       </div>
     </div>
   </div>
@@ -1874,6 +1901,7 @@
   // Metadata del menú del portal de clientes. La clave es de sólo lectura (es el
   // vínculo con el código); acá se edita etiqueta, orden, público y activa.
   let funcionesCache = [];
+  let usuariosInternos = [];   // para asignar acceso por función (internos activos)
 
   async function cargarFunciones() {
     limpiar($("funcMsg"));
@@ -1886,7 +1914,47 @@
     if (!r.ok) { mostrar($("funcMsg"), "No se pudieron cargar las funciones.", "err"); return; }
     const d = await r.json();
     funcionesCache = d.funciones || [];
+    // Usuarios internos activos (para el modal de asignación). Best-effort.
+    try {
+      const ru = await fetch("/api/admin/usuarios?tipo=internos&estado=activos", { headers: { "Authorization": "Bearer " + token } });
+      if (ru.ok) { const du = await ru.json(); usuariosInternos = Array.isArray(du) ? du : (du.usuarios || []); }
+    } catch (e) {}
     pintarFunciones();
+  }
+
+  // ---- Modal "Asignar usuarios" a una función ----
+  let asignarFuncId = null;
+  function abrirAsignar(id) {
+    const f = funcionesCache.find(x => String(x.id) === String(id));
+    if (!f) return;
+    asignarFuncId = id;
+    $("modalAsignarTitulo").textContent = "Asignar usuarios · " + (f.etiqueta || f.clave);
+    const asignados = new Set((f.usuariosAsignados || []).map(s => (s || "").toLowerCase()));
+    const cont = $("modalAsignarLista");
+    if (!usuariosInternos.length) {
+      cont.innerHTML = '<div class="nota">No hay usuarios internos activos.</div>';
+    } else {
+      cont.innerHTML = usuariosInternos.map(u => {
+        const id = u.identificador || "";
+        const et = esc(id) + (u.razonSocial ? ' <span class="nota">— ' + esc(u.razonSocial) + '</span>' : '');
+        const chk = asignados.has(id.toLowerCase()) ? " checked" : "";
+        return '<label class="check" style="display:flex; gap:8px; padding:4px 0"><input type="checkbox" value="' + esc(id) + '"' + chk + '> ' + et + '</label>';
+      }).join("");
+    }
+    $("modalAsignar").classList.remove("hidden");
+  }
+  function cerrarAsignar() { $("modalAsignar").classList.add("hidden"); asignarFuncId = null; }
+  function confirmarAsignar() {
+    const f = funcionesCache.find(x => String(x.id) === String(asignarFuncId));
+    if (f) {
+      f.usuariosAsignados = [...$("modalAsignarLista").querySelectorAll("input:checked")].map(i => i.value);
+      // Sólo actualizamos el contador del botón de esa fila. NO redibujamos la tabla: eso
+      // reseteaba el check "Todos los internos" al valor del cache y pisaba ediciones a medio
+      // hacer en otras filas.
+      const btn = document.querySelector('.btn-asignar[data-id="' + f.id + '"]');
+      if (btn) btn.textContent = "Asignar usuarios (" + f.usuariosAsignados.length + ")";
+    }
+    cerrarAsignar();
   }
 
   function optAud(val, etiqueta, sel) {
@@ -1896,11 +1964,13 @@
   function pintarFunciones() {
     const tabla = $("funcTabla");
     if (funcionesCache.length === 0) {
-      tabla.innerHTML = '<tr><td colspan="6" class="nota">No hay programas registrados todavía.</td></tr>';
+      tabla.innerHTML = '<tr><td colspan="7" class="nota">No hay programas registrados todavía.</td></tr>';
       return;
     }
     tabla.innerHTML = "";
     for (const f of funcionesCache) {
+      const todos = f.todosLosInternos !== false;
+      const nAsig = (f.usuariosAsignados || []).length;
       const tr = document.createElement("tr");
       tr.innerHTML =
           '<td><input type="text" data-k="etiqueta" value="' + esc(f.etiqueta) + '" style="width:100%"></td>'
@@ -1912,10 +1982,24 @@
             + optAud("ambos", "Ambos", f.audiencia)
           + '</select></td>'
         + '<td class="right"><input type="checkbox" data-k="activa"' + (f.activa ? " checked" : "") + '></td>'
+        + '<td><label class="check" style="font-size:13px; white-space:nowrap"><input type="checkbox" data-k="todos"' + (todos ? " checked" : "") + '> Todos los internos</label>'
+            + '<button type="button" class="sec btn-asignar" data-id="' + f.id + '" style="margin-top:4px"' + (todos ? " disabled" : "") + '>Asignar usuarios (' + nAsig + ')</button></td>'
         + '<td class="right"><button data-id="' + f.id + '">Guardar</button></td>';
       tabla.appendChild(tr);
     }
-    tabla.querySelectorAll("button[data-id]").forEach(b =>
+    // "Todos los internos" habilita/deshabilita el botón "Asignar" y se refleja en el cache.
+    tabla.querySelectorAll('input[data-k="todos"]').forEach(chk =>
+      chk.addEventListener("change", () => {
+        const btn = chk.closest("tr").querySelector(".btn-asignar");
+        if (btn) {
+          btn.disabled = chk.checked;
+          const f = funcionesCache.find(x => String(x.id) === String(btn.dataset.id));
+          if (f) f.todosLosInternos = chk.checked;
+        }
+      }));
+    tabla.querySelectorAll(".btn-asignar").forEach(b =>
+      b.addEventListener("click", () => abrirAsignar(b.dataset.id)));
+    tabla.querySelectorAll('td.right > button[data-id]').forEach(b =>
       b.addEventListener("click", () => guardarFuncion(b.dataset.id, b.closest("tr"))));
   }
 
@@ -1924,6 +2008,9 @@
     const orden = parseInt(tr.querySelector('[data-k="orden"]').value, 10) || 0;
     const audiencia = tr.querySelector('[data-k="audiencia"]').value;
     const activa = tr.querySelector('[data-k="activa"]').checked;
+    const todosLosInternos = tr.querySelector('[data-k="todos"]').checked;
+    const f = funcionesCache.find(x => String(x.id) === String(id));
+    const usuariosAsignados = (f && f.usuariosAsignados) || [];
     if (!etiqueta) { mostrar($("funcMsg"), "La etiqueta no puede quedar vacía.", "err"); return; }
 
     let r;
@@ -1931,7 +2018,7 @@
       r = await fetch("/api/admin/funciones/" + id, {
         method: "PUT",
         headers: hdrJson(),
-        body: JSON.stringify({ etiqueta, orden, audiencia, activa })
+        body: JSON.stringify({ etiqueta, orden, audiencia, activa, todosLosInternos, usuariosAsignados })
       });
     } catch (e) { mostrar($("funcMsg"), "No se pudo conectar.", "err"); return; }
     if (r.status === 401 || r.status === 403) { salir(); return; }
@@ -2017,6 +2104,12 @@
     $("cfgFacConcepto").value = "com";
     $("cfgFacDeposito").value = 1;
     $("cfgFacImputacion").value = 21001001;
+    $("cfgSqlServidor").value = "";
+    $("cfgSqlBase").value = "";
+    $("cfgSqlUsuario").value = "";
+    $("cfgSqlClave").value = "";
+    $("cfgSqlClave").placeholder = "(vacío = no cambiar)";
+    $("cfgSqlEmail").value = "";
     $("cfgInfoConexion").textContent = "Al guardar, el padrón de la base nueva (productos y proveedores) se carga en segundo plano; puede tardar unos minutos.";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2045,6 +2138,12 @@
     $("cfgFacConcepto").value = b.facturaConcepto || "";
     $("cfgFacDeposito").value = b.facturaDeposito;
     $("cfgFacImputacion").value = b.facturaImputacionContable;
+    $("cfgSqlServidor").value = b.sqlServidor || "";
+    $("cfgSqlBase").value = b.sqlBase || "";
+    $("cfgSqlUsuario").value = b.sqlUsuario || "";
+    $("cfgSqlClave").value = "";
+    $("cfgSqlClave").placeholder = b.sqlTieneClave ? "(hay una cargada — vacío = no cambiar)" : "(sin clave)";
+    $("cfgSqlEmail").value = b.sqlEmailPropio || "";
     $("cfgInfoConexion").textContent = "Si cambiás la URL de conexión, el próximo pedido a esa base usa la nueva dirección (se reintenta el login).";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2146,7 +2245,12 @@
       facturaPrefijo: $("cfgFacPrefijo").value || "",
       facturaConcepto: $("cfgFacConcepto").value || "",
       facturaDeposito: parseInt($("cfgFacDeposito").value, 10) || 0,
-      facturaImputacionContable: parseInt($("cfgFacImputacion").value, 10) || 0
+      facturaImputacionContable: parseInt($("cfgFacImputacion").value, 10) || 0,
+      sqlServidor: $("cfgSqlServidor").value.trim(),
+      sqlBase: $("cfgSqlBase").value.trim(),
+      sqlUsuario: $("cfgSqlUsuario").value.trim(),
+      sqlClave: $("cfgSqlClave").value,     // vacío = el backend conserva la actual
+      sqlEmailPropio: $("cfgSqlEmail").value.trim()
     };
     let r;
     try {
@@ -2637,6 +2741,9 @@
   $("modalDelCancelar").addEventListener("click", cerrarModalDelBase);
   $("modalDelCerrar").addEventListener("click", cerrarModalDelBase);
   $("modalDelConfirmar").addEventListener("click", confirmarEliminarBase);
+  $("modalAsignarCancelar").addEventListener("click", cerrarAsignar);
+  $("modalAsignarCerrar").addEventListener("click", cerrarAsignar);
+  $("modalAsignarOk").addEventListener("click", confirmarAsignar);
   $("modalDelBase").addEventListener("click", e => { if (e.target === $("modalDelBase")) cerrarModalDelBase(); });
   $("modalDelBase").addEventListener("keydown", e => { if (e.key === "Escape") { e.preventDefault(); cerrarModalDelBase(); } });
 

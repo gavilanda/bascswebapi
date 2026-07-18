@@ -111,7 +111,12 @@ public class ConfigBasesService
             FacturaPrefijo = (req.FacturaPrefijo ?? "").Trim(),
             FacturaConcepto = (req.FacturaConcepto ?? "").Trim(),
             FacturaDeposito = req.FacturaDeposito,
-            FacturaImputacionContable = req.FacturaImputacionContable
+            FacturaImputacionContable = req.FacturaImputacionContable,
+            SqlServidor = (req.SqlServidor ?? "").Trim(),
+            SqlBase = (req.SqlBase ?? "").Trim(),
+            SqlUsuario = (req.SqlUsuario ?? "").Trim(),
+            SqlClave = (req.SqlClave ?? "").Trim(),
+            SqlEmailPropio = (req.SqlEmailPropio ?? "").Trim()
         };
 
         _db.ConfiguracionesBase.Add(f);
@@ -148,6 +153,12 @@ public class ConfigBasesService
         f.FacturaConcepto = (req.FacturaConcepto ?? "").Trim();
         f.FacturaDeposito = req.FacturaDeposito;
         f.FacturaImputacionContable = req.FacturaImputacionContable;
+        f.SqlServidor = (req.SqlServidor ?? "").Trim();
+        f.SqlBase = (req.SqlBase ?? "").Trim();
+        f.SqlUsuario = (req.SqlUsuario ?? "").Trim();
+        f.SqlEmailPropio = (req.SqlEmailPropio ?? "").Trim();
+        // Clave: sólo se actualiza si viene una nueva; vacío = se mantiene la actual.
+        if (!string.IsNullOrWhiteSpace(req.SqlClave)) f.SqlClave = req.SqlClave.Trim();
 
         await _db.SaveChangesAsync(ct);
 
@@ -278,7 +289,13 @@ public record CrearConfigBaseRequest(
     string? FacturaPrefijo,
     string? FacturaConcepto,
     int FacturaDeposito,
-    long FacturaImputacionContable);
+    long FacturaImputacionContable,
+    // SQL directo (e-cheques): conexión + credencial read-only + mail propio a excluir.
+    string? SqlServidor = null,
+    string? SqlBase = null,
+    string? SqlUsuario = null,
+    string? SqlClave = null,
+    string? SqlEmailPropio = null);
 
 // Request de edición de la config de una base (todos los campos editables, incl. conexión).
 public record ActualizarConfigBaseRequest(
@@ -295,4 +312,10 @@ public record ActualizarConfigBaseRequest(
     string? FacturaPrefijo,
     string? FacturaConcepto,
     int FacturaDeposito,
-    long FacturaImputacionContable);
+    long FacturaImputacionContable,
+    // SQL directo (e-cheques). SqlClave vacío en edición = NO cambiar la existente.
+    string? SqlServidor = null,
+    string? SqlBase = null,
+    string? SqlUsuario = null,
+    string? SqlClave = null,
+    string? SqlEmailPropio = null);

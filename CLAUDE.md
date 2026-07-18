@@ -482,6 +482,23 @@ solo si la función pide cliente (`requiereCliente:true`). "Mis datos" dejó de 
 los datos del cliente viven en esa card. La cuenta corriente ordena por fecha (desc por
 defecto, click en "Fecha" invierte) y colorea filas por base.
 
+### 14.1 Acceso por función (asignación por usuario interno)
+Independiente de los "Permisos" del editor de usuarios (esos son para funciones de la
+**intranet**: remitos, auditoría). Acá se controla el acceso a las funciones del **portal**:
+- **`FuncionPortal.TodosLosInternos`** (bool, default true) + **`UsuariosAsignados`** (lista de
+  identificadores, CSV como `Permisos`/`BasesPortal`).
+- Regla (`Auth/AccesoFuncionesService.PuedeUsar`, verificada con tabla de decisión):
+  - **Externo**: accede si `Audiencia` es `externo`/`ambos` (sin asignar nada).
+  - **Interno**: la audiencia debe incluir `interno` Y (es admin · o `TodosLosInternos` · o su
+    identificador está en `UsuariosAsignados`).
+- **Doble candado**: `GET /api/funciones-portal` filtra el menú con esa regla **y** los endpoints
+  sensibles la re-chequean contra la base (ej. `EchequesController` → `PuedeUsarAsync("echeques")`).
+  No alcanza con esconder del menú.
+- **Migración**: `TodosLosInternos` default 1 → las funciones que ya existían quedan abiertas a
+  todos los internos (no rompe). El admin restringe las que quiera desde "Programas para el
+  Portal" (check "Todos los internos" + botón "Asignar usuarios" → modal con los internos activos).
+- No viaja en el JWT (se lee de la base) → cambiar la asignación aplica **sin re-login**.
+
 ---
 
 ## 15. Estadísticas de venta (función interna) y consultas de venta a BAS
@@ -586,3 +603,38 @@ HTML propias, sin librería). `EstadisticasController` + `BasEstadisticasVentaSe
   → un mes YA cacheado se sirve completo aunque la base esté caída (distingue timeout de
   cancelación real con `when (!ct.IsCancellationRequested)`). (2) **`ConnectTimeout` 8s** en los
   HttpClient `bas`/`bas-multi` → una base inalcanzable falla al conectar en ~8s, no a los 120s.
+
+---
+
+## 16. E-Cheques (función interna) — SQL Server DIRECTO (no WebAPI)
+
+Exporta los cheques emitidos de una chequera al `.xls` que importa el banco (e-cheques).
+Portado del `Echeques.py` (Tkinter + pyodbc) que se usaba como `.exe` por PC.
+
+**Por qué NO va por el WebAPI**: se verificó (swagger + "Esquema de CONSULTAS") que BAS **no
+expone** una consulta de cheques por chequera/banco/fecha — los cheques sólo aparecen anidados
+dentro de un `ComprobanteCompra`. Así que esta función se conecta **DIRECTO al SQL Server** de la
+base (`Microsoft.Data.SqlClient`), corriendo la misma query del `.py`. Es el primer camino
+SQL-directo del portal (pensado para reusar en futuras "consultas").
+
+- **`BasEchequesService`** (`Bas/`): `ConsultarAsync` conecta al SQL de la base y trae los cheques
+  (parametrizada, dedup por número, orden, `ConnectTimeout` 8s). `ArmarXls` genera el `.xls` binario
+  (BIFF, con **NPOI**) idéntico al de `xlwt` (importe `0.00`; numEcheq/nroCuiCdi/carácter/modo enteros;
+  resto texto; anchos). Verificado: sale con la firma `.xls` `D0-CF-11-E0-…`.
+- **`EchequesController`** (solo-interno): `GET /api/echeques` (recuento) y `GET /api/echeques/exportar`
+  (baja el `.xls`, header `X-Echeques-Cantidad`; o JSON `{cantidad:0}` si no hay registros).
+- **Config por base** (`ConfiguracionesBase`, editable en la intranet): `SqlServidor`, `SqlBase`,
+  `SqlUsuario`, `SqlClave`, `SqlEmailPropio` (mail propio a excluir, difiere por empresa). La **clave**
+  no se devuelve en el GET (sólo `sqlTieneClave`); en edición, clave vacía = se conserva. Vacío
+  `SqlServidor`/`SqlBase` = función deshabilitada para esa base.
+- **Credencial read-only**: usuario **`portal_consultas`** (login SQL con `db_datareader`), creado en
+  CADA SQL Server. Se lee de la config de la base; si está vacía, cae a la var. de entorno
+  `SqlConsultas__User` / `SqlConsultas__Password`. ⚠️ Es la MISMA credencial pensada para reusar en
+  futuras funciones de SQL directo. Clave en texto plano en la DB del portal (sólo la ve el admin del
+  editor de bases); es read-only, pero no exponerla en endpoints de usuarios comunes.
+- **Front** (`secEcheques` en portal.html): formulario (base, fechas, banco, chequera, prefijo/usar,
+  cheque desde/hasta) con las validaciones del `.py`; el prefijo se antepone al número si "usar prefijo".
+  Genera y **descarga** el `.xls` (fetch con auth → blob → anchor). Recuerda el último banco/chequera/
+  prefijo/base por navegador en `localStorage` (como el `.ini` por PC).
+- **Red**: el server del portal tiene que alcanzar el SQL Server de cada base (puerto 1433) — dependencia
+  nueva además de los puertos del WebAPI.

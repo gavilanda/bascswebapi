@@ -98,5 +98,18 @@ public class PortalDbContext : DbContext
         // La Clave es el vínculo con el código del front; no se repite.
         var fp = modelBuilder.Entity<FuncionPortal>();
         fp.HasIndex(f => f.Clave).IsUnique();
+
+        // UsuariosAsignados: lista de identificadores como texto separado por comas
+        // (misma estrategia que Permisos / BasesPortal).
+        var asignadosConverter = new ValueConverter<List<string>, string>(
+            v => string.Join(',', v),
+            v => string.IsNullOrEmpty(v)
+                ? new List<string>()
+                : v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList());
+        var asignadosComparer = new ValueComparer<List<string>>(
+            (a, b) => (a ?? new List<string>()).SequenceEqual(b ?? new List<string>()),
+            v => v.Aggregate(0, (acc, s) => HashCode.Combine(acc, s.GetHashCode())),
+            v => v.ToList());
+        fp.Property(f => f.UsuariosAsignados).HasConversion(asignadosConverter, asignadosComparer);
     }
 }
