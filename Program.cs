@@ -93,7 +93,10 @@ builder.Services.Configure<BasWebApiOptions>(
 
 var basBaseUrl = builder.Configuration[$"{BasWebApiOptions.Seccion}:BaseUrl"]
                  ?? "http://localhost:5081";
-builder.Services.AddHttpClient("bas", c => c.BaseAddress = new Uri(basBaseUrl));
+builder.Services.AddHttpClient("bas", c => c.BaseAddress = new Uri(basBaseUrl))
+    // ConnectTimeout corto: una base caída/inalcanzable falla al conectar en ~8s en vez de
+    // colgarse hasta el timeout total (así se muestra el aviso enseguida y las demás siguen).
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(8) });
 
 builder.Services.AddSingleton<BasAuthService>();      // singleton: cachea el token
 builder.Services.AddScoped<BasClientesService>();
@@ -114,7 +117,8 @@ var basDestinos = new ConcurrentDictionary<string, DestinoBas>(
 // arma desde la BaseUrl (editable) de la base. Así se pueden dar de alta bases
 // nuevas en runtime sin registrar clientes al arranque. Timeout amplio para la
 // carga del padrón (la consulta en vivo se topea aparte, corto, por CancellationToken).
-builder.Services.AddHttpClient("bas-multi", c => c.Timeout = TimeSpan.FromSeconds(120));
+builder.Services.AddHttpClient("bas-multi", c => c.Timeout = TimeSpan.FromSeconds(120))
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(8) });
 builder.Services.AddSingleton(basDestinos);
 builder.Services.AddSingleton<BasDestinosService>();
 builder.Services.AddScoped<BasResolucionService>();
@@ -298,6 +302,8 @@ using (var scope = app.Services.CreateScope())
     // que ve el usuario (vacío = todas). Sólo se agregan si faltan.
     AgregarColumnaSiFalta("Usuarios", "AccedePortalClientes", "INTEGER NOT NULL DEFAULT 0");
     AgregarColumnaSiFalta("Usuarios", "BasesPortal", "TEXT NOT NULL DEFAULT ''");
+    // Preferencia de la barra "Ver bases" (orden + destildadas), compartida ctacte/estadísticas.
+    AgregarColumnaSiFalta("Usuarios", "PrefBases", "TEXT NULL");
 
     if (!db.Usuarios.Any())
     {

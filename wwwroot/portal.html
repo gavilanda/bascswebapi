@@ -42,6 +42,7 @@
   .msg { font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; display:none; }
   .msg.err { background:#fde8e8; color:var(--rojo); display:block; }
   .msg.ok { background:#e7f6ec; color:var(--verde); display:block; }
+  .msg.info { background:#eef2ff; color:#3730a3; display:block; }
   .hidden { display:none !important; }
   .topinfo { font-size:13px; color:var(--txt2); margin-right:10px; }
   .layout { display:flex; gap:6px; align-items:flex-start; }
@@ -96,13 +97,20 @@
     font-weight:700; font-size:13px; white-space:nowrap; }
   /* La leyenda trae margen propio que descentra; lo anulamos para alinear con "Unificar". */
   .vta-vista-filtros .leyenda-bases { margin:0; }
-  /* Botón Gráfico/Listado: negro con letra blanca, al lado de Consultar. */
+  /* Botones Gráfico/Listado + Refrescar en la MISMA línea, a la derecha de la card
+     (línea de bases). Gráfico negro, Refrescar naranja. */
+  .vta-btn-stack { margin-left:auto; display:flex; flex-direction:row; gap:8px; }
+  .vta-btn-stack button { padding:7px 16px; }
   #btnVtaVista { background:var(--txt); color:#fff; }
+  #btnVtaRefrescar { background:#f97316; color:#fff; }
+  #btnVtaRefrescar:hover { background:#ea580c; }
   .vta-sub { font-size:14px; margin:18px 0 8px; color:var(--txt); font-weight:600; }
   /* Barras HTML (gráfico de clientes y de meses): finas y con scroll cuando hay muchas */
   /* Un solo contenedor de scroll (desde "Evolución por mes"); gutter estable para
      que el ancho no cambie entre gráfico y listado. */
-  #vtaScroll { overflow-y:auto; scrollbar-gutter:stable; padding-right:14px; }
+  /* Alto FIJO del área de resultados: todo (Evolución por mes + títulos + clientes) scrollea
+     acá adentro; la cantidad de meses no cambia el alto de la card. Ajustar sólo este valor. */
+  #vtaScroll { overflow-y:auto; scrollbar-gutter:stable; padding-right:14px; max-height:660px; }
   .hbars { display:flex; flex-direction:column; }
   /* Filas del gráfico al mismo alto que las del listado (para igualar la cantidad visible). */
   .hbar-row { display:flex; align-items:center; gap:8px; font-size:14px; height:30px; border-bottom:1px solid var(--borde); }
@@ -134,7 +142,13 @@
   /* Encabezado "Fecha" clickeable para ordenar */
   #thFecha { cursor:pointer; user-select:none; white-space:nowrap; }
   .leyenda-bases { display:flex; gap:14px; align-items:center; font-size:12px; color:var(--txt2); margin:2px 0 12px; flex-wrap:wrap; }
-  .base-check { display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; color:var(--txt); }
+  /* Cada base es arrastrable para reordenar (drag & drop nativo). El checkbox de adentro
+     sigue clickeable para tildar/destildar. */
+  .base-check { display:inline-flex; align-items:center; gap:5px; cursor:grab; user-select:none; color:var(--txt);
+    padding:2px 6px; border:1px solid transparent; border-radius:6px; }
+  .base-check:active { cursor:grabbing; }
+  .base-check.arrastrando { opacity:.4; }
+  .base-check:hover { border-color:var(--borde); background:var(--bg); }
   .leyenda-bases input[type="checkbox"] { width:auto; padding:0; margin:0; cursor:pointer; accent-color:var(--azul); }
   .aviso { background:#fef9c3; color:#854d0e; font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; }
   /* Usuario externo: no se le muestra la estructura interna de bases
@@ -249,7 +263,7 @@
             </div>
             <div id="msgCuenta" class="msg"></div>
             <div id="avisoBases" class="aviso hidden"></div>
-            <div id="ccCargando" class="cargando hidden">Cargando cuenta corriente…</div>
+            <div id="ccCargando" class="cargando hidden"><span>Cargando cuenta corriente…</span><button id="btnCcCancelar" class="sec" style="margin-left:8px">Cancelar</button></div>
             <div id="leyendaBases" class="leyenda-bases hidden"></div>
             <div id="ccScroll">
               <table id="tablaCC" class="hidden">
@@ -312,7 +326,6 @@
               </div>
             </label>
             <button id="btnVtaConsultar">Consultar</button>
-            <button id="btnVtaVista">Gráfico</button>
             <div class="vta-totales">
               <div class="vt-stat"><span class="vt-lbl">Total vendido</span><span class="vt-val" id="kpiTotal">—</span></div>
               <div class="vt-stat"><span class="vt-lbl">Comprobantes</span><span class="vt-val" id="kpiCant">—</span></div>
@@ -321,12 +334,16 @@
           <div id="vtaClienteSel" class="staff-elegido hidden"></div>
           <div id="vtaMsg" class="msg"></div>
           <div id="vtaAviso" class="aviso hidden"></div>
-          <div id="vtaCargando" class="cargando hidden">Consultando ventas… (los rangos largos o bases grandes pueden tardar varios minutos)</div>
+          <div id="vtaCargando" class="cargando hidden"><span>Consultando ventas… (los rangos largos o bases grandes pueden tardar varios minutos)</span><button id="btnVtaCancelar" class="sec" style="margin-left:8px">Cancelar</button></div>
 
           <div id="vtaResultado" class="hidden">
             <div class="vta-vista-filtros">
               <div id="vtaLeyendaBases" class="leyenda-bases hidden"></div>
               <label class="vta-unificar"><input type="checkbox" id="vtaUnificar" checked> Unificar por CUIT</label>
+              <div class="vta-btn-stack">
+                <button id="btnVtaVista">Gráfico</button>
+                <button id="btnVtaRefrescar" title="Vuelve a consultar el período ignorando lo guardado en caché (útil si en BAS se cargó o corrigió un comprobante de un mes ya consultado).">Refrescar</button>
+              </div>
             </div>
 
             <div id="vtaScroll">
@@ -372,7 +389,17 @@
   let enVuelo = {};        // consultas de detalle en curso (dedupe)
   let ccCache = null;      // última cuenta corriente traída
   let datosCache = null;   // últimos "mis datos" traídos
-  let basesVisibles = {};  // qué bases están tildadas en la cuenta corriente
+  let ccAbort = null;      // AbortController de la consulta de cuenta corriente en curso
+  // Preferencia de la barra "Ver bases", POR USUARIO y COMPARTIDA entre cuenta corriente y
+  // estadísticas: orden de las bases + cuáles están destildadas (ocultas). Se carga del
+  // backend al entrar y se guarda (con debounce) ante cada cambio. Reemplaza los viejos
+  // basesVisibles/basesVtaVisibles.
+  let prefBases = { orden: [], ocultas: [] };
+  let prefSaveTimer = null;
+  let basesDisponibles = [];   // todas las bases del usuario (para poblar la barra antes de consultar)
+  // Bases a consultar = las tildadas (disponibles menos ocultas). Se mandan al backend para
+  // que SÓLO consulte esas (así se puede excluir una base caída de entrada).
+  function basesParaConsultar() { return basesDisponibles.filter(baseTildada); }
   let ordenFechaAsc = false;  // orden del listado por fecha (false = más nuevo primero)
 
   function mostrar(el, t, tipo) { el.textContent = t; el.className = "msg " + tipo; }
@@ -537,7 +564,9 @@
       // Al externo no se le muestra la estructura interna de bases (ver CSS .externo).
       $("vistaPortal").classList.toggle("externo", !esStaff);
       pintarEncabezado();
-      construirMenu().then(() => {
+      // Cargamos la preferencia de bases (orden/tildado + disponibles) ANTES de mostrar la
+      // primera función, para poder poblar la barra "Ver bases" desde el arranque.
+      Promise.all([cargarPrefBases(), construirMenu()]).then(() => {
         const primera = menuFunciones[0];
         if (primera) mostrarSeccion(primera.clave);
       });
@@ -583,7 +612,7 @@
     token = ""; ident = ""; tipo = ""; codcli = ""; razon = "";
     esStaff = false; clienteCuit = ""; clienteRazon = "";
     ultimoComprobanteKey = ""; cacheDetalle = {}; enVuelo = {}; ccCache = null; datosCache = null;
-    basesVisibles = {};
+    prefBases = { orden: [], ocultas: [] }; basesDisponibles = [];
     ["pc_token", "pc_ident", "pc_tipo", "pc_codcli", "pc_razon", "pc_staff", "pc_cli_cuit", "pc_cli_razon"].forEach(k => localStorage.removeItem(k));
     actualizarVista();
   }
@@ -639,37 +668,112 @@
   }
 
   // ---------- Cuenta corriente ----------
-  // Bases distintas que aparecen en los movimientos traídos.
-  function basesConDatos(d) {
-    const lista = [];
-    for (const c of (d.comprobantes || [])) {
-      if (c.baseNombre && !lista.includes(c.baseNombre)) lista.push(c.baseNombre);
-    }
-    return lista;
+
+  // ===== Preferencia compartida de la barra "Ver bases" (orden + tildado) =====
+  async function cargarPrefBases() {
+    try {
+      const r = await fetch("/api/mi-cuenta/pref-bases", { headers: { "Authorization": "Bearer " + token } });
+      if (!r.ok) return;
+      const d = await r.json();
+      prefBases = {
+        orden: Array.isArray(d.orden) ? d.orden : [],
+        ocultas: Array.isArray(d.ocultas) ? d.ocultas : []
+      };
+      basesDisponibles = Array.isArray(d.disponibles) ? d.disponibles : [];
+    } catch (e) {}
   }
 
-  // Arma un tilde por base (una por cada base con datos). Por defecto van
-  // tildadas; los cambios del usuario se preservan entre refrescos de fondo.
-  function construirControlesBases(d) {
-    const cont = $("leyendaBases");
-    const bases = basesConDatos(d);
-    if (bases.length === 0) { cont.innerHTML = ""; cont.classList.add("hidden"); return; }
+  function guardarPrefBases() {
+    clearTimeout(prefSaveTimer);
+    prefSaveTimer = setTimeout(() => {
+      fetch("/api/mi-cuenta/pref-bases", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify({ orden: prefBases.orden, ocultas: prefBases.ocultas })
+      }).catch(() => {});
+    }, 500);
+  }
 
-    for (const b of bases) if (basesVisibles[b] === undefined) basesVisibles[b] = true;
+  function baseTildada(b) { return !prefBases.ocultas.includes(b); }
 
-    cont.innerHTML = '<span>Ver bases:</span>' + bases.map(b =>
-      '<label class="base-check"><input type="checkbox" data-base="' + esc(b) + '"'
-        + (basesVisibles[b] ? ' checked' : '') + '> '
-        + '<span class="basebadge ' + esc(b) + '">' + esc(b) + '</span></label>'
-    ).join("");
+  function setTildada(b, val) {
+    const i = prefBases.ocultas.indexOf(b);
+    if (val && i >= 0) prefBases.ocultas.splice(i, 1);
+    else if (!val && i < 0) prefBases.ocultas.push(b);
+    guardarPrefBases();
+  }
+
+  // Ordena una lista de bases según prefBases.orden; las que no tienen orden guardado van
+  // al final, alfabético.
+  function ordenarBasesPref(bases) {
+    const pos = new Map(prefBases.orden.map((b, i) => [b, i]));
+    return bases.slice().sort((a, b) => {
+      const pa = pos.has(a) ? pos.get(a) : 1e9, pb = pos.has(b) ? pos.get(b) : 1e9;
+      return pa !== pb ? pa - pb : a.localeCompare(b);
+    });
+  }
+
+  // Aplica el nuevo orden de las bases VISIBLES al orden global, preservando la posición de
+  // las que no están a la vista en esta pantalla.
+  function reordenarPref(nuevaVisible) {
+    let full = prefBases.orden.slice();
+    for (const b of nuevaVisible) if (!full.includes(b)) full.push(b);
+    const vis = new Set(nuevaVisible);
+    let i = 0;
+    prefBases.orden = full.map(b => vis.has(b) ? nuevaVisible[i++] : b);
+    guardarPrefBases();
+  }
+
+  // Construye la barra "Ver bases" en 'cont', en el orden de la preferencia, con checkboxes
+  // y drag & drop para reordenar. onCambio() se llama al tildar o reordenar. La usan las DOS
+  // pantallas (cuenta corriente y estadísticas) → el estado es el mismo para ambas.
+  function construirLeyendaBases(cont, bases, onCambio) {
+    if (!bases || bases.length === 0) { cont.innerHTML = ""; cont.classList.add("hidden"); return; }
+    const ordenadas = ordenarBasesPref(bases);
+    cont.innerHTML = '<span>Ver bases:</span>' + ordenadas.map(b =>
+      '<label class="base-check" data-base="' + esc(b) + '" draggable="true" title="Arrastrá para reordenar">'
+      + '<input type="checkbox"' + (baseTildada(b) ? ' checked' : '') + '> '
+      + '<span class="basebadge ' + esc(b) + '">' + esc(b) + '</span></label>').join("");
     cont.classList.remove("hidden");
 
-    cont.querySelectorAll('input[type="checkbox"]').forEach(chk => {
-      chk.addEventListener("change", () => {
-        basesVisibles[chk.dataset.base] = chk.checked;
-        renderMovimientos();
+    cont.querySelectorAll('.base-check').forEach(lab => {
+      lab.querySelector('input').addEventListener("change", e => {
+        setTildada(lab.dataset.base, e.target.checked);
+        onCambio();
       });
     });
+    hacerReordenable(cont, nueva => {
+      reordenarPref(nueva);
+      construirLeyendaBases(cont, bases, onCambio);
+      onCambio();
+    });
+  }
+
+  // Drag & drop nativo (HTML5): hace arrastrables los [data-base] dentro de 'cont' y, al
+  // soltar, llama onReorder(nuevoOrdenDeBases).
+  function hacerReordenable(cont, onReorder) {
+    let arr = null;
+    cont.querySelectorAll('[data-base]').forEach(el => {
+      el.addEventListener("dragstart", e => { arr = el; el.classList.add("arrastrando"); e.dataTransfer.effectAllowed = "move"; });
+      el.addEventListener("dragend", () => { if (arr) arr.classList.remove("arrastrando"); arr = null; });
+      el.addEventListener("dragover", e => {
+        e.preventDefault();
+        if (!arr || arr === el) return;
+        const r = el.getBoundingClientRect();
+        const despues = (e.clientX - r.left) > r.width / 2;
+        cont.insertBefore(arr, despues ? el.nextSibling : el);
+      });
+      el.addEventListener("drop", e => {
+        e.preventDefault();
+        onReorder([...cont.querySelectorAll('[data-base]')].map(x => x.dataset.base));
+      });
+    });
+  }
+
+  function construirControlesBases(d) {
+    // Mostramos TODAS las bases del usuario (no sólo las que trajeron datos), así se puede
+    // tildar/destildar cualquiera. La consulta ya sólo pega a las tildadas.
+    construirLeyendaBases($("leyendaBases"), basesDisponibles, renderMovimientos);
   }
 
   function pintarCuenta(d) {
@@ -701,7 +805,7 @@
     if (!d) return;
 
     const todos = d.comprobantes || [];
-    const comps = todos.filter(c => basesVisibles[c.baseNombre] !== false);
+    const comps = todos.filter(c => baseTildada(c.baseNombre));
 
     const total = comps.reduce((s, c) => s + (Number(c.saldo) || 0), 0);
     $("saldoTotal").textContent = plata(total);
@@ -797,13 +901,14 @@
     $("ccVista").classList.remove("hidden");
 
     if (esStaff && !clienteCuit) {
-      // Staff sin cliente elegido: no consultamos, pedimos que busque.
+      // Staff sin cliente elegido: no consultamos, pero mostramos la barra "Ver bases" para
+      // que ya pueda pre-elegir qué bases incluir antes de elegir el cliente.
       $("ccCargando").classList.add("hidden");
       $("tablaCC").classList.add("hidden");
-      $("leyendaBases").classList.add("hidden");
+      construirLeyendaBases($("leyendaBases"), basesDisponibles, renderMovimientos);
       $("saldoTotal").textContent = "—";
       $("saldoTotal").className = "saldo";
-      $("ccVacio").textContent = "Buscá y elegí un cliente para ver su cuenta corriente.";
+      $("ccVacio").textContent = "Buscá y elegí un cliente para ver su cuenta corriente. Podés pre-elegir las bases arriba.";
       $("ccVacio").classList.remove("hidden");
       return;
     }
@@ -826,13 +931,23 @@
       $("ccCargando").classList.remove("hidden");
     }
 
+    let url = "/api/mi-cuenta/cuenta-corriente" + cuitQ("?");
+    const bb = basesParaConsultar();
+    if (bb.length) url += (url.includes("?") ? "&" : "?") + "bases=" + encodeURIComponent(bb.join(","));
+    ccAbort = new AbortController();
     let r;
     try {
-      r = await fetch("/api/mi-cuenta/cuenta-corriente" + cuitQ("?"), { headers: { "Authorization": "Bearer " + token } });
+      r = await fetch(url, { headers: { "Authorization": "Bearer " + token }, signal: ccAbort.signal });
     } catch (e) {
-      if (foreground) { $("ccCargando").classList.add("hidden"); mostrar($("msgCuenta"), "No se pudo conectar.", "err"); }
+      ccAbort = null;
+      if (foreground) {
+        $("ccCargando").classList.add("hidden");
+        mostrar($("msgCuenta"), e.name === "AbortError" ? "Consulta cancelada." : "No se pudo conectar.",
+          e.name === "AbortError" ? "info" : "err");
+      }
       return;
     }
+    ccAbort = null;
 
     if (r.status === 401) { salir(); return; }
     if (!r.ok) {
@@ -989,9 +1104,10 @@
     clienteRazon = razonCli || "";
     localStorage.setItem("pc_cli_cuit", clienteCuit);
     localStorage.setItem("pc_cli_razon", clienteRazon);
-    // Reiniciamos las cachés: eran del cliente anterior.
+    // Reiniciamos las cachés: eran del cliente anterior. La preferencia de bases (orden/
+    // tildado) NO se toca: es del usuario, no del cliente.
     ccCache = null; datosCache = null; cacheDetalle = {}; enVuelo = {};
-    basesVisibles = {}; ultimoComprobanteKey = "";
+    ultimoComprobanteKey = "";
     $("staffResultados").classList.add("hidden");
     $("staffResultados").innerHTML = "";
     $("staffBuscar").value = "";
@@ -1007,30 +1123,59 @@
       $("vtaHasta").value = hoy.getFullYear() + "-" + p(hoy.getMonth() + 1) + "-" + p(hoy.getDate());
     }
     // No auto-consulta (la query pega en vivo a BAS y puede tardar); el usuario aprieta Consultar.
+    // Pero mostramos las cards VACÍAS + la barra "Ver bases" desde el inicio, para pre-elegir
+    // qué bases incluir. Si ya hubo una consulta esta sesión, re-mostramos ese resultado.
+    if (ventasData) {
+      construirControlesBasesVta();
+      renderVentas();
+    } else {
+      $("vtaResultado").classList.remove("hidden");
+      $("vtaAviso").classList.add("hidden");
+      $("kpiTotal").textContent = "—";
+      $("kpiCant").textContent = "—";
+      construirControlesBasesVta();
+      $("chartMes").innerHTML = "";
+      $("chartClientes").innerHTML = '<div class="vacio">Consultá para ver los datos.</div>';
+      $("cuerpoVtaCli").innerHTML = "";
+      aplicarVistaVentas();
+    }
   }
 
   let ventasData = null;        // último resultado (desglose por base)
-  let basesVtaVisibles = {};    // qué bases están tildadas en estadísticas
   let vtaCuit = "";             // CUIT del cliente elegido en el buscador (vacío = todos)
   let vtaClienteRazon = "";
   let vtaBuscarTimer = null;
   let vtaVista = "grafico";     // "grafico" | "listado" (toggle del botón)
+  let vtaAbort = null;          // AbortController de la consulta en curso (para Cancelar)
 
-  async function cargarVentas() {
+  async function cargarVentas(forzar) {
     const desde = $("vtaDesde").value, hasta = $("vtaHasta").value;
     if (!desde || !hasta) { mostrar($("vtaMsg"), "Elegí el rango de fechas.", "err"); return; }
+    // Las fechas de <input type=date> son "yyyy-MM-dd": comparar como string = comparar cronológico.
+    if (desde > hasta) { mostrar($("vtaMsg"), 'La fecha "Desde" no puede ser mayor que "Hasta".', "err"); return; }
     limpiar($("vtaMsg"));
     $("vtaAviso").classList.add("hidden");
     $("vtaResultado").classList.add("hidden");
     $("vtaCargando").classList.remove("hidden");
 
+    vtaAbort = new AbortController();
     let r;
     try {
+      const bb = basesParaConsultar();
       const url = "/api/estadisticas/ventas?desde=" + encodeURIComponent(desde) + "&hasta=" + encodeURIComponent(hasta)
-        + (vtaCuit ? "&cuit=" + encodeURIComponent(vtaCuit) : "");
-      r = await fetch(url, { headers: { "Authorization": "Bearer " + token } });
-    } catch (e) { $("vtaCargando").classList.add("hidden"); mostrar($("vtaMsg"), "No se pudo conectar.", "err"); return; }
+        + (vtaCuit ? "&cuit=" + encodeURIComponent(vtaCuit) : "")
+        + (bb.length ? "&bases=" + encodeURIComponent(bb.join(",")) : "")
+        + (forzar ? "&refrescar=true" : "");
+      r = await fetch(url, { headers: { "Authorization": "Bearer " + token }, signal: vtaAbort.signal });
+    } catch (e) {
+      vtaAbort = null;
+      $("vtaCargando").classList.add("hidden");
+      if (e.name === "AbortError") mostrar($("vtaMsg"), "Consulta cancelada.", "info");
+      else mostrar($("vtaMsg"), "No se pudo conectar.", "err");
+      return;
+    }
 
+    vtaAbort = null;
     $("vtaCargando").classList.add("hidden");
     if (r.status === 401) { salir(); return; }
     if (!r.ok) {
@@ -1039,32 +1184,25 @@
       return;
     }
     ventasData = await r.json();
-    basesVtaVisibles = {};
+    // El orden/tildado de bases sale de prefBases (compartido y persistente): al reconsultar
+    // se respeta lo del usuario. "Unificar por CUIT" es un checkbox del DOM: conserva su estado.
     construirControlesBasesVta();
     renderVentas();
   }
 
-  // Tilde por base (igual que la cuenta corriente): destildar quita esa base de los
-  // KPIs, gráficos y tabla, recalculando sobre lo visible.
+  // Tilde por base — misma barra reordenable + persistente que la cuenta corriente
+  // (comparten prefBases). Destildar quita esa base de los KPIs, gráficos y tabla.
   function construirControlesBasesVta() {
-    const cont = $("vtaLeyendaBases");
-    const bases = (ventasData?.bases || []).filter(b => b.ok);
-    if (bases.length === 0) { cont.innerHTML = ""; cont.classList.add("hidden"); return; }
-    for (const b of bases) if (basesVtaVisibles[b.baseNombre] === undefined) basesVtaVisibles[b.baseNombre] = true;
-    cont.innerHTML = '<span>Ver bases:</span>' + bases.map(b =>
-      '<label class="base-check"><input type="checkbox" data-base="' + esc(b.baseNombre) + '"'
-        + (basesVtaVisibles[b.baseNombre] ? ' checked' : '') + '> '
-        + '<span class="basebadge ' + esc(b.baseNombre) + '">' + esc(b.baseNombre) + '</span></label>').join("");
-    cont.classList.remove("hidden");
-    cont.querySelectorAll('input[type="checkbox"]').forEach(chk =>
-      chk.addEventListener("change", () => { basesVtaVisibles[chk.dataset.base] = chk.checked; renderVentas(); }));
+    // Todas las bases del usuario (para tildar/destildar cualquiera). La consulta pega sólo
+    // a las tildadas; re-incluir una base excluida requiere volver a Consultar.
+    construirLeyendaBases($("vtaLeyendaBases"), basesDisponibles, renderVentas);
   }
 
   function renderVentas() {
     if (!ventasData) return;
     $("vtaResultado").classList.remove("hidden");
 
-    const bases = (ventasData.bases || []).filter(b => b.ok && basesVtaVisibles[b.baseNombre] !== false);
+    const bases = (ventasData.bases || []).filter(b => b.ok && baseTildada(b.baseNombre));
     const fallidas = (ventasData.bases || []).filter(b => !b.ok);
 
     // "Unificar por CUIT": tildado agrupa un cliente real (varios códigos/bases) en una
@@ -1127,21 +1265,13 @@
     ajustarScrollVentas();
   }
 
-  // El scroll arranca en "Evolución por mes" y muestra ~18 filas de clientes. El
-  // encabezado (evolución + títulos) es igual en ambos modos, y las filas del gráfico
-  // igualan el alto de las del listado, así el alto y el ancho de la card no cambian.
+  // El área de resultados tiene alto FIJO (CSS: #vtaScroll { max-height }). TODO —el gráfico
+  // "Evolución por mes", los títulos y las filas de clientes— scrollea dentro de esa misma
+  // ventana; la cantidad de meses NO cambia el alto de la card. Sin medición de alturas
+  // (era la fuente de la intermitencia): sólo volvemos el scroll al tope al re-renderizar
+  // o al cambiar de vista.
   function ajustarScrollVentas() {
-    const cont = $("vtaScroll");
-    const esGrafico = vtaVista === "grafico";
-    const filas = esGrafico
-      ? $("chartClientes").querySelectorAll(".hbar-row")
-      : $("cuerpoVtaCli").querySelectorAll("tr");
-    const n = esGrafico ? 18 : 17;   // el listado muestra una línea menos
-    if (filas.length <= n) { cont.style.maxHeight = ""; return; }
-    const encabezado = filas[0].getBoundingClientRect().top - cont.getBoundingClientRect().top;
-    let h = encabezado;
-    for (let i = 0; i < n; i++) h += filas[i].getBoundingClientRect().height;
-    cont.style.maxHeight = Math.ceil(h + 4) + "px";
+    $("vtaScroll").scrollTop = 0;
   }
 
   // "2026-07" → "jul 2026"
@@ -1214,7 +1344,10 @@
     } else { cont.innerHTML = ""; cont.classList.add("hidden"); }
   }
 
-  $("btnVtaConsultar").addEventListener("click", cargarVentas);
+  $("btnVtaConsultar").addEventListener("click", () => cargarVentas(false));
+  $("btnVtaRefrescar").addEventListener("click", () => cargarVentas(true));
+  $("btnVtaCancelar").addEventListener("click", () => { if (vtaAbort) vtaAbort.abort(); });
+  $("btnCcCancelar").addEventListener("click", () => { if (ccAbort) ccAbort.abort(); });
   $("vtaBuscarCli").addEventListener("input", () => { clearTimeout(vtaBuscarTimer); vtaBuscarTimer = setTimeout(buscarClientesVta, 250); });
   $("vtaUnificar").addEventListener("change", renderVentas);
   $("btnVtaVista").addEventListener("click", () => {

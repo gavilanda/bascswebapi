@@ -51,4 +51,10 @@ public class UsuarioPortal
     public string? Email { get; set; }
     public bool Activo { get; set; } = true;
     public DateTimeOffset FechaAlta { get; set; } = DateTimeOffset.Now;
+
+    // Preferencia del usuario para la barra "Ver bases" (compartida entre cuenta corriente
+    // y estadísticas): JSON { "orden": ["XARDO","BARK",...], "ocultas": ["PRUEBAB"] }.
+    // orden = orden preferido; ocultas = bases destildadas (default: todas tildadas).
+    // Se maneja como texto opaco; el front arma/parsea el JSON. null = sin preferencia.
+    public string? PrefBases { get; set; }
 }

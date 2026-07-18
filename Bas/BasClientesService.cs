@@ -9,7 +9,6 @@ namespace PortalClientes.Bas;
 // Cachea el resultado: los datos del cliente cambian poco.
 public class BasClientesService
 {
-    private readonly IHttpClientFactory _factory;
     private readonly BasAuthService _auth;
     private readonly IMemoryCache _cache;
     private readonly BasDestinosService _destinos;
@@ -17,9 +16,8 @@ public class BasClientesService
     private static readonly TimeSpan DuracionCache = TimeSpan.FromMinutes(30);
 
     public BasClientesService(
-        IHttpClientFactory factory, BasAuthService auth, IMemoryCache cache, BasDestinosService destinos)
+        BasAuthService auth, IMemoryCache cache, BasDestinosService destinos)
     {
-        _factory = factory;
         _auth = auth;
         _cache = cache;
         _destinos = destinos;
@@ -33,26 +31,10 @@ public class BasClientesService
         if (_cache.TryGetValue(cacheKey, out ClienteBas? enCache))
             return enCache;
 
-        var token = await _auth.GetTokenAsync(ct);
-        var http = _factory.CreateClient("bas");
+        var json = await _auth.EnviarConReintentoAuthAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, $"/api/Clientes/documento={Uri.EscapeDataString(cuit)}"), ct);
+        if (json is null) return null;
 
-        using var req = new HttpRequestMessage(
-            HttpMethod.Get, $"/api/Clientes/documento={Uri.EscapeDataString(cuit)}");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        using var resp = await http.SendAsync(req, ct);
-
-        if (resp.StatusCode == HttpStatusCode.NotFound)
-            return null;
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            var err = await resp.Content.ReadAsStringAsync(ct);
-            throw new InvalidOperationException(
-                $"BAS devolvio {(int)resp.StatusCode} al buscar el CUIT. {err}");
-        }
-
-        var json = await resp.Content.ReadAsStringAsync(ct);
         var lista = JsonSerializer.Deserialize<List<ClienteBas>>(json, JsonOpts);
         var cliente = ElegirCasaCentral(lista);
 

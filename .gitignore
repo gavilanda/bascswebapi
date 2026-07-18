@@ -14,6 +14,9 @@ publish/
 # ---- Caché del padrón (se regenera desde BAS) ----
 cache-padron/
 
+# ---- Caché de estadísticas de venta por mes (se regenera desde BAS) ----
+cache-ventas/
+
 # ---- Configuración con secretos ----
 # El template (appsettings.json) SÍ se sube; la config real de desarrollo NO.
 appsettings.Development.json

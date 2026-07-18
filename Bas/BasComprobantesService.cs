@@ -12,7 +12,6 @@ namespace PortalClientes.Bas;
 // asi que evitamos re-preguntarle a BAS lo mismo.
 public class BasComprobantesService
 {
-    private readonly IHttpClientFactory _factory;
     private readonly BasAuthService _auth;
     private readonly BasWebApiOptions _opt;
     private readonly IMemoryCache _cache;
@@ -22,10 +21,9 @@ public class BasComprobantesService
     private static readonly TimeSpan DuracionCache = TimeSpan.FromMinutes(30);
 
     public BasComprobantesService(
-        IHttpClientFactory factory, BasAuthService auth,
+        BasAuthService auth,
         IOptions<BasWebApiOptions> opt, IMemoryCache cache, BasDestinosService destinos)
     {
-        _factory = factory;
         _auth = auth;
         _opt = opt.Value;
         _cache = cache;
@@ -40,9 +38,6 @@ public class BasComprobantesService
         if (_cache.TryGetValue(cacheKey, out ComprobanteVentaBas? enCache))
             return enCache;
 
-        var token = await _auth.GetTokenAsync(ct);
-        var http = _factory.CreateClient("bas");
-
         var url = $"/api/ConsultaComprobanteVenta"
                 + $"?Empresa={_opt.Empresa}"
                 + $"&Sucursal={_opt.Sucursal}"
@@ -50,22 +45,10 @@ public class BasComprobantesService
                 + $"&Prefijo={Uri.EscapeDataString(prefijo)}"
                 + $"&Numero={Uri.EscapeDataString(numero)}";
 
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var json = await _auth.EnviarConReintentoAuthAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, url), ct);
+        if (json is null) return null;
 
-        using var resp = await http.SendAsync(req, ct);
-
-        if (resp.StatusCode == HttpStatusCode.NotFound)
-            return null;
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            var err = await resp.Content.ReadAsStringAsync(ct);
-            throw new InvalidOperationException(
-                $"BAS devolvio {(int)resp.StatusCode} al consultar el comprobante. {err}");
-        }
-
-        var json = await resp.Content.ReadAsStringAsync(ct);
         var resultado = JsonSerializer.Deserialize<ComprobanteVentaBas>(json, JsonOpts);
 
         // Solo cacheamos resultados validos.

@@ -60,7 +60,12 @@ El servicio Windows `PortalClientes` corre como **LocalSystem** y ejecuta el
 → lo vuelve a arrancar. Necesita admin para poder frenar/arrancar el servicio.)
 
 Además, para cambios en `.html`:
-- Hacé **Ctrl + F5** en el navegador (si no, la caché te sirve el HTML viejo).
+- Recargá con **Ctrl + Shift + R** (recarga DURA). ⚠️ **Ctrl + F5 a veces NO alcanza** y te
+  deja el HTML/CSS viejo cacheado: eso hizo perseguir un "bug" de scroll fantasma un buen rato
+  (el archivo publicado estaba OK, pero el navegador servía el viejo). Ante cualquier "cambié
+  el `.html` y no se ve", **primero** sospechar de esto y hacer hard-reload antes de tocar código.
+- Para confirmar qué CSS/HTML tiene el navegador de verdad: F12 → Console →
+  `getComputedStyle(document.getElementById('id')).propiedad`.
 - Portal e intranet son **SPA**: navegar por el menú **no** recarga el HTML. Si la
   pestaña quedó abierta desde antes del publish, hay que recargarla sí o sí.
 
@@ -100,8 +105,15 @@ C:\Agente\webapi\
 │   └── Permisos.cs          Catálogo de permisos funcionales
 │
 ├── Bas/                     TODO lo que habla con BAS CS WebAPI
-│   ├── BasAuthService.cs           Singleton; cachea el token de BAS
-│   ├── BasDestinosService.cs       Multi-base: GetAsync/PostAsync por base
+│   ├── BasAuthService.cs           Singleton single-base; cachea el token de BAS. Igual que
+│   │                              BasDestinosService: expone EnviarConReintentoAuthAsync
+│   │                              (token + reintento ante 401) — sus consumidores (clientes/
+│   │                              comprobantes/ctacte/proveedores single-base) lo usan.
+│   ├── BasDestinosService.cs       Multi-base: GetAsync/PostAsync por base. Cachea 1 token
+│   │                              por destino. ⚠️ Si BAS se REINICIA invalida los tokens
+│   │                              viejos → ante 401 se invalida el token cacheado y se
+│   │                              REINTENTA 1 vez con uno fresco (auto-recupera al volver una
+│   │                              base, sin esperar a que venza ~1 h). No quitar ese reintento.
 │   ├── BasDestinos.cs / BasWebApiOptions.cs   Config
 │   ├── BasCacheMaestros.cs         Caché en memoria (SnapshotMaestro por base)
 │   ├── BasCacheRefresher.cs        Carga el padrón desde BAS vía CONSULTAGRAL
@@ -409,7 +421,7 @@ Siembra: si no hay usuarios, crea `admin` / `Admin1234!`.
 | 6 | **`ExplosionSeries`** | Código muerto (no se usan series). Candidato a borrar. |
 | 7 | **Label del login** | El portal dice "CUIT" y la intranet "Usuario"; como el login es unificado, podría ser "Usuario o CUIT". |
 | 8 | **Estadísticas por artículo** | Requiere habilitar `vstaestvtas` (o una consulta agregada) en BAS. Sin eso, solo nivel comprobante (§15). |
-| 9 | **Cachear meses de venta** | Un mes cerrado no cambia: cachear los tramos mensuales aceleraría muchísimo los rangos largos (hoy tardan minutos, §15). |
+| 9 | ~~**Cachear meses de venta**~~ | ✅ **Hecho.** Caché por mes cerrado en memoria (~12 h) **y en disco** (`cache-ventas/`, sobrevive al reinicio); buscar un cliente sobre un rango cacheado filtra en memoria (§15). |
 
 ---
 
@@ -507,6 +519,70 @@ HTML propias, sin librería). `EstadisticasController` + `BasEstadisticasVentaSe
   **sin importar el `pageSize`**. Solución implementada: **partir el rango en tramos
   MENSUALES** y combinar (cada comprobante cae en un único mes → sin doble conteo). Aun así
   un período largo tarda **varios minutos** (tramos secuenciales + límite ~4 tx/min de BAS).
+  Por eso hay **botón Cancelar** (dentro del `#vtaCargando`): el front usa un `AbortController`
+  y el back recibe `CancellationToken ct` (= `HttpContext.RequestAborted`, enhebrado hasta las
+  llamadas a BAS), así cancelar corta el trabajo del servidor y no sigue pegándole a BAS.
+  El front además valida `desde ≤ hasta` antes de consultar (comparación de strings `yyyy-MM-dd`);
+  el back igual hace swap defensivo (`if (h < d) …`).
 - **Unificación por CUIT**: el ranking agrupa por CUIT (un cliente real puede tener varios
   códigos, incluso en la misma base). El backend manda por código con su CUIT; el front
   agrupa según el checkbox "Unificar por CUIT".
+- **Caché por mes** (`ComprobantesAsync`): cada **mes CERRADO** (ya terminado) se cachea con
+  **TODOS los clientes** y el **mes entero**: en memoria (`IMemoryCache`, key
+  `estVtaMes|{base}|{yyyy-MM}`, ~12 h) **y en disco** (`cache-ventas/{base}-{yyyy-MM}.json`,
+  permanente, gitignored, sobrevive al reinicio; se lee al primer acceso y se re-siembra en
+  memoria). **`cache-ventas/` vive DENTRO de `PortalPublish` (= ContentRootPath), pero
+  `dotnet publish -o` NO limpia archivos extra, así que republicar NO lo borra.** El **mes en
+  curso NUNCA se cachea** (cambia): un rango que lo incluye SIEMPRE pega a BAS por ese mes —
+  no es bug. Claves de la lógica (todas las combinaciones cubiertas):
+  - **Lectura desacoplada de `mesCompleto`**: cualquier tramo de un mes cerrado se sirve del
+    caché del mes completo **recortando por fecha** (`c.Fecha >= tramoDesde && <= tramoHasta`).
+    Así un rango con **bordes parciales** (ej. `hasta` el 15, o `desde` el 3) igual sale del
+    caché, no de BAS.
+  - **Auto-siembra**: si un mes cerrado SIN filtro no está cacheado, se trae el **mes ENTERO**
+    (a BAS le cuesta lo mismo que un pedazo), se cachea, y se recorta al tramo pedido.
+  - Buscar **UN cliente** sobre un mes cacheado filtra en memoria (`codigosSet`) sin pegar a
+    BAS. Filtrado por cliente sobre un mes **no** cacheado va liviano (`FiltroCodigos`) y **no**
+    se guarda (parcial); si es `forzar`, invalida el caché del mes completo.
+- **Scroll del área de resultados**: alto **FIJO por CSS** (`#vtaScroll { max-height }`); TODO
+  —gráfico "Evolución por mes", títulos y filas de clientes— scrollea dentro de esa ventana, y
+  la cantidad de meses **NO** cambia el alto de la card. `ajustarScrollVentas()` sólo hace
+  `scrollTop = 0` al re-renderizar/cambiar de vista. ⚠️ **No volver** al esquema anterior de
+  medir alturas (`offsetTop`/`getBoundingClientRect` + `requestAnimationFrame` para calcular
+  `max-height` = encabezado + N filas): daba intermitencias (el alto salía mal al cambiar de
+  rango/solapa) y hacía crecer la card con la cantidad de meses. Alto fijo = simple y robusto.
+- **Botones Gráfico/Listado + Refrescar** (naranja) en la **misma línea**, a la **derecha** de la
+  línea de bases (`.vta-btn-stack` = flex **row**, `margin-left:auto`). Refrescar reconsulta el
+  **mismo período** cargado con
+  `&refrescar=true` → `ComprobantesAsync(forzar:true)`, que **saltea la lectura de caché**,
+  repega a BAS y **reescribe** el caché (memoria + disco) de los meses cerrados. Es la salida
+  para el único caso donde "mes cerrado = inmutable" no se cumple: un comprobante cargado o
+  corregido **retroactivamente** en BAS con fecha de un mes ya cacheado. (Si se refresca con un
+  cliente filtrado, el traído es parcial y no se guarda, pero se **invalida** el mes cacheado de
+  todos los clientes para que la próxima consulta sin filtro lo traiga fresco.) ⚠️ Ojo al cablear
+  el listener: `addEventListener("click", cargarVentas)` pasaría el `MouseEvent` como `forzar`
+  (siempre truthy) → usar `() => cargarVentas(false)` para Consultar y `(true)` para Refrescar.
+- **Barra "Ver bases" (orden + tildado), POR USUARIO y COMPARTIDA** entre cuenta corriente y
+  estadísticas: se persiste en `UsuarioPortal.PrefBases` (columna JSON `{orden:[],ocultas:[]}`)
+  vía `GET/PUT /api/mi-cuenta/pref-bases`. El front tiene un único `prefBases` en memoria
+  (cargado en `actualizarVista`), y las dos pantallas usan `construirLeyendaBases(cont, bases,
+  onCambio)` → mismo estado para ambas (reordenás/destildás en una y se ve en la otra + queda
+  guardado). Reordenar = **drag & drop nativo** (`hacerReordenable`, sin librería). `ocultas` =
+  bases destildadas (default: todas tildadas, así una base nueva aparece sola). Al reordenar un
+  subconjunto (una pantalla muestra menos bases), `reordenarPref` preserva la posición de las
+  no visibles. Guardado con **debounce** (500 ms). Reemplazó los viejos `basesVisibles` /
+  `basesVtaVisibles` (que se reseteaban por consulta/cliente). La pref NO se resetea al cambiar
+  de cliente (es del usuario); sí se limpia en `salir()`.
+- **Pre-elegir bases antes de consultar**: la barra "Ver bases" se muestra **desde el arranque**
+  (cards vacías incluidas), poblada con `disponibles` (que ahora devuelve `GET /pref-bases` =
+  `PortalBases()`). Las consultas mandan `?bases=CSV` con las **tildadas** y el backend
+  (`FiltrarBases` en `MiCuentaController` y `EstadisticasController`) consulta **sólo esas**
+  (sin el param → todas). Así se excluye una base (ej. caída) de entrada. El front siempre pinta
+  la barra con TODAS las `basesDisponibles` (no sólo las con datos), así se puede re-incluir una
+  excluida (requiere volver a Consultar).
+- **Base caída sin colgar** (estadísticas): (1) los **signos** de tipos (`SignosPorTipoAsync`) se
+  piden a BAS ANTES de leer el caché de comprobantes; ahora se **persisten a disco**
+  (`cache-ventas/{base}-tipos.json`) y si la base no responde se cae al último catálogo conocido
+  → un mes YA cacheado se sirve completo aunque la base esté caída (distingue timeout de
+  cancelación real con `when (!ct.IsCancellationRequested)`). (2) **`ConnectTimeout` 8s** en los
+  HttpClient `bas`/`bas-multi` → una base inalcanzable falla al conectar en ~8s, no a los 120s.

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Hosting;
 
 namespace PortalClientes.Bas;
 
@@ -18,12 +19,16 @@ public class BasEstadisticasVentaService
 {
     private readonly BasDestinosService _destinos;
     private readonly IMemoryCache _cache;
+    private readonly IHostEnvironment _env;
 
-    public BasEstadisticasVentaService(BasDestinosService destinos, IMemoryCache cache)
+    public BasEstadisticasVentaService(BasDestinosService destinos, IMemoryCache cache, IHostEnvironment env)
     {
         _destinos = destinos;
         _cache = cache;
+        _env = env;
     }
+
+    private static readonly JsonSerializerOptions DiscoOpts = new() { PropertyNameCaseInsensitive = true };
 
     // Un comprobante de venta traído de BAS (cabecera).
     public sealed record VentaComprobante(string CodCliente, string Tipo, DateOnly Fecha, decimal Total);
@@ -36,22 +41,35 @@ public class BasEstadisticasVentaService
         if (_cache.TryGetValue(key, out IReadOnlyDictionary<string, int>? cached) && cached is not null)
             return cached;
 
-        var json = await _destinos.GetAsync(baseNombre, "/api/TiposComprobantes?pageSize=500&pageNumber=1", ct);
-        var mapa = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(json))
+        Dictionary<string, int>? mapa = null;
+        try
         {
-            using var doc = JsonDocument.Parse(json);
-            var arr = PrimerArray(doc.RootElement);
-            if (arr is not null)
-                foreach (var t in arr.Value.EnumerateArray())
-                {
-                    var cod = LeerString(t, "Comprobante").Trim();
-                    if (cod.Length > 0) mapa[cod] = LeerInt(t, "EstadisticaVta");   // null -> 0
-                }
+            var json = await _destinos.GetAsync(baseNombre, "/api/TiposComprobantes?pageSize=500&pageNumber=1", ct);
+            mapa = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                using var doc = JsonDocument.Parse(json);
+                var arr = PrimerArray(doc.RootElement);
+                if (arr is not null)
+                    foreach (var t in arr.Value.EnumerateArray())
+                    {
+                        var cod = LeerString(t, "Comprobante").Trim();
+                        if (cod.Length > 0) mapa[cod] = LeerInt(t, "EstadisticaVta");   // null -> 0
+                    }
+            }
+            EscribirSignosDisco(baseNombre, mapa);   // fallback para cuando la base no responda
+        }
+        // Si la base NO responde (timeout/caída) —pero NO si el usuario canceló— caemos al
+        // último catálogo conocido en disco, así los meses YA CACHEADOS se sirven igual sin
+        // colgarse esperando la base. El catálogo de tipos cambia poquísimo.
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            mapa = LeerSignosDisco(baseNombre);
+            if (mapa is null) throw;   // sin disco no podemos interpretar los comprobantes
         }
 
-        _cache.Set(key, (IReadOnlyDictionary<string, int>)mapa, TimeSpan.FromHours(1));
-        return mapa;
+        _cache.Set(key, (IReadOnlyDictionary<string, int>)mapa!, TimeSpan.FromHours(1));
+        return mapa!;
     }
 
     // Trae TODOS los comprobantes de venta de clientes en el rango [desde, hasta].
@@ -59,25 +77,91 @@ public class BasEstadisticasVentaService
     // hasta que una traiga menos clientes que el pageSize (última).
     // codigos: si viene, filtra a esos códigos de cliente (para la consulta de UN
     // cliente puntual, resuelto por CUIT). null/vacío = todos los clientes.
+    // forzar: ignora el caché (memoria + disco) del período y repega a BAS, reescribiendo
+    // el caché de los meses cerrados. Es lo que dispara el botón "Refrescar" del front
+    // (p. ej. si en BAS se cargó/corrigió un comprobante con fecha de un mes ya cacheado).
     public async Task<List<VentaComprobante>> ComprobantesAsync(
         string baseNombre, DateOnly desde, DateOnly hasta,
-        IReadOnlyList<string>? codigos = null, CancellationToken ct = default)
+        IReadOnlyList<string>? codigos = null, bool forzar = false, CancellationToken ct = default)
     {
         var cfg = _destinos.Config(baseNombre)
             ?? throw new InvalidOperationException($"Destino BAS desconocido: {baseNombre}");
 
         var lista = new List<VentaComprobante>();
+        var hoy = DateOnly.FromDateTime(DateTime.Today);
+        var filtraCliente = codigos is { Count: > 0 };
+        var codigosSet = filtraCliente ? new HashSet<string>(codigos!, StringComparer.OrdinalIgnoreCase) : null;
 
         // BAS se vuelve MUY lento (hasta timeout) con rangos amplios en bases de alto
         // volumen: su SQL procesa TODO el rango, sin importar el pageSize. Un mes solo,
         // en cambio, es rápido. Por eso partimos el rango en tramos MENSUALES y los
         // combinamos: cada comprobante cae en un único mes, así que no hay doble conteo.
+        //
+        // CACHEAMOS cada mes CERRADO y COMPLETO (memoria ~12 h + disco permanente): un mes
+        // que ya terminó no cambia. El caché guarda TODOS los clientes de ese mes, así:
+        //  - reconsultar cambiando fechas NO repega a BAS por los meses ya traídos;
+        //  - buscar UN cliente sobre un rango ya cacheado se resuelve FILTRANDO EN MEMORIA
+        //    (no se vuelve a pegar a BAS). Sólo se consulta lo que falte y el mes en curso.
         var tramoDesde = desde;
         while (tramoDesde <= hasta)
         {
             var finMes = new DateOnly(tramoDesde.Year, tramoDesde.Month, 1).AddMonths(1).AddDays(-1);
             var tramoHasta = finMes < hasta ? finMes : hasta;
-            await TraerTramoAsync(cfg, baseNombre, tramoDesde, tramoHasta, codigos, lista, ct);
+
+            var mesCompleto = tramoDesde.Day == 1 && tramoHasta == finMes;   // el tramo cubre el mes entero
+            var mesCerrado = finMes < hoy;                                   // el mes ya terminó
+            var key = $"estVtaMes|{baseNombre}|{tramoDesde:yyyy-MM}";
+
+            // LECTURA: cualquier tramo de un mes CERRADO se sirve del caché del MES COMPLETO
+            // (recortando por fecha al rango del tramo), sea el mes entero o un pedazo — así un
+            // rango con bordes parciales (ej. hasta el 15) igual sale del caché. Con 'forzar'
+            // salteamos la lectura para repegar a BAS. El mes EN CURSO nunca se cachea.
+            List<VentaComprobante>? mesAll = null;
+            if (mesCerrado && !forzar)
+            {
+                if (!_cache.TryGetValue(key, out mesAll) || mesAll is null)
+                {
+                    mesAll = LeerDisco(baseNombre, tramoDesde);
+                    if (mesAll is not null) _cache.Set(key, mesAll, TimeSpan.FromHours(12));
+                }
+            }
+
+            if (mesAll is not null)
+            {
+                // Recortamos por fecha (si es un pedazo del mes) y por cliente (si se filtró).
+                var dT = tramoDesde; var hT = tramoHasta;
+                IEnumerable<VentaComprobante> q = mesAll;
+                if (!mesCompleto) q = q.Where(c => c.Fecha >= dT && c.Fecha <= hT);
+                if (filtraCliente) q = q.Where(c => codigosSet!.Contains(c.CodCliente));
+                lista.AddRange(q);
+            }
+            else if (mesCerrado && !filtraCliente)
+            {
+                // Mes cerrado sin filtro y sin caché (o forzando): traemos el MES COMPLETO
+                // —a BAS le cuesta lo mismo que un pedazo— lo cacheamos, y recortamos al tramo.
+                var primerDia = new DateOnly(tramoDesde.Year, tramoDesde.Month, 1);
+                var delMes = new List<VentaComprobante>();
+                await TraerTramoAsync(cfg, baseNombre, primerDia, finMes, codigos, delMes, ct);
+                _cache.Set(key, delMes, TimeSpan.FromHours(12));
+                EscribirDisco(baseNombre, tramoDesde, delMes);
+                lista.AddRange(mesCompleto ? delMes : delMes.Where(c => c.Fecha >= tramoDesde && c.Fecha <= tramoHasta));
+            }
+            else
+            {
+                // Mes EN CURSO, o filtrado por un cliente puntual: traemos solo el tramo pedido
+                // (no se cachea; con cliente va liviano por FiltroCodigos).
+                var delTramo = new List<VentaComprobante>();
+                await TraerTramoAsync(cfg, baseNombre, tramoDesde, tramoHasta, codigos, delTramo, ct);
+                // Al refrescar con filtro un mes cerrado, invalidamos su caché de mes completo
+                // para que la próxima consulta sin filtro lo traiga fresco.
+                if (mesCerrado && filtraCliente && forzar)
+                {
+                    _cache.Remove(key);
+                    BorrarDisco(baseNombre, tramoDesde);
+                }
+                lista.AddRange(delTramo);
+            }
+
             tramoDesde = tramoHasta.AddDays(1);
         }
 
@@ -167,6 +251,68 @@ public class BasEstadisticasVentaService
             ConsultaGral = consulta
         };
         return JsonSerializer.Serialize(body);
+    }
+
+    // ---- Caché en disco (meses cerrados; sobrevive al reinicio del servicio) ----
+    // Un archivo por base y mes en {ContentRoot}/cache-ventas/. Sólo se escriben meses
+    // cerrados+completos (no cambian). Para forzar un refresco: borrar esa carpeta.
+    private string RutaMes(string baseNombre, DateOnly mes)
+        => Path.Combine(_env.ContentRootPath, "cache-ventas", $"{baseNombre}-{mes:yyyy-MM}.json");
+
+    private List<VentaComprobante>? LeerDisco(string baseNombre, DateOnly mes)
+    {
+        try
+        {
+            var ruta = RutaMes(baseNombre, mes);
+            if (!File.Exists(ruta)) return null;
+            return JsonSerializer.Deserialize<List<VentaComprobante>>(File.ReadAllText(ruta), DiscoOpts);
+        }
+        catch { return null; }
+    }
+
+    private void EscribirDisco(string baseNombre, DateOnly mes, List<VentaComprobante> datos)
+    {
+        try
+        {
+            var dir = Path.Combine(_env.ContentRootPath, "cache-ventas");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(RutaMes(baseNombre, mes), JsonSerializer.Serialize(datos, DiscoOpts));
+        }
+        catch { /* best-effort: si falla el disco, seguimos con memoria */ }
+    }
+
+    private void BorrarDisco(string baseNombre, DateOnly mes)
+    {
+        try { var ruta = RutaMes(baseNombre, mes); if (File.Exists(ruta)) File.Delete(ruta); }
+        catch { /* best-effort */ }
+    }
+
+    // Signos de tipos de comprobante en disco (fallback cuando la base no responde): así un
+    // mes ya cacheado se sirve completo sin colgarse pidiendo el catálogo a una base caída.
+    private string RutaSignos(string baseNombre)
+        => Path.Combine(_env.ContentRootPath, "cache-ventas", $"{baseNombre}-tipos.json");
+
+    private Dictionary<string, int>? LeerSignosDisco(string baseNombre)
+    {
+        try
+        {
+            var ruta = RutaSignos(baseNombre);
+            if (!File.Exists(ruta)) return null;
+            var d = JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(ruta), DiscoOpts);
+            return d is null ? null : new Dictionary<string, int>(d, StringComparer.OrdinalIgnoreCase);
+        }
+        catch { return null; }
+    }
+
+    private void EscribirSignosDisco(string baseNombre, Dictionary<string, int> datos)
+    {
+        try
+        {
+            var dir = Path.Combine(_env.ContentRootPath, "cache-ventas");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(RutaSignos(baseNombre), JsonSerializer.Serialize(datos, DiscoOpts));
+        }
+        catch { /* best-effort */ }
     }
 
     // ---- Helpers de parseo tolerante ----

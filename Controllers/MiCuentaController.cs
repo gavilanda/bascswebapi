@@ -1,8 +1,11 @@
 using System.Globalization;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using PortalClientes.Bas;
+using PortalClientes.Data;
 
 namespace PortalClientes.Controllers;
 
@@ -16,19 +19,22 @@ public class MiCuentaController : ControllerBase
     private readonly BasComprobantesService _comprobantes;
     private readonly BasDestinosService _destinos;
     private readonly BasCacheMaestros _cache;
+    private readonly PortalDbContext _db;
 
     public MiCuentaController(
         BasCuentaCorrienteService ctaCte,
         BasClientesService clientes,
         BasComprobantesService comprobantes,
         BasDestinosService destinos,
-        BasCacheMaestros cache)
+        BasCacheMaestros cache,
+        PortalDbContext db)
     {
         _ctaCte = ctaCte;
         _clientes = clientes;
         _comprobantes = comprobantes;
         _destinos = destinos;
         _cache = cache;
+        _db = db;
     }
 
     // Bases que se consolidan en el portal del cliente: las ACTIVAS marcadas para
@@ -49,6 +55,18 @@ public class MiCuentaController : ControllerBase
 
         // Sólo las tildadas por el usuario (sin fallback a "todas").
         return delPortal.Where(n => delUsuario.Contains(n)).ToList();
+    }
+
+    // Bases a consultar en una consulta puntual: PortalBases() intersectado con las pedidas
+    // por el front (CSV en ?bases=). Sin el parámetro → todas (compatibilidad). Sirve para
+    // que el usuario excluya bases (ej. una caída) y no se consulten.
+    private IReadOnlyList<string> FiltrarBases(string? bases)
+    {
+        var todas = PortalBases();
+        var pedidas = (bases ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (pedidas.Length == 0) return todas;
+        var set = new HashSet<string>(pedidas, StringComparer.OrdinalIgnoreCase);
+        return todas.Where(b => set.Contains(b)).ToList();
     }
 
     // ¿El usuario es staff interno habilitado a consultar el portal? (interno + accedePortal).
@@ -145,6 +163,56 @@ public class MiCuentaController : ControllerBase
         });
     }
 
+    // ---- Preferencia de la barra "Ver bases" (orden + destildadas), POR USUARIO y
+    // COMPARTIDA entre cuenta corriente y estadísticas. El front arma/parsea el JSON
+    // { orden:[...], ocultas:[...] }; acá sólo lo guardamos/leemos contra el usuario logueado.
+    [HttpGet("pref-bases")]
+    public async Task<ActionResult> GetPrefBases()
+    {
+        var ident = User.FindFirstValue("identificador");
+        if (string.IsNullOrWhiteSpace(ident)) return Unauthorized();
+        var u = await _db.Usuarios.FirstOrDefaultAsync(x => x.Identificador == ident);
+
+        List<string> orden = new(), ocultas = new();
+        if (!string.IsNullOrWhiteSpace(u?.PrefBases))
+        {
+            try
+            {
+                var doc = JsonSerializer.Deserialize<PrefBasesDto>(u!.PrefBases!,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                orden = doc?.Orden ?? new();
+                ocultas = doc?.Ocultas ?? new();
+            }
+            catch { /* pref corrupta: default vacío */ }
+        }
+        // disponibles = las bases que el usuario puede ver (para poblar la barra ANTES de
+        // consultar y poder pre-elegir).
+        return Ok(new { orden, ocultas, disponibles = PortalBases() });
+    }
+
+    public sealed record PrefBasesDto(List<string>? Orden, List<string>? Ocultas);
+
+    [HttpPut("pref-bases")]
+    public async Task<ActionResult> PutPrefBases([FromBody] PrefBasesDto dto)
+    {
+        var ident = User.FindFirstValue("identificador");
+        if (string.IsNullOrWhiteSpace(ident)) return Unauthorized();
+        var u = await _db.Usuarios.FirstOrDefaultAsync(x => x.Identificador == ident);
+        if (u is null) return NotFound(new { mensaje = "Usuario no encontrado." });
+
+        static List<string> Limpiar(List<string>? xs) => (xs ?? new())
+            .Select(s => (s ?? "").Trim()).Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        u.PrefBases = JsonSerializer.Serialize(new
+        {
+            orden = Limpiar(dto?.Orden),
+            ocultas = Limpiar(dto?.Ocultas)
+        });
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
     // GET /api/mi-cuenta/datos?cuit=  -> datos del cliente (desde BAS, por su CUIT).
     // Extranet: su propio CUIT. Staff: el ?cuit= del cliente elegido.
     [HttpGet("datos")]
@@ -202,7 +270,8 @@ public class MiCuentaController : ControllerBase
     // uno etiquetado con su base. El saldo de cada comprobante es sumable, asi que
     // el total y la columna acumulada combinan ambas bases naturalmente.
     [HttpGet("cuenta-corriente")]
-    public async Task<ActionResult> CuentaCorriente([FromQuery] string? fecha, [FromQuery] string? cuit)
+    public async Task<ActionResult> CuentaCorriente([FromQuery] string? fecha, [FromQuery] string? cuit,
+        [FromQuery] string? bases, CancellationToken ct = default)
     {
         var (objetivo, err) = ResolverCuitObjetivo(cuit);
         if (objetivo is null) return BadRequest(new { mensaje = err });
@@ -211,9 +280,10 @@ public class MiCuentaController : ControllerBase
             ? DateTime.Today.ToString("yyyy-MM-dd")
             : fecha.Trim();
 
-        // Traemos cada base en paralelo, con error aislado por base.
+        // Traemos cada base en paralelo, con error aislado por base. Sólo las bases pedidas
+        // (tildadas en el front); sin el parámetro, todas las del usuario.
         var resultados = await Task.WhenAll(
-            PortalBases().Select(b => TraerEstadoBaseAsync(b, objetivo, f)));
+            FiltrarBases(bases).Select(b => TraerEstadoBaseAsync(b, objetivo, f, ct)));
 
         var comprobantes = resultados
             .SelectMany(r => r.Comprobantes)
@@ -252,12 +322,12 @@ public class MiCuentaController : ControllerBase
     // Trae el estado de cuenta de UNA base, resolviendo el codigo del cliente por
     // CUIT en esa base. Nunca lanza: ante error devuelve el resultado marcado con
     // Ok=false y el mensaje, para no tumbar toda la consulta si una base falla.
-    private async Task<EstadoBaseResultado> TraerEstadoBaseAsync(string baseNombre, string cuit, string fecha)
+    private async Task<EstadoBaseResultado> TraerEstadoBaseAsync(string baseNombre, string cuit, string fecha, CancellationToken ct)
     {
         try
         {
             // Todas las cuentas casa-central/independientes del CUIT en esta base.
-            var cuentas = await _clientes.BuscarCuentasPorCuitEnBaseAsync(baseNombre, cuit);
+            var cuentas = await _clientes.BuscarCuentasPorCuitEnBaseAsync(baseNombre, cuit, ct);
             if (cuentas.Count == 0)
                 // El cliente no existe en esta base: no es error, simplemente no aporta movimientos.
                 return new EstadoBaseResultado(baseNombre, true, null, 0m, null, new());
@@ -274,7 +344,7 @@ public class MiCuentaController : ControllerBase
                 var codigo = (cuenta.Codigo ?? "").Trim();
                 if (codigo.Length == 0) continue;
 
-                var estado = await _ctaCte.EstadoClienteEnBaseAsync(baseNombre, codigo, fecha);
+                var estado = await _ctaCte.EstadoClienteEnBaseAsync(baseNombre, codigo, fecha, ct);
                 var comps = estado?.Comprobantes ?? new();
 
                 lista.AddRange(comps.Select(c => new CompCtaCte(

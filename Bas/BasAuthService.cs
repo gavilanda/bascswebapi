@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Options;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 
 namespace PortalClientes.Bas;
@@ -66,6 +68,49 @@ public class BasAuthService
         {
             _gate.Release();
         }
+    }
+
+    // Descarta el token cacheado (fuerza re-login en el próximo pedido).
+    public void InvalidarToken()
+    {
+        _token = null;
+        _expira = DateTimeOffset.MinValue;
+    }
+
+    // Envía la request con el token y, si BAS responde 401 (token rechazado — típico cuando
+    // la WebAPI de BAS se REINICIÓ e invalidó los tokens viejos), INVALIDA el token cacheado
+    // y reintenta UNA vez con uno fresco. Así el servicio se auto-recupera al toque cuando BAS
+    // vuelve, sin esperar a que el token venza (~1 h). Mismo criterio que BasDestinosService.
+    // Devuelve el cuerpo (string) o null si 404/204. 'armarReq' se llama en cada intento
+    // (una HttpRequestMessage no se puede reenviar); la cabecera Authorization la ponemos acá.
+    public async Task<string?> EnviarConReintentoAuthAsync(
+        Func<HttpRequestMessage> armarReq, CancellationToken ct = default)
+    {
+        var http = _factory.CreateClient("bas");
+        for (int intento = 0; intento < 2; intento++)
+        {
+            var token = await GetTokenAsync(ct);
+            using var req = armarReq();
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var resp = await http.SendAsync(req, ct);
+
+            if (resp.StatusCode == HttpStatusCode.Unauthorized && intento == 0)
+            {
+                InvalidarToken();
+                continue;
+            }
+            if (resp.StatusCode == HttpStatusCode.NotFound || resp.StatusCode == HttpStatusCode.NoContent)
+                return null;
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync(ct);
+                throw new InvalidOperationException(
+                    $"BAS devolvió {(int)resp.StatusCode} en {req.RequestUri?.PathAndQuery}. {err}");
+            }
+            return await resp.Content.ReadAsStringAsync(ct);
+        }
+        throw new InvalidOperationException("BAS no completó la solicitud (auth).");
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };

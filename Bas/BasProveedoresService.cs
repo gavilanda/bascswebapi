@@ -12,16 +12,14 @@ namespace PortalClientes.Bas;
 // mas paginas hay que traer. Esta es justamente la prueba de "si vale la pena".
 public class BasProveedoresService
 {
-    private readonly IHttpClientFactory _factory;
     private readonly BasAuthService _auth;
 
     // Ajustables segun lo que veamos en la prueba.
     private const int PageSize = 200;
     private const int MaxPaginas = 50; // tope de seguridad (~10.000 proveedores)
 
-    public BasProveedoresService(IHttpClientFactory factory, BasAuthService auth)
+    public BasProveedoresService(BasAuthService auth)
     {
-        _factory = factory;
         _auth = auth;
     }
 
@@ -31,27 +29,16 @@ public class BasProveedoresService
         if (objetivo.Length == 0)
             return null;
 
-        var token = await _auth.GetTokenAsync(ct);
-        var http = _factory.CreateClient("bas");
-
         for (int page = 1; page <= MaxPaginas; page++)
         {
-            using var req = new HttpRequestMessage(
-                HttpMethod.Get, $"/api/Proveedores?pageSize={PageSize}&pageNumber={page}");
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            int p = page;   // capturado por el lambda del reintento
+            var json = await _auth.EnviarConReintentoAuthAsync(
+                () => new HttpRequestMessage(HttpMethod.Get, $"/api/Proveedores?pageSize={PageSize}&pageNumber={p}"), ct);
+            if (json is null) break;   // 404/204 → no hay (más) proveedores
 
-            using var resp = await http.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode)
-            {
-                var err = await resp.Content.ReadAsStringAsync(ct);
-                throw new InvalidOperationException(
-                    $"BAS devolvio {(int)resp.StatusCode} listando proveedores. {err}");
-            }
-
-            var json = await resp.Content.ReadAsStringAsync(ct);
             var lista = JsonSerializer.Deserialize<List<ProveedorBas>>(json, JsonOpts) ?? new();
 
-            var match = lista.FirstOrDefault(p => SoloDigitos(p.NumeroImpositivo1 ?? "") == objetivo);
+            var match = lista.FirstOrDefault(pr => SoloDigitos(pr.NumeroImpositivo1 ?? "") == objetivo);
             if (match is not null)
                 return match;
 

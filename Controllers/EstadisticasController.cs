@@ -46,11 +46,26 @@ public class EstadisticasController : ControllerBase
         return delPortal.Where(n => delUsuario.Contains(n)).ToList();
     }
 
+    // PortalBases() intersectado con las bases pedidas por el front (CSV en ?bases=). Sin el
+    // parámetro → todas. Permite excluir bases (ej. una caída) de la consulta.
+    private IReadOnlyList<string> FiltrarBases(string? bases)
+    {
+        var todas = PortalBases();
+        var pedidas = (bases ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (pedidas.Length == 0) return todas;
+        var set = new HashSet<string>(pedidas, StringComparer.OrdinalIgnoreCase);
+        return todas.Where(b => set.Contains(b)).ToList();
+    }
+
     // GET /api/estadisticas/ventas?desde=yyyy-MM-dd&hasta=yyyy-MM-dd&cuit=
     // cuit (opcional): limita las ventas a ese cliente (se resuelven sus códigos por
     // base). Sin cuit = todos los clientes.
+    // ct = HttpContext.RequestAborted (lo bindea ASP.NET automáticamente): si el navegador
+    // cancela el fetch (botón Cancelar), se corta también el trabajo contra BAS.
     [HttpGet("ventas")]
-    public async Task<ActionResult> Ventas([FromQuery] string? desde, [FromQuery] string? hasta, [FromQuery] string? cuit)
+    public async Task<ActionResult> Ventas([FromQuery] string? desde, [FromQuery] string? hasta,
+        [FromQuery] string? cuit, [FromQuery] string? bases, [FromQuery] bool refrescar = false,
+        CancellationToken ct = default)
     {
         if (!EsInterno())
             return StatusCode(403, new { mensaje = "Sólo el personal interno puede ver estadísticas de venta." });
@@ -61,18 +76,18 @@ public class EstadisticasController : ControllerBase
         if (h < d) (d, h) = (h, d);
 
         var cuitFiltro = (cuit ?? "").Trim();
-        var bases = PortalBases();
+        var basesUsar = FiltrarBases(bases);   // sólo las bases pedidas (tildadas); sin param → todas
 
         // Cada base en paralelo (son servidores distintos), con error aislado por base.
         // Si viene cuit, resolvemos sus códigos en cada base y filtramos a ese cliente.
-        var resultados = await Task.WhenAll(bases.Select(async b =>
+        var resultados = await Task.WhenAll(basesUsar.Select(async b =>
         {
             IReadOnlyList<string>? codigos = null;
             if (cuitFiltro.Length > 0)
             {
                 try
                 {
-                    var cuentas = await _clientes.BuscarCuentasPorCuitEnBaseAsync(b, cuitFiltro);
+                    var cuentas = await _clientes.BuscarCuentasPorCuitEnBaseAsync(b, cuitFiltro, ct);
                     codigos = cuentas.Select(x => (x.Codigo ?? "").Trim()).Where(x => x.Length > 0).ToList();
                 }
                 catch { codigos = new List<string>(); }
@@ -81,7 +96,7 @@ public class EstadisticasController : ControllerBase
                     return new BaseResultado(b, true, null, 0m, 0,
                         new Dictionary<string, decimal>(), new Dictionary<string, ClienteImp>());
             }
-            return await PorBaseAsync(b, d, h, codigos);
+            return await PorBaseAsync(b, d, h, codigos, refrescar, ct);
         }));
 
         // Desglose POR BASE; el front consolida, tilda/destilda bases y unifica por CUIT.
@@ -106,12 +121,12 @@ public class EstadisticasController : ControllerBase
         });
     }
 
-    private async Task<BaseResultado> PorBaseAsync(string baseNombre, DateOnly desde, DateOnly hasta, IReadOnlyList<string>? codigos)
+    private async Task<BaseResultado> PorBaseAsync(string baseNombre, DateOnly desde, DateOnly hasta, IReadOnlyList<string>? codigos, bool forzar, CancellationToken ct)
     {
         try
         {
-            var signos = await _ventas.SignosPorTipoAsync(baseNombre);
-            var comps = await _ventas.ComprobantesAsync(baseNombre, desde, hasta, codigos);
+            var signos = await _ventas.SignosPorTipoAsync(baseNombre, ct);
+            var comps = await _ventas.ComprobantesAsync(baseNombre, desde, hasta, codigos, forzar, ct);
             var padron = _cache.Obtener(baseNombre).Clientes;
 
             decimal total = 0m;

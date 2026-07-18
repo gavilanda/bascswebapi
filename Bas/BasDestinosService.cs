@@ -50,23 +50,8 @@ public class BasDestinosService
     {
         var cfg = Config(destino)
             ?? throw new InvalidOperationException($"Destino BAS desconocido: {destino}");
-        var token = await GetTokenAsync(destino, ct);
-        var http = _factory.CreateClient("bas-multi");
-
-        using var req = new HttpRequestMessage(HttpMethod.Get, AbsUrl(cfg, path));
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        using var resp = await http.SendAsync(req, ct);
-        if (resp.StatusCode == HttpStatusCode.NotFound || resp.StatusCode == HttpStatusCode.NoContent)
-            return null;
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            var err = await resp.Content.ReadAsStringAsync(ct);
-            throw new InvalidOperationException(
-                $"BAS ({destino}) devolvió {(int)resp.StatusCode} en {path}. {err}");
-        }
-        return await resp.Content.ReadAsStringAsync(ct);
+        return await EnviarConReintentoAuthAsync(destino,
+            () => new HttpRequestMessage(HttpMethod.Get, AbsUrl(cfg, path)), path, ct);
     }
 
     // POST autenticado con cuerpo JSON (para CONSULTAGRAL). Devuelve el cuerpo,
@@ -75,26 +60,47 @@ public class BasDestinosService
     {
         var cfg = Config(destino)
             ?? throw new InvalidOperationException($"Destino BAS desconocido: {destino}");
-        var token = await GetTokenAsync(destino, ct);
+        return await EnviarConReintentoAuthAsync(destino,
+            () => new HttpRequestMessage(HttpMethod.Post, AbsUrl(cfg, path))
+            {
+                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+            }, path, ct);
+    }
+
+    // Envía la request con el token del destino y, si BAS responde 401 (token rechazado —
+    // típico cuando la WebAPI de BAS se REINICIÓ e invalidó los tokens viejos), INVALIDA el
+    // token cacheado y reintenta UNA vez con uno fresco. Así el portal se auto-recupera al
+    // toque cuando una base vuelve, sin esperar a que el token venza (~1 h). 'armarReq' se
+    // llama en cada intento (una HttpRequestMessage no se puede reenviar). La cabecera
+    // Authorization la pone acá con el token vigente de cada intento.
+    private async Task<string?> EnviarConReintentoAuthAsync(
+        string destino, Func<HttpRequestMessage> armarReq, string path, CancellationToken ct)
+    {
         var http = _factory.CreateClient("bas-multi");
-
-        using var req = new HttpRequestMessage(HttpMethod.Post, AbsUrl(cfg, path))
+        for (int intento = 0; intento < 2; intento++)
         {
-            Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
-        };
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var token = await GetTokenAsync(destino, ct);
+            using var req = armarReq();
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        using var resp = await http.SendAsync(req, ct);
-        if (resp.StatusCode == HttpStatusCode.NotFound || resp.StatusCode == HttpStatusCode.NoContent)
-            return null;
+            using var resp = await http.SendAsync(req, ct);
 
-        if (!resp.IsSuccessStatusCode)
-        {
-            var err = await resp.Content.ReadAsStringAsync(ct);
-            throw new InvalidOperationException(
-                $"BAS ({destino}) devolvió {(int)resp.StatusCode} en {path}. {err}");
+            if (resp.StatusCode == HttpStatusCode.Unauthorized && intento == 0)
+            {
+                InvalidarToken(destino);   // token podrido → lo tiramos y reintentamos fresco
+                continue;
+            }
+            if (resp.StatusCode == HttpStatusCode.NotFound || resp.StatusCode == HttpStatusCode.NoContent)
+                return null;
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync(ct);
+                throw new InvalidOperationException(
+                    $"BAS ({destino}) devolvió {(int)resp.StatusCode} en {path}. {err}");
+            }
+            return await resp.Content.ReadAsStringAsync(ct);
         }
-        return await resp.Content.ReadAsStringAsync(ct);
+        throw new InvalidOperationException($"BAS ({destino}) no completó la solicitud en {path}.");
     }
 
     private async Task<string> GetTokenAsync(string destino, CancellationToken ct)
