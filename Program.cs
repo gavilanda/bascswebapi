@@ -105,6 +105,7 @@ builder.Services.AddScoped<BasCuentaCorrienteService>();
 builder.Services.AddScoped<BasComprobantesService>();
 builder.Services.AddScoped<BasEstadisticasVentaService>();   // estadísticas de venta (multi-base)
 builder.Services.AddScoped<BasEchequesService>();            // e-cheques (SQL directo a la base)
+builder.Services.AddScoped<BasOrdenCompraService>();         // órdenes de compra (grabado a BAS)
 builder.Services.AddScoped<PortalClientes.Auth.AccesoFuncionesService>();  // acceso por función (menú + endpoints)
 
 // ---- Destinos BAS (BARK, PRUEBAB) para ingresos ----
@@ -212,6 +213,12 @@ using (var scope = app.Services.CreateScope())
     AgregarColumnaSiFalta("PreRemitoLineas", "PrecioUnitario", "TEXT NOT NULL DEFAULT '0'");
     AgregarColumnaSiFalta("PreRemitoLineas", "TasaIva", "TEXT NOT NULL DEFAULT '0'");
     AgregarColumnaSiFalta("PreRemitoLineas", "FechaVencimiento", "TEXT NULL");
+    // Referencia a una Orden de Compra pendiente (renglón que consume una OC de BAS).
+    AgregarColumnaSiFalta("PreRemitoLineas", "OcNrotrans", "INTEGER NULL");
+    AgregarColumnaSiFalta("PreRemitoLineas", "OcSecuencia", "INTEGER NULL");
+    AgregarColumnaSiFalta("PreRemitoLineas", "OcFecha", "TEXT NULL");
+    AgregarColumnaSiFalta("PreRemitoLineas", "OcPrefijo", "TEXT NULL");
+    AgregarColumnaSiFalta("PreRemitoLineas", "OcNumero", "INTEGER NULL");
 
     // Percepciones de IIBB por provincia (hijas de la factura). Idempotente.
     db.Database.ExecuteSqlRaw(@"
@@ -257,6 +264,7 @@ using (var scope = app.Services.CreateScope())
     // Conexión editable + flag de portal (la tabla pasó a ser la fuente de verdad de las bases).
     AgregarColumnaSiFalta("ConfiguracionesBase", "BaseUrl", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "RemitoTipo", "TEXT NOT NULL DEFAULT 'N'");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "OrdenCompraPrefijo", "TEXT NOT NULL DEFAULT '1'");
     // SQL directo (e-cheques y futuras consultas): server + db + usuario/clave read-only + mail propio.
     AgregarColumnaSiFalta("ConfiguracionesBase", "SqlServidor", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "SqlBase", "TEXT NOT NULL DEFAULT ''");
@@ -309,6 +317,50 @@ using (var scope = app.Services.CreateScope())
     // muestran integrados en la card de consulta del portal (junto al buscador),
     // para internos y externos. Quitamos su fila si venía sembrada de antes.
     db.Database.ExecuteSqlRaw(@"DELETE FROM ""FuncionesPortal"" WHERE ""Clave"" = 'datos';");
+
+    // ---- Órdenes de compra (EnsureCreated no agrega tablas a una base ya existente) ----
+    // Decimales/fechas/Guid como TEXT (mismo criterio que EF Core usa para PreRemitos).
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS ""OrdenesCompra"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_OrdenesCompra"" PRIMARY KEY AUTOINCREMENT,
+            ""ProveedorCodigo"" TEXT NOT NULL DEFAULT '',
+            ""ProveedorRazonSocial"" TEXT NULL,
+            ""Comprador"" TEXT NULL,
+            ""CondicionCompra"" TEXT NULL,
+            ""Fecha"" TEXT NOT NULL,
+            ""FechaExpiracion"" TEXT NULL,
+            ""CodigoMoneda"" INTEGER NOT NULL DEFAULT 1,
+            ""Observaciones"" TEXT NULL,
+            ""ObservacionEntrega"" TEXT NULL,
+            ""Estado"" TEXT NOT NULL DEFAULT 'Borrador',
+            ""DestinoBase"" TEXT NULL,
+            ""NrotransBas"" INTEGER NULL,
+            ""PrefijoBas"" TEXT NULL,
+            ""NumeroBas"" TEXT NULL,
+            ""MensajeError"" TEXT NULL,
+            ""CreadoPor"" TEXT NOT NULL DEFAULT '',
+            ""CreadoEn"" TEXT NOT NULL,
+            ""ModificadoPor"" TEXT NULL,
+            ""ModificadoEn"" TEXT NULL,
+            ""GrabadoPor"" TEXT NULL,
+            ""GrabadoEn"" TEXT NULL,
+            ""RowVersion"" TEXT NOT NULL
+        );");
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS ""OrdenCompraLineas"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_OrdenCompraLineas"" PRIMARY KEY AUTOINCREMENT,
+            ""OrdenCompraId"" INTEGER NOT NULL,
+            ""ProductoCodigo"" TEXT NOT NULL DEFAULT '',
+            ""Descripcion"" TEXT NULL,
+            ""Cantidad"" TEXT NOT NULL DEFAULT '0',
+            ""Unidad"" TEXT NULL,
+            ""PrecioUnitario"" TEXT NOT NULL DEFAULT '0',
+            ""TasaIva"" TEXT NOT NULL DEFAULT '0',
+            ""Observacion"" TEXT NULL,
+            CONSTRAINT ""FK_OrdenCompraLineas_OrdenesCompra_OrdenCompraId"" FOREIGN KEY (""OrdenCompraId"")
+                REFERENCES ""OrdenesCompra"" (""Id"") ON DELETE CASCADE
+        );");
+    db.Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_OrdenCompraLineas_OrdenCompraId"" ON ""OrdenCompraLineas"" (""OrdenCompraId"");");
 
     // ---- Columnas nuevas de Usuarios (agregadas después de la creación original) ----
     // AccedePortalClientes: habilita a un usuario interno a usar el portal de

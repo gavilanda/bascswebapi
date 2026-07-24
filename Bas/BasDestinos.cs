@@ -51,6 +51,9 @@ public class DestinoBas
     public int FacturaDeposito { get; set; } = 1;
     // Cuenta contable de compras (se manda como ImputacionContable al grabar factura).
     public long FacturaImputacionContable { get; set; } = 21001001;
+
+    // Prefijo del talonario de Orden de Compra (numeración automática de BAS).
+    public string OrdenCompraPrefijo { get; set; } = "1";
 }
 
 public static class BasDestinosConfig

@@ -52,6 +52,9 @@ public class ConfiguracionBase
     // usuario/clave de SOLO LECTURA van por variable de entorno (Echeques__SqlUser /
     // Echeques__SqlPassword), nunca en la base ni en el front. Vacío = función deshabilitada
     // para esta base.
+    // Prefijo del talonario de Orden de Compra (numeración automática de BAS, como Remito).
+    public string OrdenCompraPrefijo { get; set; } = "1";
+
     public string SqlServidor { get; set; } = "";
     public string SqlBase { get; set; } = "";
     // Usuario/clave de SOLO LECTURA (ej. portal_consultas) para el SQL directo. Si quedan

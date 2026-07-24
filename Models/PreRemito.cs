@@ -122,6 +122,20 @@ public class PreRemitoLinea
     // Alícuota de IVA del renglón (21, 10.5, 27, 0...). En facturas C va en 0.
     public decimal TasaIva { get; set; }
 
+    // ---- Referencia a una Orden de Compra pendiente de BAS ----
+    // Cuando el renglón entra "contra una OC" (traído del panel de pendientes),
+    // guardamos qué OC y qué ítem de esa OC consume. Al grabar en BAS se mandan
+    // como ComprobanteReferenciado* en el ítem, para que BAS descuente el pendiente
+    // de esa orden. En un renglón libre (sin OC) quedan en null y no se envían.
+    //   OcNrotrans  -> ComprobanteReferenciadoNrotrans (transacción de la OC en BAS)
+    //   OcSecuencia -> ComprobanteReferenciadoSecuencia (renglón dentro de la OC)
+    //   OcFecha/OcPrefijo/OcNumero -> datos del comprobante OC referenciado.
+    public long? OcNrotrans { get; set; }
+    public int? OcSecuencia { get; set; }
+    public DateTime? OcFecha { get; set; }
+    public string? OcPrefijo { get; set; }
+    public int? OcNumero { get; set; }
+
     public int Orden { get; set; }               // para mantener el orden de carga
 
     public PreRemito? PreRemito { get; set; }

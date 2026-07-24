@@ -54,7 +54,13 @@ public class BasFacturaIngresoService
         decimal TasaIva,
         string? Partida,
         string? Series,
-        BienInfo? Articulo);
+        BienInfo? Articulo,
+        // Referencia a la OC pendiente que este renglón consume (null si es libre).
+        long? OcNrotrans = null,
+        int? OcSecuencia = null,
+        DateTime? OcFecha = null,
+        string? OcPrefijo = null,
+        int? OcNumero = null);
 
     // Percepción de IIBB por provincia (el % ya viene calculado del controlador).
     public record PercepcionIngBrItem(
@@ -135,6 +141,9 @@ public class BasFacturaIngresoService
             // la administra). Si no se pudo resolver el artículo, se omite por las dudas.
             if (!string.IsNullOrWhiteSpace(r.Partida) && (r.Articulo?.AdministraPartidas ?? false))
                 item["Partida"] = r.Partida!.Trim();
+
+            // Referencia a la OC pendiente: hace que BAS descuente el ítem de esa OC.
+            BasRemitoIngresoService.AgregarReferenciaOC(item, r.OcNrotrans, r.OcSecuencia, r.OcFecha, r.OcPrefijo, r.OcNumero);
 
             var series = PartirSeries(r.Series);
             if (series.Count > 0)

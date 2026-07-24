@@ -41,6 +41,7 @@ public class ConfigBasesController : ControllerBase
             f.FacturaConcepto,
             f.FacturaDeposito,
             f.FacturaImputacionContable,
+            f.OrdenCompraPrefijo,
             // Conexión (ahora editable):
             baseUrl = f.BaseUrl,
             remitoTipo = f.RemitoTipo,

@@ -63,7 +63,13 @@ public class BasRemitoIngresoService
         decimal Cantidad,
         string? Partida,
         string? Series,
-        BienInfo? Articulo);
+        BienInfo? Articulo,
+        // Referencia a la OC pendiente que este renglón consume (null si es libre).
+        long? OcNrotrans = null,
+        int? OcSecuencia = null,
+        DateTime? OcFecha = null,
+        string? OcPrefijo = null,
+        int? OcNumero = null);
 
     public async Task<GrabadoResultado> GrabarAsync(
         string destino,
@@ -105,6 +111,9 @@ public class BasRemitoIngresoService
             // la administra). Si no se pudo resolver el artículo, se omite por las dudas.
             if (!string.IsNullOrWhiteSpace(r.Partida) && (r.Articulo?.AdministraPartidas ?? false))
                 item["Partida"] = r.Partida!.Trim();
+
+            // Referencia a la OC pendiente: hace que BAS descuente el ítem de esa OC.
+            AgregarReferenciaOC(item, r.OcNrotrans, r.OcSecuencia, r.OcFecha, r.OcPrefijo, r.OcNumero);
 
             // Series: texto libre separado por coma/; -> ExplosionSeries.
             var series = PartirSeries(r.Series);
@@ -234,6 +243,22 @@ public class BasRemitoIngresoService
 
     // BAS espera la mayoría de los numéricos como string con punto decimal.
     private static string Str(decimal d) => d.ToString("0.####", CultureInfo.InvariantCulture);
+
+    // Agrega al ítem la referencia a una Orden de Compra pendiente (si la hay), para
+    // que BAS descuente el ítem de esa OC. Nrotrans/Numero/Secuencia van como número
+    // JSON; la fecha como ISO. Sin Nrotrans no hay referencia (renglón libre).
+    internal static void AgregarReferenciaOC(
+        IDictionary<string, object?> item,
+        long? nrotrans, int? secuencia, DateTime? fecha, string? prefijo, int? numero)
+    {
+        if (!nrotrans.HasValue || nrotrans.Value <= 0) return;
+        item["ComprobanteReferenciadoNrotrans"] = nrotrans.Value;
+        if (secuencia.HasValue) item["ComprobanteReferenciadoSecuencia"] = secuencia.Value;
+        if (fecha.HasValue)
+            item["ComprobanteReferenciadoFecha"] = fecha.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        if (!string.IsNullOrWhiteSpace(prefijo)) item["ComprobanteReferenciadoPrefijo"] = prefijo!.Trim();
+        if (numero.HasValue) item["ComprobanteReferenciadoNumero"] = numero.Value;
+    }
 
     // Busca una propiedad (case-insensitive) en un objeto JSON y la devuelve como string.
     private static string? BuscarProp(JsonElement el, string nombre)

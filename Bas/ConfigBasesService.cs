@@ -112,6 +112,7 @@ public class ConfigBasesService
             FacturaConcepto = (req.FacturaConcepto ?? "").Trim(),
             FacturaDeposito = req.FacturaDeposito,
             FacturaImputacionContable = req.FacturaImputacionContable,
+            OrdenCompraPrefijo = string.IsNullOrWhiteSpace(req.OrdenCompraPrefijo) ? "1" : req.OrdenCompraPrefijo!.Trim(),
             SqlServidor = (req.SqlServidor ?? "").Trim(),
             SqlBase = (req.SqlBase ?? "").Trim(),
             SqlUsuario = (req.SqlUsuario ?? "").Trim(),
@@ -153,6 +154,7 @@ public class ConfigBasesService
         f.FacturaConcepto = (req.FacturaConcepto ?? "").Trim();
         f.FacturaDeposito = req.FacturaDeposito;
         f.FacturaImputacionContable = req.FacturaImputacionContable;
+        f.OrdenCompraPrefijo = string.IsNullOrWhiteSpace(req.OrdenCompraPrefijo) ? "1" : req.OrdenCompraPrefijo!.Trim();
         f.SqlServidor = (req.SqlServidor ?? "").Trim();
         f.SqlBase = (req.SqlBase ?? "").Trim();
         f.SqlUsuario = (req.SqlUsuario ?? "").Trim();
@@ -250,7 +252,8 @@ public class ConfigBasesService
         FacturaPrefijo = d.FacturaPrefijo,
         FacturaConcepto = d.FacturaConcepto,
         FacturaDeposito = d.FacturaDeposito,
-        FacturaImputacionContable = d.FacturaImputacionContable
+        FacturaImputacionContable = d.FacturaImputacionContable,
+        OrdenCompraPrefijo = string.IsNullOrWhiteSpace(d.OrdenCompraPrefijo) ? "1" : d.OrdenCompraPrefijo
     };
 
     private static void AplicarEnMemoria(DestinoBas d, ConfiguracionBase f)
@@ -270,6 +273,7 @@ public class ConfigBasesService
         d.FacturaConcepto = f.FacturaConcepto;
         d.FacturaDeposito = f.FacturaDeposito;
         d.FacturaImputacionContable = f.FacturaImputacionContable;
+        d.OrdenCompraPrefijo = string.IsNullOrWhiteSpace(f.OrdenCompraPrefijo) ? "1" : f.OrdenCompraPrefijo;
     }
 }
 
@@ -290,6 +294,7 @@ public record CrearConfigBaseRequest(
     string? FacturaConcepto,
     int FacturaDeposito,
     long FacturaImputacionContable,
+    string? OrdenCompraPrefijo = null,
     // SQL directo (e-cheques): conexión + credencial read-only + mail propio a excluir.
     string? SqlServidor = null,
     string? SqlBase = null,
@@ -313,6 +318,7 @@ public record ActualizarConfigBaseRequest(
     string? FacturaConcepto,
     int FacturaDeposito,
     long FacturaImputacionContable,
+    string? OrdenCompraPrefijo = null,
     // SQL directo (e-cheques). SqlClave vacío en edición = NO cambiar la existente.
     string? SqlServidor = null,
     string? SqlBase = null,

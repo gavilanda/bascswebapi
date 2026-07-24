@@ -28,6 +28,7 @@ public class PreRemitosController : ControllerBase
     private readonly BasRemitoIngresoService _grabador;
     private readonly BasFacturaIngresoService _grabadorFactura;
     private readonly BasPartidasService _partidas;
+    private readonly BasOrdenCompraService _oc;
 
     public PreRemitosController(
         PortalDbContext db,
@@ -37,7 +38,8 @@ public class PreRemitosController : ControllerBase
         BasDestinosService destinos,
         BasRemitoIngresoService grabador,
         BasFacturaIngresoService grabadorFactura,
-        BasPartidasService partidas)
+        BasPartidasService partidas,
+        BasOrdenCompraService oc)
     {
         _db = db;
         _resolucion = resolucion;
@@ -47,6 +49,7 @@ public class PreRemitosController : ControllerBase
         _grabador = grabador;
         _grabadorFactura = grabadorFactura;
         _partidas = partidas;
+        _oc = oc;
     }
 
     private string Usuario => User.FindFirstValue("identificador") ?? "";
@@ -138,6 +141,48 @@ public class PreRemitosController : ControllerBase
             return BadRequest(new { mensaje = "Falta el código de proveedor." });
         var bases = await _resolucion.ResolverProveedorAsync(codigo);
         return Ok(new { codigo = codigo.Trim(), bases });
+    }
+
+    // GET /api/pre-remitos/oc-pendientes?base=&proveedor=
+    // Órdenes de compra pendientes de entrega del proveedor en esa base, con sus
+    // ítems (saldo pendiente + fecha de entrega). Alimenta el ingreso "contra OC".
+    [HttpGet("oc-pendientes")]
+    public async Task<ActionResult> OcPendientes([FromQuery] string? @base, [FromQuery] string? proveedor)
+    {
+        var b = (@base ?? "").Trim();
+        var prov = (proveedor ?? "").Trim();
+        if (b.Length == 0 || prov.Length == 0)
+            return BadRequest(new { mensaje = "Elegí la base y el proveedor antes de traer las OC pendientes." });
+        if (!DestinoActivo(b))
+            return BadRequest(new { mensaje = $"La base '{b}' está inactiva o no existe." });
+
+        try
+        {
+            var pend = await _oc.TraerPendientesAsync(b, prov, HttpContext.RequestAborted);
+            var ordenes = pend.Select(o => new
+            {
+                nrotrans = o.Nrotrans,
+                fecha = o.Fecha?.ToString("yyyy-MM-dd"),
+                prefijo = o.Prefijo,
+                numero = o.Numero,
+                proveedorCodigo = o.ProveedorCodigo,
+                proveedorNombre = o.ProveedorNombre,
+                items = o.Items.Select(i => new
+                {
+                    secuencia = i.Secuencia,
+                    codItm = i.CodItm,
+                    descripcion = i.Descripcion,
+                    cantidad = i.Cantidad,
+                    unidad = i.Unidad,
+                    fechaEntrega = i.FechaEntrega?.ToString("yyyy-MM-dd")
+                })
+            });
+            return Ok(new { ordenes });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { mensaje = "No se pudieron traer las OC pendientes: " + ex.Message });
+        }
     }
 
     // GET /api/pre-remitos/buscar-productos?q=&offset=&limit=
@@ -535,7 +580,8 @@ public class PreRemitosController : ControllerBase
         if (p.TipoComprobante == TipoComprobante.Factura)
         {
             var renglones = lineasOrdenadas.Select(l => new BasFacturaIngresoService.RenglonFactura(
-                l.ProductoCodigo, l.Cantidad, l.PrecioUnitario, l.TasaIva, partidaPorLinea[l.Id], l.Series, bienes[l.Id])).ToList();
+                l.ProductoCodigo, l.Cantidad, l.PrecioUnitario, l.TasaIva, partidaPorLinea[l.Id], l.Series, bienes[l.Id],
+                l.OcNrotrans, l.OcSecuencia, l.OcFecha, l.OcPrefijo, l.OcNumero)).ToList();
 
             var percepciones = p.PercepcionesIngBr.Select(x => new BasFacturaIngresoService.PercepcionIngBrItem(
                 x.Provincia, x.BaseImponible, x.Importe, x.Porcentaje, x.Regimen)).ToList();
@@ -548,7 +594,8 @@ public class PreRemitosController : ControllerBase
         else
         {
             var renglones = lineasOrdenadas.Select(l => new BasRemitoIngresoService.RenglonGrabado(
-                l.ProductoCodigo, l.Cantidad, partidaPorLinea[l.Id], l.Series, bienes[l.Id])).ToList();
+                l.ProductoCodigo, l.Cantidad, partidaPorLinea[l.Id], l.Series, bienes[l.Id],
+                l.OcNrotrans, l.OcSecuencia, l.OcFecha, l.OcPrefijo, l.OcNumero)).ToList();
 
             res2 = await _grabador.GrabarAsync(
                 destino, p.Fecha, p.ComprobanteFecha, p.ComprobantePrefijo, p.ComprobanteNumero,
@@ -769,6 +816,11 @@ public class PreRemitosController : ControllerBase
                 PrecioUnitario = l.PrecioUnitario,
                 TasaIva = l.TasaIva,
                 FechaVencimiento = l.FechaVencimiento,
+                OcNrotrans = l.OcNrotrans,
+                OcSecuencia = l.OcSecuencia,
+                OcFecha = l.OcFecha,
+                OcPrefijo = Limpiar(l.OcPrefijo),
+                OcNumero = l.OcNumero,
                 Orden = orden++
             });
         }

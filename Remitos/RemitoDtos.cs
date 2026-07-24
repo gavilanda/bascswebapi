@@ -14,7 +14,13 @@ public record LineaRequest(
     string? Series,
     decimal PrecioUnitario = 0,
     decimal TasaIva = 0,
-    DateTime? FechaVencimiento = null);
+    DateTime? FechaVencimiento = null,
+    // Referencia a una OC pendiente (null en renglones libres).
+    long? OcNrotrans = null,
+    int? OcSecuencia = null,
+    DateTime? OcFecha = null,
+    string? OcPrefijo = null,
+    int? OcNumero = null);
 
 public record LineaDto(
     int Id,
@@ -28,7 +34,13 @@ public record LineaDto(
     decimal PrecioUnitario,
     decimal TasaIva,
     DateTime? FechaVencimiento,
-    int Orden);
+    int Orden,
+    // Referencia a una OC pendiente (null en renglones libres).
+    long? OcNrotrans = null,
+    int? OcSecuencia = null,
+    DateTime? OcFecha = null,
+    string? OcPrefijo = null,
+    int? OcNumero = null);
 
 // ---- Percepciones de IIBB (sólo factura) ----
 public record PercepcionIngBrRequest(
@@ -161,5 +173,6 @@ public static class RemitoMapeo
         p.RowVersion,
         p.Lineas.OrderBy(l => l.Orden).Select(l => new LineaDto(
             l.Id, l.ProductoCodigo, l.Descripcion, l.Cantidad, l.Unidad, l.Observacion,
-            l.Partida, l.Series, l.PrecioUnitario, l.TasaIva, l.FechaVencimiento, l.Orden)).ToList());
+            l.Partida, l.Series, l.PrecioUnitario, l.TasaIva, l.FechaVencimiento, l.Orden,
+            l.OcNrotrans, l.OcSecuencia, l.OcFecha, l.OcPrefijo, l.OcNumero)).ToList());
 }

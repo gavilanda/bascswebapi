@@ -17,6 +17,8 @@ public class PortalDbContext : DbContext
     public DbSet<AuditoriaPreRemito> AuditoriaPreRemitos => Set<AuditoriaPreRemito>();
     public DbSet<ConfiguracionBase> ConfiguracionesBase => Set<ConfiguracionBase>();
     public DbSet<FuncionPortal> FuncionesPortal => Set<FuncionPortal>();
+    public DbSet<OrdenCompra> OrdenesCompra => Set<OrdenCompra>();
+    public DbSet<OrdenCompraLinea> OrdenCompraLineas => Set<OrdenCompraLinea>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -111,5 +113,14 @@ public class PortalDbContext : DbContext
             v => v.Aggregate(0, (acc, s) => HashCode.Combine(acc, s.GetHashCode())),
             v => v.ToList());
         fp.Property(f => f.UsuariosAsignados).HasConversion(asignadosConverter, asignadosComparer);
+
+        // ---- Órdenes de compra ----
+        var oc = modelBuilder.Entity<OrdenCompra>();
+        oc.Property(o => o.Estado).HasConversion<string>();     // "Borrador"/"Grabada" legible
+        oc.Property(o => o.RowVersion).IsConcurrencyToken();    // concurrencia optimista
+        oc.HasMany(o => o.Lineas)
+          .WithOne(l => l.OrdenCompra!)
+          .HasForeignKey(l => l.OrdenCompraId)
+          .OnDelete(DeleteBehavior.Cascade);
     }
 }

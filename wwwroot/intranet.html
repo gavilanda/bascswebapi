@@ -83,6 +83,15 @@
   .msg { font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; display:none; }
   .msg.err { background:#fde8e8; color:var(--rojo); display:block; }
   .msg.ok { background:#e7f6ec; color:var(--verde); display:block; }
+  .oc-res { position:relative; margin-top:4px; max-height:220px; overflow:auto; border:1px solid #d1d5db; border-radius:7px; background:#fff; z-index:5; }
+  .oc-res .it { padding:6px 10px; font-size:13px; cursor:pointer; border-bottom:1px solid #f1f1f1; }
+  .oc-res .it:hover { background:#eef2ff; }
+  .oc-res .it b { color:#3730a3; }
+  .renglones tr.oc-row > td { background:#eef2ff; }
+  .oc-chip { display:inline-block; font-size:10px; font-weight:600; color:#3730a3; background:#e0e7ff; border-radius:5px; padding:1px 5px; margin-bottom:2px; white-space:nowrap; }
+  #modalOcTabla td { font-size:13px; }
+  #modalOcTabla .oc-head td { background:#e0e7ff; color:#1a237e; font-weight:600; }
+  #modalOcTabla input[type=number] { width:90px; }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
   .row > div { flex:1; min-width:150px; }
   /* Encabezado del formulario de ingreso: filas y labels más juntos. */
@@ -219,7 +228,8 @@
     <div class="layout">
       <nav class="sidebar">
         <a data-sec="inicio" tabindex="0" class="activo">Inicio</a>
-        <a data-sec="remitos" id="navRemitos" tabindex="0" class="hidden">Ingresos</a>
+        <a data-sec="ordenescompra" id="navOrdenesCompra" tabindex="0" class="hidden">Orden de Compra</a>
+        <a data-sec="remitos" id="navRemitos" tabindex="0" class="hidden">Comprobantes de Ingreso</a>
         <a data-sec="auditoria" id="navAuditoria" tabindex="0" class="hidden">Auditoría</a>
         <div class="sidebar-sep hidden" id="navAdminSep"></div>
         <a data-sec="config" id="navConfig" tabindex="0" class="hidden">Configuración</a>
@@ -247,7 +257,7 @@
           <!-- Lista -->
           <div id="remVista" class="card">
             <div class="toolbar">
-              <h2 style="margin:0; align-self:center">Ingresos de compra</h2>
+              <h2 style="margin:0; align-self:center">Comprobantes de Ingreso</h2>
               <div class="filtros">
                 <label class="filtro-campo"><span>Desde</span><input id="remFiltroDesde" type="date" /></label>
                 <label class="filtro-campo"><span>Hasta</span><input id="remFiltroHasta" type="date" /></label>
@@ -359,7 +369,11 @@
                 <tbody id="remRenglones"></tbody>
               </table>
             </div>
-            <div style="margin-top:8px"><button class="sec" id="btnAgregarRenglon">+ Agregar renglón</button></div>
+            <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+              <button class="sec" id="btnAgregarRenglon">+ Agregar renglón</button>
+              <button class="sec" id="btnRecibirOc" title="Traer las órdenes de compra pendientes del proveedor y recibir sus ítems (BAS descuenta la OC)">📋 Recibir contra OC pendiente</button>
+              <span class="nota" style="margin:0">Elegí <strong>base</strong> y <strong>proveedor</strong> para habilitarlo.</span>
+            </div>
             <div class="nota">Tip: <strong>F3</strong> en <strong>Cód. producto</strong> o en <strong>Cód. proveedor</strong> abre el buscador (por código o nombre). <strong>Enter</strong> pasa al campo siguiente igual que Tab; al salir del último campo del último renglón se agrega una línea nueva. La <strong>Unidad</strong> y la <strong>2ª unidad</strong> se completan solas según el artículo (2ª unidad = Cantidad ÷ relación; no se puede editar cuando la relación es fija). La columna <strong>Bases</strong> muestra en qué bases existe (✓ / ✗); una base en negro está inactiva. El <strong>Tipo de comprobante</strong> define si el ingreso se graba en BAS como Remito o como Factura. El <strong>Destino de grabación</strong> es la base BAS donde se grabará; es obligatorio para conformar. Cargá el <strong>Venc. partida</strong> en los renglones que necesiten partida: la columna <strong>Partida</strong> te muestra el número que se va a generar (código de proveedor + fecha del ingreso) y se da de alta al grabar.</div>
 
             <!-- Pie de factura: percepciones e importes (solo modo Factura) -->
@@ -394,6 +408,73 @@
             <div id="remMsgForm" class="msg"></div>
           </div>
 
+        </div>
+
+        <!-- ÓRDENES DE COMPRA -->
+        <div id="secOrdenesCompra" class="seccion hidden">
+          <div id="ocLista" class="card">
+            <div class="toolbar">
+              <h2 style="margin:0; align-self:center">Órdenes de Compra</h2>
+              <div style="margin-left:auto"><button id="btnNuevaOc">Nueva orden</button></div>
+            </div>
+            <table style="margin-top:12px">
+              <thead><tr><th>#</th><th>Fecha</th><th>Base</th><th>Proveedor</th><th>Estado</th><th>N° BAS</th><th></th></tr></thead>
+              <tbody id="ocTabla"></tbody>
+            </table>
+            <div id="ocMsgLista" class="msg"></div>
+          </div>
+
+          <div id="ocEditor" class="card hidden">
+            <div class="toolbar"><h2 id="ocEditorTitulo" style="margin:0; align-self:center">Nueva orden de compra</h2></div>
+            <div class="row compacta-form">
+              <div style="flex:0 0 180px"><label>Base</label><select id="ocBase"></select></div>
+              <div style="flex:0 0 150px"><label>Fecha</label><input id="ocFecha" type="date"></div>
+              <div style="flex:0 0 150px"><label>Vence</label><input id="ocVence" type="date"></div>
+              <div style="flex:0 0 120px"><label>Moneda (cód.)</label><input id="ocMoneda" type="number" min="1" value="1"></div>
+            </div>
+            <div class="row compacta-form">
+              <div style="flex:1 1 300px"><label>Proveedor (código)</label>
+                <div style="display:flex; gap:6px">
+                  <input id="ocProvCod" type="text" placeholder="código, o escribí y Buscar" style="flex:1">
+                  <button class="sec" id="btnOcBuscarProv" type="button">Buscar</button>
+                </div>
+                <div id="ocProvRes" class="oc-res hidden"></div>
+              </div>
+              <div style="flex:1 1 240px"><label>Razón social</label><input id="ocProvRazon" type="text" readonly></div>
+              <div style="flex:0 0 150px"><label>Comprador</label><input id="ocComprador" type="text" readonly></div>
+              <div style="flex:0 0 150px"><label>Cond. compra</label><input id="ocCondicion" type="text" readonly></div>
+            </div>
+            <div class="row compacta-form">
+              <div style="flex:1 1 100%"><label>Observaciones</label><input id="ocObs" type="text"></div>
+            </div>
+
+            <div class="subt compacta-form">Renglones</div>
+            <div class="row compacta-form" style="align-items:flex-end">
+              <div style="flex:1 1 260px"><label>Producto (código)</label>
+                <div style="display:flex; gap:6px">
+                  <input id="ocProdCod" type="text" placeholder="código, o escribí y Buscar" style="flex:1">
+                  <button class="sec" id="btnOcBuscarProd" type="button">Buscar</button>
+                </div>
+                <div id="ocProdRes" class="oc-res hidden"></div>
+              </div>
+              <div style="flex:0 0 110px"><label>Cantidad</label><input id="ocCant" type="number" step="0.0001" min="0"></div>
+              <div style="flex:0 0 120px"><label>Precio unit.</label><input id="ocPrecio" type="number" step="0.01" min="0"></div>
+              <div style="flex:0 0 90px"><label>IVA %</label><input id="ocIva" type="number" step="0.01" min="0" value="21"></div>
+              <div style="flex:0 0 100px"><button id="btnOcAddRenglon" type="button">Agregar</button></div>
+            </div>
+            <table style="margin-top:8px">
+              <thead><tr><th>Producto</th><th class="right">Cant.</th><th class="right">Precio</th><th class="right">IVA%</th><th class="right">Subtotal</th><th></th></tr></thead>
+              <tbody id="ocRenglones"></tbody>
+              <tfoot><tr><th colspan="4" class="right">Total</th><th class="right" id="ocTotal">0,00</th><th></th></tr></tfoot>
+            </table>
+
+            <div id="ocMsgForm" class="msg"></div>
+            <div style="margin-top:16px; display:flex; gap:8px">
+              <button id="btnGuardarOc">Guardar borrador</button>
+              <button id="btnGrabarOc" style="background:#16a34a; color:#fff; border:none">Grabar en BAS</button>
+              <button class="sec" id="btnCancelarOc">Cancelar</button>
+            </div>
+          </div>
         </div>
 
         <!-- AUDITORÍA -->
@@ -488,6 +569,11 @@
               <div style="flex:0 0 130px"><label>Concepto</label><input id="cfgFacConcepto" type="text" placeholder="com" /></div>
               <div style="flex:0 0 130px"><label>Depósito</label><input id="cfgFacDeposito" type="number" min="1" /></div>
               <div style="flex:0 0 160px"><label>Cuenta contable</label><input id="cfgFacImputacion" type="number" min="1" placeholder="21001001" /></div>
+            </div>
+
+            <div class="subt compacta-form">Orden de compra</div>
+            <div class="row compacta-form">
+              <div style="flex:0 0 130px"><label>Prefijo</label><input id="cfgOcPrefijo" type="text" placeholder="1" /></div>
             </div>
 
             <div class="subt compacta-form">E-Cheques — conexión SQL directa (solo lectura)</div>
@@ -672,6 +758,39 @@
     </div>
   </div>
 
+  <!-- MODAL: recibir contra OC pendiente -->
+  <div id="modalOc" class="modal-overlay hidden">
+    <div class="modal" style="max-width:920px">
+      <div class="modal-cab">
+        <h2 id="modalOcTitulo">Órdenes de compra pendientes</h2>
+        <span class="modal-x" id="modalOcCerrar" title="Cerrar (Esc)">✕</span>
+      </div>
+      <div class="modal-info" id="modalOcInfo"></div>
+      <div class="modal-lista" id="modalOcLista" style="max-height:52vh">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:4%"></th>
+              <th style="width:13%">OC</th>
+              <th style="width:11%">Entrega</th>
+              <th style="width:12%">Producto</th>
+              <th>Descripción</th>
+              <th style="width:11%">Pendiente</th>
+              <th style="width:13%">Recibir</th>
+            </tr>
+          </thead>
+          <tbody id="modalOcTabla"></tbody>
+        </table>
+      </div>
+      <div id="modalOcMsg" class="msg"></div>
+      <div style="margin-top:14px; display:flex; gap:8px; justify-content:flex-end; align-items:center">
+        <span class="nota" id="modalOcResumen" style="margin:0; margin-right:auto"></span>
+        <button class="sec" id="modalOcCancelar">Cancelar</button>
+        <button id="modalOcAgregar">Agregar seleccionados</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: eliminar base -->
   <div id="modalDelBase" class="modal-overlay hidden">
     <div class="modal" style="max-width:480px">
@@ -785,6 +904,7 @@
   function puedeConformarRemitos() { return tienePermiso(PERM_CONFORMAR); }
   function puedeVerRemitos() { return puedeEditarRemitos() || puedeConformarRemitos(); }
   function puedeAuditar() { return tienePermiso(PERM_AUDITAR); }
+  function puedeUsarOrdenesCompra() { return esAdmin || tienePermiso("ordenes_compra"); }
   function hdrJson() { return { "Content-Type": "application/json", "Authorization": "Bearer " + token }; }
   function fechaCorta(s) {
     if (!s) return "—";
@@ -831,6 +951,7 @@
       $("navConfig").classList.toggle("hidden", !esAdmin);
       $("navFunciones").classList.toggle("hidden", !esAdmin);
       $("navAdminSep").classList.toggle("hidden", !esAdmin);
+      $("navOrdenesCompra").classList.toggle("hidden", !puedeUsarOrdenesCompra());
       $("navRemitos").classList.toggle("hidden", !puedeVerRemitos());
       $("navAuditoria").classList.toggle("hidden", !puedeAuditar());
       // Al entrar siempre se muestra Inicio.
@@ -847,9 +968,10 @@
     if (sec === "config" && !esAdmin) sec = "inicio";
     if (sec === "funciones" && !esAdmin) sec = "inicio";
     if (sec === "remitos" && !puedeVerRemitos()) sec = "inicio";
+    if (sec === "ordenescompra" && !puedeUsarOrdenesCompra()) sec = "inicio";
     if (sec === "auditoria" && !puedeAuditar()) sec = "inicio";
 
-    const mapa = { inicio: "secInicio", usuarios: "secUsuarios", remitos: "secRemitos", auditoria: "secAuditoria", config: "secConfig", funciones: "secFunciones" };
+    const mapa = { inicio: "secInicio", usuarios: "secUsuarios", remitos: "secRemitos", ordenescompra: "secOrdenesCompra", auditoria: "secAuditoria", config: "secConfig", funciones: "secFunciones" };
     document.querySelectorAll(".seccion").forEach(s => s.classList.add("hidden"));
     const destino = $(mapa[sec] || "secInicio");
     if (destino) destino.classList.remove("hidden");
@@ -876,6 +998,11 @@
       // el selector queda al día sin tener que recargar la página.
       await cargarDestinos();
       cargarRemitos();
+    } else if (sec === "ordenescompra") {
+      $("ocEditor").classList.add("hidden");
+      $("ocLista").classList.remove("hidden");
+      await cargarDestinos();
+      cargarOrdenes();
     } else if (sec === "auditoria") {
       buscarAuditoria();
     } else if (sec === "config") {
@@ -1041,6 +1168,364 @@
       selForm.appendChild(opt);
     }
     destinosCargados = true;
+  }
+
+  // ============================================================
+  //  ÓRDENES DE COMPRA
+  // ============================================================
+  let ocModo = "nuevo";      // nuevo | editar
+  let ocId = null;
+  let ocRowVersion = null;
+  let ocLineas = [];         // {productoCodigo, descripcion, cantidad, unidad, precioUnitario, tasaIva, observacion}
+
+  function ocMoney(n) {
+    return (Number(n) || 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // Rellena el selector de base del editor con las bases activas (listaDestinos).
+  function ocPoblarBases(seleccion) {
+    const sel = $("ocBase");
+    sel.innerHTML = '<option value="">(elegir base)</option>';
+    for (const nombre of listaDestinos) {
+      const opt = document.createElement("option");
+      opt.value = nombre; opt.textContent = nombre;
+      sel.appendChild(opt);
+    }
+    if (seleccion && listaDestinos.includes(seleccion)) sel.value = seleccion;
+  }
+
+  async function cargarOrdenes() {
+    limpiar($("ocMsgLista"));
+    let r;
+    try {
+      r = await fetch("/api/ordenes-compra", { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { mostrar($("ocMsgLista"), "No se pudo conectar.", "err"); return; }
+    if (!r.ok) { mostrar($("ocMsgLista"), "No se pudo cargar la lista.", "err"); return; }
+    const d = await r.json();
+    const tb = $("ocTabla");
+    tb.innerHTML = "";
+    const ordenes = d.ordenes || [];
+    if (ordenes.length === 0) {
+      tb.innerHTML = '<tr><td colspan="7" style="color:#888">No hay órdenes de compra.</td></tr>';
+      return;
+    }
+    for (const o of ordenes) {
+      const grabada = o.estado === "Grabada";
+      const numBas = grabada ? ((o.prefijoBas || "") + "-" + (o.numeroBas || "")) : "—";
+      const acc = grabada
+        ? '<button class="sec" data-act="ver" data-id="' + o.id + '">Ver</button>'
+        : '<button class="sec" data-act="editar" data-id="' + o.id + '">Editar</button>'
+          + ' <button class="sec" data-act="eliminar" data-id="' + o.id + '">Borrar</button>';
+      const badge = grabada
+        ? '<span class="tag" style="background:#e7f6ec;color:#166534">Grabada</span>'
+        : '<span class="tag" style="background:#fef9c3;color:#854d0e">Borrador</span>';
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + o.id + "</td>" +
+        "<td>" + fechaCorta(o.fecha) + "</td>" +
+        "<td>" + (o.destinoBase || "") + "</td>" +
+        "<td>" + (o.proveedorCodigo || "") + " · " + (o.proveedorRazonSocial || "") + "</td>" +
+        "<td>" + badge + "</td>" +
+        "<td>" + numBas + "</td>" +
+        "<td style='text-align:right'>" + acc + "</td>";
+      tb.appendChild(tr);
+    }
+    tb.querySelectorAll("button[data-act]").forEach(b => b.addEventListener("click", () => {
+      const id = parseInt(b.dataset.id, 10);
+      if (b.dataset.act === "editar" || b.dataset.act === "ver") ocAbrir(id, b.dataset.act === "ver");
+      else if (b.dataset.act === "eliminar") ocEliminar(id);
+    }));
+  }
+
+  function ocLimpiarForm() {
+    ocProvLimpio();
+    $("ocProvCod").value = "";
+    $("ocObs").value = "";
+    $("ocFecha").value = hoyISO();
+    $("ocVence").value = "";
+    $("ocMoneda").value = "1";
+    ocLineas = [];
+    ocRenderRenglones();
+    ocLimpiarRenglonInputs();
+    $("ocProvRes").classList.add("hidden");
+    $("ocProdRes").classList.add("hidden");
+    limpiar($("ocMsgForm"));
+  }
+
+  function ocProvLimpio() {
+    $("ocProvRazon").value = "";
+    $("ocComprador").value = "";
+    $("ocCondicion").value = "";
+  }
+
+  function ocLimpiarRenglonInputs() {
+    $("ocProdCod").value = "";
+    $("ocCant").value = "";
+    $("ocPrecio").value = "";
+    $("ocIva").value = "21";
+  }
+
+  function ocNueva() {
+    ocModo = "nuevo"; ocId = null; ocRowVersion = null;
+    $("ocEditorTitulo").textContent = "Nueva orden de compra";
+    ocPoblarBases();
+    ocLimpiarForm();
+    ocSetLectura(false);
+    $("ocLista").classList.add("hidden");
+    $("ocEditor").classList.remove("hidden");
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  async function ocAbrir(id, soloLectura) {
+    let r;
+    try {
+      r = await fetch("/api/ordenes-compra/" + id, { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { mostrar($("ocMsgLista"), "No se pudo conectar.", "err"); return; }
+    if (!r.ok) { mostrar($("ocMsgLista"), "No se pudo leer la orden.", "err"); return; }
+    const o = await r.json();
+    ocModo = "editar"; ocId = o.id; ocRowVersion = o.rowVersion;
+    const grabada = o.estado === "Grabada";
+    $("ocEditorTitulo").textContent = (grabada ? "Orden de compra N° " : "Editar orden de compra N° ") + o.id
+      + (grabada && o.numeroBas ? "  ·  BAS " + (o.prefijoBas || "") + "-" + o.numeroBas : "");
+    ocPoblarBases(o.destinoBase);
+    $("ocProvCod").value = o.proveedorCodigo || "";
+    $("ocProvRazon").value = o.proveedorRazonSocial || "";
+    $("ocComprador").value = o.comprador || "";
+    $("ocCondicion").value = o.condicionCompra || "";
+    $("ocObs").value = o.observaciones || "";
+    $("ocFecha").value = o.fecha || hoyISO();
+    $("ocVence").value = o.fechaExpiracion || "";
+    $("ocMoneda").value = o.codigoMoneda || 1;
+    ocLineas = (o.renglones || []).map(l => ({
+      productoCodigo: l.productoCodigo, descripcion: l.descripcion || "", cantidad: l.cantidad,
+      unidad: l.unidad || "", precioUnitario: l.precioUnitario, tasaIva: l.tasaIva, observacion: l.observacion || ""
+    }));
+    ocRenderRenglones();
+    ocLimpiarRenglonInputs();
+    limpiar($("ocMsgForm"));
+    if (o.mensajeError) mostrar($("ocMsgForm"), "Último error de BAS: " + o.mensajeError, "err");
+    ocSetLectura(soloLectura || grabada);
+    $("ocLista").classList.add("hidden");
+    $("ocEditor").classList.remove("hidden");
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  // Habilita/deshabilita edición (una orden grabada se ve pero no se toca).
+  function ocSetLectura(ro) {
+    ["ocBase", "ocFecha", "ocVence", "ocMoneda", "ocProvCod", "ocObs",
+      "ocProdCod", "ocCant", "ocPrecio", "ocIva"].forEach(id => $(id).disabled = ro);
+    ["btnOcBuscarProv", "btnOcBuscarProd", "btnOcAddRenglon", "btnGuardarOc", "btnGrabarOc"]
+      .forEach(id => $(id).classList.toggle("hidden", ro));
+    ocRenderRenglones();
+  }
+
+  function ocLeeSoloLectura() { return $("ocBase").disabled; }
+
+  async function ocEliminar(id) {
+    if (!confirm("¿Borrar esta orden de compra (borrador)?")) return;
+    let r;
+    try {
+      r = await fetch("/api/ordenes-compra/" + id, { method: "DELETE", headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { mostrar($("ocMsgLista"), "No se pudo conectar.", "err"); return; }
+    if (r.ok) { cargarOrdenes(); return; }
+    const d = await r.json().catch(() => ({}));
+    mostrar($("ocMsgLista"), d.mensaje || "No se pudo borrar.", "err");
+  }
+
+  // ---- Buscador de proveedor ----
+  async function ocBuscarProveedor() {
+    const base = $("ocBase").value;
+    if (!base) { mostrar($("ocMsgForm"), "Elegí primero la base.", "err"); return; }
+    const q = $("ocProvCod").value.trim();
+    const cont = $("ocProvRes");
+    cont.innerHTML = '<div class="it">Buscando…</div>'; cont.classList.remove("hidden");
+    let r;
+    try {
+      r = await fetch("/api/ordenes-compra/buscar-proveedores?base=" + encodeURIComponent(base) + "&q=" + encodeURIComponent(q),
+        { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { cont.innerHTML = '<div class="it">Sin conexión.</div>'; return; }
+    const d = await r.json().catch(() => ({ items: [] }));
+    ocPintarResultados(cont, d.items || [], (it) => ocElegirProveedor(it.codigo));
+  }
+
+  async function ocElegirProveedor(codigo) {
+    $("ocProvRes").classList.add("hidden");
+    $("ocProvCod").value = codigo;
+    const base = $("ocBase").value;
+    if (!base) return;
+    ocProvLimpio();
+    let r;
+    try {
+      r = await fetch("/api/ordenes-compra/proveedor?base=" + encodeURIComponent(base) + "&codigo=" + encodeURIComponent(codigo),
+        { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { mostrar($("ocMsgForm"), "No se pudo consultar el proveedor.", "err"); return; }
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      mostrar($("ocMsgForm"), e.mensaje || "No se encontró el proveedor.", "err"); return;
+    }
+    const p = await r.json();
+    $("ocProvRazon").value = p.razonSocial || "";
+    $("ocComprador").value = p.comprador || "";
+    $("ocCondicion").value = p.condicionCompra || "";
+    limpiar($("ocMsgForm"));
+  }
+
+  // ---- Buscador de producto ----
+  let ocProdDescSel = "";
+  async function ocBuscarProducto() {
+    const base = $("ocBase").value;
+    if (!base) { mostrar($("ocMsgForm"), "Elegí primero la base.", "err"); return; }
+    const q = $("ocProdCod").value.trim();
+    const cont = $("ocProdRes");
+    cont.innerHTML = '<div class="it">Buscando…</div>'; cont.classList.remove("hidden");
+    let r;
+    try {
+      r = await fetch("/api/ordenes-compra/buscar-productos?base=" + encodeURIComponent(base) + "&q=" + encodeURIComponent(q),
+        { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { cont.innerHTML = '<div class="it">Sin conexión.</div>'; return; }
+    const d = await r.json().catch(() => ({ items: [] }));
+    ocPintarResultados(cont, d.items || [], (it) => {
+      $("ocProdCod").value = it.codigo;
+      ocProdDescSel = it.descripcion || "";
+      cont.classList.add("hidden");
+    });
+  }
+
+  function ocPintarResultados(cont, items, onPick) {
+    if (items.length === 0) { cont.innerHTML = '<div class="it">Sin resultados.</div>'; return; }
+    cont.innerHTML = "";
+    for (const it of items) {
+      const div = document.createElement("div");
+      div.className = "it";
+      div.innerHTML = "<b>" + it.codigo + "</b> · " + (it.descripcion || "");
+      div.addEventListener("click", () => onPick(it));
+      cont.appendChild(div);
+    }
+  }
+
+  // ---- Renglones ----
+  function ocAgregarRenglon() {
+    const cod = $("ocProdCod").value.trim();
+    const cant = parseFloat($("ocCant").value);
+    const precio = parseFloat($("ocPrecio").value);
+    const iva = parseFloat($("ocIva").value);
+    if (!cod) { mostrar($("ocMsgForm"), "Elegí un producto.", "err"); return; }
+    if (!(cant > 0)) { mostrar($("ocMsgForm"), "La cantidad debe ser mayor a cero.", "err"); return; }
+    if (!(precio >= 0)) { mostrar($("ocMsgForm"), "Precio inválido.", "err"); return; }
+    ocLineas.push({
+      productoCodigo: cod, descripcion: ocProdDescSel || "", cantidad: cant, unidad: "",
+      precioUnitario: precio, tasaIva: isNaN(iva) ? 21 : iva, observacion: ""
+    });
+    ocProdDescSel = "";
+    ocLimpiarRenglonInputs();
+    ocRenderRenglones();
+    limpiar($("ocMsgForm"));
+    $("ocProdCod").focus();
+  }
+
+  function ocRenderRenglones() {
+    const tb = $("ocRenglones");
+    tb.innerHTML = "";
+    let total = 0;
+    const ro = ocLeeSoloLectura();
+    ocLineas.forEach((l, i) => {
+      const sub = (Number(l.cantidad) || 0) * (Number(l.precioUnitario) || 0);
+      total += sub;
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + l.productoCodigo + (l.descripcion ? " · " + l.descripcion : "") + "</td>" +
+        "<td class='right'>" + ocMoney(l.cantidad) + "</td>" +
+        "<td class='right'>" + ocMoney(l.precioUnitario) + "</td>" +
+        "<td class='right'>" + (Number(l.tasaIva) || 0) + "</td>" +
+        "<td class='right'>" + ocMoney(sub) + "</td>" +
+        "<td class='right'>" + (ro ? "" : '<button class="sec" data-i="' + i + '">Quitar</button>') + "</td>";
+      tb.appendChild(tr);
+    });
+    $("ocTotal").textContent = ocMoney(total);
+    if (!ro) tb.querySelectorAll("button[data-i]").forEach(b =>
+      b.addEventListener("click", () => { ocLineas.splice(parseInt(b.dataset.i, 10), 1); ocRenderRenglones(); }));
+  }
+
+  // ---- Guardar / grabar ----
+  function ocRecolectar() {
+    return {
+      destinoBase: $("ocBase").value,
+      proveedorCodigo: $("ocProvCod").value.trim(),
+      proveedorRazonSocial: $("ocProvRazon").value.trim(),
+      comprador: $("ocComprador").value.trim(),
+      condicionCompra: $("ocCondicion").value.trim(),
+      fecha: $("ocFecha").value || hoyISO(),
+      fechaExpiracion: $("ocVence").value || null,
+      codigoMoneda: parseInt($("ocMoneda").value, 10) || 1,
+      observaciones: $("ocObs").value.trim(),
+      observacionEntrega: null,
+      renglones: ocLineas.map(l => ({
+        productoCodigo: l.productoCodigo, descripcion: l.descripcion, cantidad: l.cantidad,
+        unidad: l.unidad, precioUnitario: l.precioUnitario, tasaIva: l.tasaIva, observacion: l.observacion
+      })),
+      rowVersion: ocRowVersion
+    };
+  }
+
+  function ocValidarLocal() {
+    if (!$("ocBase").value) return "Elegí la base.";
+    if (!$("ocProvCod").value.trim()) return "Elegí un proveedor.";
+    if (ocLineas.length === 0) return "Cargá al menos un renglón.";
+    return null;
+  }
+
+  // Guarda el borrador; devuelve el id o null si falló.
+  async function ocGuardar(silencioso) {
+    const err = ocValidarLocal();
+    if (err) { mostrar($("ocMsgForm"), err, "err"); return null; }
+    const body = ocRecolectar();
+    const nuevo = ocModo === "nuevo" || ocId === null;
+    const url = nuevo ? "/api/ordenes-compra" : "/api/ordenes-compra/" + ocId;
+    let r;
+    try {
+      r = await fetch(url, { method: nuevo ? "POST" : "PUT", headers: hdrJson(), body: JSON.stringify(body) });
+    } catch (e) { mostrar($("ocMsgForm"), "No se pudo conectar.", "err"); return null; }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { mostrar($("ocMsgForm"), d.mensaje || "No se pudo guardar.", "err"); return null; }
+    ocModo = "editar"; ocId = d.id;
+    // Refrescamos rowVersion releyendo (para permitir grabar sin conflicto).
+    await ocRefrescarRowVersion();
+    if (!silencioso) {
+      mostrar($("ocMsgForm"), "Borrador guardado.", "ok");
+      $("ocEditorTitulo").textContent = "Editar orden de compra N° " + ocId;
+    }
+    return ocId;
+  }
+
+  async function ocRefrescarRowVersion() {
+    try {
+      const r = await fetch("/api/ordenes-compra/" + ocId, { headers: { "Authorization": "Bearer " + token } });
+      if (r.ok) { const o = await r.json(); ocRowVersion = o.rowVersion; }
+    } catch (e) { /* no crítico */ }
+  }
+
+  async function ocGrabar() {
+    const err = ocValidarLocal();
+    if (err) { mostrar($("ocMsgForm"), err, "err"); return; }
+    if (!confirm("¿Grabar esta orden de compra en BAS? Esta acción es definitiva.")) return;
+    // Primero aseguramos el borrador guardado (así BAS recibe lo último en pantalla).
+    const id = await ocGuardar(true);
+    if (id === null) return;
+    mostrar($("ocMsgForm"), "Grabando en BAS…", "ok");
+    let r;
+    try {
+      r = await fetch("/api/ordenes-compra/" + id + "/grabar", { method: "POST", headers: hdrJson() });
+    } catch (e) { mostrar($("ocMsgForm"), "No se pudo conectar.", "err"); return; }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { mostrar($("ocMsgForm"), d.mensaje || "No se pudo grabar en BAS.", "err"); return; }
+    mostrar($("ocMsgForm"), "Grabada en BAS. N° " + (d.prefijo || "") + "-" + (d.numero || "") + " (interno " + (d.nrotrans || "") + ").", "ok");
+    setTimeout(ocVolverLista, 1200);
+  }
+
+  function ocVolverLista() {
+    $("ocEditor").classList.add("hidden");
+    $("ocLista").classList.remove("hidden");
+    cargarOrdenes();
   }
 
   // Garantiza que el selector del formulario tenga una opción para 'nombre',
@@ -1253,6 +1738,7 @@
   }
 
   async function resolverProveedor() {
+    actualizarBtnRecibirOc();
     const cod = $("remProvCod").value.trim();
     const cont = $("remProvCob");
     const razonEl = $("remProvRazon");
@@ -1541,6 +2027,26 @@
       vencInput.addEventListener("input", () => pintarPartidaRenglon(tr));
       vencInput.addEventListener("change", () => pintarPartidaRenglon(tr));
     }
+    // Renglón que consume una OC pendiente: guardamos la referencia en el dataset
+    // (viaja a BAS al grabar), lo marcamos visualmente y bloqueamos el código (está
+    // atado al ítem de la OC). La cantidad sí es editable (se puede recibir parcial).
+    if (l.ocNrotrans) {
+      tr.classList.add("oc-row");
+      tr.dataset.ocNrotrans = l.ocNrotrans;
+      if (l.ocSecuencia != null) tr.dataset.ocSecuencia = l.ocSecuencia;
+      if (l.ocFecha) tr.dataset.ocFecha = (l.ocFecha + "").split("T")[0];
+      if (l.ocPrefijo) tr.dataset.ocPrefijo = l.ocPrefijo;
+      if (l.ocNumero != null) tr.dataset.ocNumero = l.ocNumero;
+      const codI = tr.querySelector(".r-cod"); codI.readOnly = true; codI.tabIndex = -1;
+      const descCell = tr.querySelector(".r-desc").parentNode;
+      const chip = document.createElement("div");
+      chip.className = "oc-chip";
+      const nro = (l.ocPrefijo ? l.ocPrefijo + "-" : "") + (l.ocNumero != null ? l.ocNumero : ("trans " + l.ocNrotrans));
+      chip.textContent = "OC " + nro + (l.ocSecuencia != null ? " · ít." + l.ocSecuencia : "");
+      chip.title = "Renglón contra orden de compra: al grabar, BAS descuenta esta OC.";
+      descCell.insertBefore(chip, descCell.firstChild);
+    }
+
     pintarPartidaRenglon(tr);   // refleja la partida si el renglón ya trae vencimiento
     aplicarLetra();             // ajusta Tasa IVA según la letra y recalcula totales (si es factura)
   }
@@ -1550,7 +2056,7 @@
     $("remRenglones").querySelectorAll("tr").forEach(tr => {
       const cod = tr.querySelector(".r-cod").value.trim();
       if (!cod) return;
-      filas.push({
+      const ln = {
         productoCodigo: cod,
         descripcion: tr.querySelector(".r-desc").value || null,
         cantidad: parseFloat(tr.querySelector(".r-cant").value) || 0,
@@ -1559,9 +2065,162 @@
         fechaVencimiento: tr.querySelector(".r-venc").value || null,
         precioUnitario: parseFloat(tr.querySelector(".r-precio").value) || 0,
         tasaIva: parseFloat(tr.querySelector(".r-iva").value) || 0
-      });
+      };
+      // Referencia a OC pendiente (si el renglón se cargó contra una orden).
+      if (tr.dataset.ocNrotrans) {
+        ln.ocNrotrans = parseInt(tr.dataset.ocNrotrans, 10);
+        if (tr.dataset.ocSecuencia) ln.ocSecuencia = parseInt(tr.dataset.ocSecuencia, 10);
+        if (tr.dataset.ocFecha) ln.ocFecha = tr.dataset.ocFecha;
+        if (tr.dataset.ocPrefijo) ln.ocPrefijo = tr.dataset.ocPrefijo;
+        if (tr.dataset.ocNumero) ln.ocNumero = parseInt(tr.dataset.ocNumero, 10);
+      }
+      filas.push(ln);
     });
     return filas;
+  }
+
+  // ============================================================
+  //  RECIBIR CONTRA OC PENDIENTE (ingreso "contra orden de compra")
+  // ============================================================
+  let ocPendData = [];   // órdenes pendientes traídas de BAS para el proveedor actual
+
+  function ocFmtCant(n) {
+    return (Number(n) || 0).toLocaleString("es-AR", { maximumFractionDigits: 4 });
+  }
+
+  // El botón se habilita sólo con base + proveedor cargados (y no en modo "ver").
+  function actualizarBtnRecibirOc() {
+    const b = $("btnRecibirOc");
+    if (!b) return;
+    const enVer = b.classList.contains("hidden");
+    b.disabled = enVer || !($("remDestino").value && $("remProvCod").value.trim());
+  }
+
+  async function abrirModalOc() {
+    const base = $("remDestino").value;
+    const prov = $("remProvCod").value.trim();
+    if (!base) { mostrar($("remMsgForm"), "Elegí la base de destino antes de traer las OC.", "err"); return; }
+    if (!prov) { mostrar($("remMsgForm"), "Cargá el proveedor antes de traer las OC.", "err"); return; }
+    limpiar($("remMsgForm"));
+    $("modalOc").classList.remove("hidden");
+    $("modalOcTitulo").textContent = "OC pendientes · proveedor " + prov + " · " + base;
+    $("modalOcInfo").textContent = "Buscando órdenes pendientes…";
+    $("modalOcTabla").innerHTML = "";
+    $("modalOcResumen").textContent = "";
+    $("modalOcAgregar").disabled = true;
+    limpiar($("modalOcMsg"));
+
+    let r;
+    try {
+      r = await fetch("/api/pre-remitos/oc-pendientes?base=" + encodeURIComponent(base) + "&proveedor=" + encodeURIComponent(prov),
+        { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) { $("modalOcInfo").textContent = ""; mostrar($("modalOcMsg"), "No se pudo conectar con la base.", "err"); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      $("modalOcInfo").textContent = "";
+      mostrar($("modalOcMsg"), d.mensaje || "No se pudieron traer las OC pendientes.", "err");
+      return;
+    }
+    const d = await r.json();
+    ocPendData = d.ordenes || [];
+    renderModalOc();
+  }
+
+  function cerrarModalOc() { $("modalOc").classList.add("hidden"); }
+
+  function renderModalOc() {
+    const tb = $("modalOcTabla");
+    tb.innerHTML = "";
+
+    // Ítems de OC ya cargados en el ingreso (para no ofrecerlos duplicados).
+    const yaCargadas = new Set();
+    $("remRenglones").querySelectorAll("tr").forEach(tr => {
+      if (tr.dataset.ocNrotrans && tr.dataset.ocSecuencia)
+        yaCargadas.add(tr.dataset.ocNrotrans + "-" + tr.dataset.ocSecuencia);
+    });
+
+    if (!ocPendData.length) {
+      $("modalOcInfo").textContent = "El proveedor no tiene órdenes de compra pendientes en esta base.";
+      $("modalOcAgregar").disabled = true;
+      return;
+    }
+    $("modalOcInfo").textContent = "Marcá los ítems a recibir y ajustá la cantidad (podés recibir parcial).";
+    $("modalOcAgregar").disabled = false;
+
+    ocPendData.forEach((oc, oi) => {
+      const nroTxt = (oc.prefijo ? oc.prefijo + "-" : "") + (oc.numero != null ? oc.numero : ("trans " + oc.nrotrans));
+      const head = document.createElement("tr");
+      head.className = "oc-head";
+      head.innerHTML = '<td colspan="7">OC ' + esc(nroTxt) + (oc.fecha ? " · " + fechaCorta(oc.fecha) : "") + "</td>";
+      tb.appendChild(head);
+
+      (oc.items || []).forEach((it, ii) => {
+        const dup = yaCargadas.has(oc.nrotrans + "-" + it.secuencia);
+        const tr = document.createElement("tr");
+        tr.dataset.oi = oi; tr.dataset.ii = ii;
+        tr.innerHTML =
+          '<td><input type="checkbox" class="oc-ck"' + (dup ? " disabled" : "") + '></td>'
+          + '<td>' + esc(nroTxt) + '</td>'
+          + '<td>' + (it.fechaEntrega ? fechaCorta(it.fechaEntrega) : "—") + '</td>'
+          + '<td>' + esc(it.codItm) + '</td>'
+          + '<td>' + esc(it.descripcion || "") + (dup ? ' <span class="oc-chip">ya cargado</span>' : "") + '</td>'
+          + '<td class="right">' + ocFmtCant(it.cantidad) + (it.unidad ? " " + esc(it.unidad) : "") + '</td>'
+          + '<td><input type="number" step="any" class="oc-cant" value="' + it.cantidad + '"' + (dup ? " disabled" : "") + '></td>';
+        tb.appendChild(tr);
+        const ck = tr.querySelector(".oc-ck");
+        if (ck) ck.addEventListener("change", actualizarResumenOc);
+      });
+    });
+    actualizarResumenOc();
+  }
+
+  function actualizarResumenOc() {
+    const n = $("modalOcTabla").querySelectorAll(".oc-ck:checked").length;
+    $("modalOcResumen").textContent = n ? (n + " ítem(s) seleccionado(s)") : "";
+  }
+
+  function confirmarRecibirOc() {
+    limpiar($("modalOcMsg"));
+    const filas = $("modalOcTabla").querySelectorAll("tr[data-oi]");
+    let agregados = 0, errCant = false;
+    filas.forEach(tr => {
+      const ck = tr.querySelector(".oc-ck");
+      if (!ck || !ck.checked || ck.disabled) return;
+      const oc = ocPendData[parseInt(tr.dataset.oi, 10)];
+      const it = oc.items[parseInt(tr.dataset.ii, 10)];
+      const cant = parseFloat(tr.querySelector(".oc-cant").value);
+      if (!(cant > 0)) { errCant = true; return; }
+      agregarRenglon({
+        productoCodigo: it.codItm,
+        descripcion: it.descripcion || "",
+        cantidad: cant,
+        ocNrotrans: oc.nrotrans,
+        ocSecuencia: it.secuencia,
+        ocFecha: oc.fecha,
+        ocPrefijo: oc.prefijo,
+        ocNumero: oc.numero
+      });
+      agregados++;
+    });
+    if (errCant) { mostrar($("modalOcMsg"), "Hay ítems marcados con cantidad inválida (debe ser mayor a cero).", "err"); return; }
+    if (agregados === 0) { mostrar($("modalOcMsg"), "No marcaste ningún ítem.", "err"); return; }
+
+    limpiarRenglonesVacios();
+    // Resolvemos los renglones de OC contra la base (unidad, 2ª unidad, cobertura).
+    $("remRenglones").querySelectorAll("tr.oc-row").forEach(tr => resolverProductoRenglon(tr));
+    cerrarModalOc();
+    mostrar($("remMsgForm"), agregados + " renglón(es) agregado(s) desde OC pendientes.", "ok");
+  }
+
+  // Quita renglones libres vacíos (sin código y sin OC) cuando hay otras filas,
+  // para no dejar la fila en blanco inicial mezclada con los renglones de OC.
+  function limpiarRenglonesVacios() {
+    $("remRenglones").querySelectorAll("tr").forEach(tr => {
+      const cod = tr.querySelector(".r-cod");
+      if (cod && !cod.value.trim() && !tr.dataset.ocNrotrans
+          && $("remRenglones").querySelectorAll("tr").length > 1)
+        tr.remove();
+    });
   }
 
   // ro = solo lectura total (modo "ver"). Por separado, en modo "editar" se
@@ -1575,8 +2234,10 @@
     $("remRenglones").querySelectorAll(".r-quitar").forEach(b => b.classList.toggle("hidden", ro));
     $("remPercIIBB").querySelectorAll(".p-quitar").forEach(b => b.classList.toggle("hidden", ro));
     $("btnAgregarRenglon").classList.toggle("hidden", ro);
+    $("btnRecibirOc").classList.toggle("hidden", ro);
     $("btnAgregarPerc").classList.toggle("hidden", ro);
     $("btnGuardarRem").classList.toggle("hidden", ro);
+    actualizarBtnRecibirOc();
   }
 
   // Bloquea la fecha de ingreso y el proveedor (identidad del comprobante),
@@ -2104,6 +2765,7 @@
     $("cfgFacConcepto").value = "com";
     $("cfgFacDeposito").value = 1;
     $("cfgFacImputacion").value = 21001001;
+    $("cfgOcPrefijo").value = "1";
     $("cfgSqlServidor").value = "";
     $("cfgSqlBase").value = "";
     $("cfgSqlUsuario").value = "";
@@ -2138,6 +2800,7 @@
     $("cfgFacConcepto").value = b.facturaConcepto || "";
     $("cfgFacDeposito").value = b.facturaDeposito;
     $("cfgFacImputacion").value = b.facturaImputacionContable;
+    $("cfgOcPrefijo").value = b.ordenCompraPrefijo || "";
     $("cfgSqlServidor").value = b.sqlServidor || "";
     $("cfgSqlBase").value = b.sqlBase || "";
     $("cfgSqlUsuario").value = b.sqlUsuario || "";
@@ -2246,6 +2909,7 @@
       facturaConcepto: $("cfgFacConcepto").value || "",
       facturaDeposito: parseInt($("cfgFacDeposito").value, 10) || 0,
       facturaImputacionContable: parseInt($("cfgFacImputacion").value, 10) || 0,
+      ordenCompraPrefijo: $("cfgOcPrefijo").value || "",
       sqlServidor: $("cfgSqlServidor").value.trim(),
       sqlBase: $("cfgSqlBase").value.trim(),
       sqlUsuario: $("cfgSqlUsuario").value.trim(),
@@ -2708,14 +3372,33 @@
   $("btnNuevoRemito").addEventListener("click", abrirNuevoRemito);
   $("btnVolverRem").addEventListener("click", volverListaRem);
   $("btnCancelarRem").addEventListener("click", volverListaRem);
+  // Órdenes de compra
+  $("btnNuevaOc").addEventListener("click", ocNueva);
+  $("btnCancelarOc").addEventListener("click", ocVolverLista);
+  $("btnOcBuscarProv").addEventListener("click", ocBuscarProveedor);
+  $("btnOcBuscarProd").addEventListener("click", ocBuscarProducto);
+  $("btnOcAddRenglon").addEventListener("click", ocAgregarRenglon);
+  $("btnGuardarOc").addEventListener("click", () => ocGuardar(false));
+  $("btnGrabarOc").addEventListener("click", ocGrabar);
+  // Al cambiar la base, se invalida el proveedor elegido (padrón distinto por base).
+  $("ocBase").addEventListener("change", () => { ocProvLimpio(); $("ocProvRes").classList.add("hidden"); $("ocProdRes").classList.add("hidden"); });
+  // Enter en el buscador de proveedor/producto dispara la búsqueda.
+  $("ocProvCod").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); ocBuscarProveedor(); } });
+  $("ocProdCod").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); ocBuscarProducto(); } });
   $("btnAgregarRenglon").addEventListener("click", () => agregarRenglon());
   $("btnGuardarRem").addEventListener("click", guardarRemito);
+  // Recibir contra OC pendiente.
+  $("btnRecibirOc").addEventListener("click", abrirModalOc);
+  $("modalOcCerrar").addEventListener("click", cerrarModalOc);
+  $("modalOcCancelar").addEventListener("click", cerrarModalOc);
+  $("modalOcAgregar").addEventListener("click", confirmarRecibirOc);
   $("remTipo").addEventListener("change", aplicarModoTipo);
   $("remLetra").addEventListener("change", aplicarLetra);
   // Si cambia la base destino, re-resolvemos los renglones para que el artículo
   // (código, descripción y tasa de IVA) corresponda a esa base.
   $("remDestino").addEventListener("change", () => {
     $("remRenglones").querySelectorAll("tr").forEach(tr => resolverProductoRenglon(tr));
+    actualizarBtnRecibirOc();
   });
   $("btnAgregarPerc").addEventListener("click", () => agregarPercepcion());
   // Recalcular los totales de la factura ante cualquier cambio en el formulario.
@@ -2723,6 +3406,7 @@
   $("btnRefrescarPadron").addEventListener("click", refrescarPadron);
   $("remProvCod").addEventListener("blur", resolverProveedor);
   $("remProvCod").addEventListener("input", actualizarPartidasRenglones);
+  $("remProvCod").addEventListener("input", actualizarBtnRecibirOc);
   $("remFecha").addEventListener("change", actualizarPartidasRenglones);
   $("remProvCod").addEventListener("keydown", e => {
     if (e.key === "F3") { e.preventDefault(); abrirModalProveedor($("remProvCod")); }
