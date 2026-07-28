@@ -178,13 +178,24 @@ public class BancoBieEcheqService
         return (null, null);
     }
 
-    // El banco rechaza el "&" en el nombre del beneficiario (APIE-1013, verificado en
-    // homologación: la coma y el largo de 42 los acepta; sólo molesta el "&"). Lo pasamos a
-    // "Y" (como se lee en español) y normalizamos espacios. Si a futuro aparece otro carácter
-    // rechazado, se suma acá.
+    // Nombre del beneficiario: el banco es MUY restrictivo (APIE-1013, verificado en
+    // homologación). Sólo acepta letras/números/espacio y punto y coma; rechaza "&", la Ñ,
+    // los acentos (Á/É/Í/Ó/Ú) y la ü — y por las dudas cualquier otro símbolo (#, °, /, (, )…).
+    // Estrategia LISTA BLANCA para no depender de probar cada carácter:
+    //   1) "&" -> " Y " (se lee "y" en español, en vez de perderlo).
+    //   2) Quitar acentos/diacríticos (Ñ->N, á->a, ü->u) descomponiendo en FormD.
+    //   3) Dejar SÓLO [A-Za-z0-9 .,]; cualquier otro carácter -> espacio.
+    //   4) Colapsar espacios y recortar.
     private static string LimpiarNombre(string s)
     {
         var t = (s ?? "").Replace("&", " Y ");
+        var d = t.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(d.Length);
+        foreach (var ch in d)
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
+                sb.Append(ch);
+        t = sb.ToString().Normalize(NormalizationForm.FormC);
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"[^A-Za-z0-9 .,]", " ");
         return System.Text.RegularExpressions.Regex.Replace(t, @"\s+", " ").Trim();
     }
 

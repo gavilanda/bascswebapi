@@ -653,11 +653,13 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
   acepta PKCS#1 y PKCS#8). **Verificado en homologación** con un probe Python (`C:\Agente\echeques\probe_bie.py`).
 - **`BancoBieEcheqService`**: `AsegurarBeneficiariosAsync` (alta idempotente en la agenda,
   ignora `APIE-8010` = ya existe) + `EmitirAsync` (uno por echeq) + `ConsultarEmisionAsync`.
-  > **Nombre del beneficiario (APIE-1013):** el banco **rechaza el `&`** en `beneficiarioNombre`
-  > (verificado en homologación con probe_nombre.py: la coma y un largo de 42 los acepta, sólo
-  > molesta el `&`). `LimpiarNombre` lo reemplaza por "Y" y normaliza espacios antes de emitir.
-  > Sólo aplica a la emisión por API (el `.xls` va tal cual). Si aparece otro carácter rechazado,
-  > se suma ahí.
+  > **Nombre del beneficiario (APIE-1013):** el banco es muy restrictivo (verificado en
+  > homologación con probe_nombre*.py): rechaza `&`, la **Ñ**, los **acentos** (Á/É/Í/Ó/Ú) y la
+  > **ü**; sólo acepta letras/números/espacio y `.`/`,` (largo 42 OK). `LimpiarNombre` usa **lista
+  > blanca**: `&`→"Y", quita diacríticos (Ñ→N, á→a, ü→u vía Normalize FormD) y reemplaza cualquier
+  > carácter fuera de `[A-Za-z0-9 .,]` por espacio (cubre `#`, `°`, `/`, `(`, `)`, etc. sin tener
+  > que probarlos uno por uno). Sólo aplica a la emisión por API (el `.xls` va tal cual). Nota:
+  > `motivoPago` también rechaza no-ASCII, pero ahí va el texto fijo `"prov"`, no hace falta sanearlo.
   > **Verificado en homologación (probe_alta.py):** el alta valida el CUIT contra la **Coelsa
   > REAL** (no una de prueba) → los proveedores reales de BARK se dan de alta OK en homologación;
   > los que dan **`APIE-8011` "no bancarizado"** es porque ese CUIT realmente no está apto para
