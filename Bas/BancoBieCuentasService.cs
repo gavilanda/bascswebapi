@@ -106,11 +106,11 @@ public class BancoBieCuentasService
 
     private static string Trunc(string s, int n) => (s ?? "").Length <= n ? (s ?? "") : s.Substring(0, n);
 
-    // yyyymmdd -> dd/mm/aaaa
+    // yyyymmdd -> dd/mm/aa (8 posiciones; año de 2 dígitos)
     private static string FechaTxt(string yyyymmdd)
     {
         var s = (yyyymmdd ?? "").Trim();
-        return s.Length == 8 ? $"{s.Substring(6, 2)}/{s.Substring(4, 2)}/{s.Substring(0, 4)}" : "";
+        return s.Length == 8 ? $"{s.Substring(6, 2)}/{s.Substring(4, 2)}/{s.Substring(2, 2)}" : "";
     }
 
     // Nº de operación (nroComprobante): 8 caracteres, derecha con ceros a la izquierda.

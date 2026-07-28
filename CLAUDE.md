@@ -760,7 +760,7 @@ configurada. Función `conciliacion`, audiencia **interno**, se registra en "Pro
   `ArmarTxt`. Campos del movimiento: `fecha` (yyyymmdd), `descripcion`, `indDBCR` (DB/CR), `monto`,
   `nroComprobante`, `codOperativo`, `saldo`, `idTransaccion`.
 - **TXT posicional (128 chars/línea), Latin1 (1 byte/char para no descolocar columnas), CRLF**:
-  - **col 1** fecha `dd/mm/aaaa` (10; llena hasta col 10, la descripción arranca en 11).
+  - **col 1** fecha `dd/mm/aa` (8, año 2 dígitos). Cols 9-10 en blanco (la descripción va en col 11).
   - **col 11** descripción (90, izq, se trunca).
   - **col 103** nº operación = `nroComprobante` (8, derecha con ceros a la izquierda; vacío = en blanco).
   - **col 114** importe (15, **coma decimal**, 2 decimales, ceros a la izquierda, **signo `-` en
