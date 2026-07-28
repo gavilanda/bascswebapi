@@ -746,3 +746,30 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
   homologación: adherente `1399230`, client_id `20100794889`, CBU débito `1910044555004401995596`.
 - **Red**: el server del portal debe alcanzar `homoapibccl.bancocredicoop.coop` (y el host de
   producción) por HTTPS 443.
+
+## 17. Bco/Conciliación (función interna)
+
+Trae los **movimientos bancarios** de una cuenta (API Credicoop, scope `cuentas`) y genera el
+**TXT posicional** que importa BAS para conciliar. Usa la **misma config del banco por empresa**
+que E-Cheques (`BieCredenciales`); las empresas que pueden conciliar son las que tienen la API
+configurada. Función `conciliacion`, audiencia **interno**, se registra en "Programas para el Portal".
+
+- **`BancoBieCuentasService`**: `ListarCuentasAsync` (`GET /api/cuentas/v1/listaCuentas`) +
+  `MovimientosAsync` (`GET /api/cuentas/v1/{nroCuenta}/movimientos?fechaDesde=&fechaHasta=&topeMovimientos=1000`,
+  **chunkea ≤31 días** porque el banco limita el rango; descarta el `ENCABEZADO` = `indDBCR` vacío) +
+  `ArmarTxt`. Campos del movimiento: `fecha` (yyyymmdd), `descripcion`, `indDBCR` (DB/CR), `monto`,
+  `nroComprobante`, `codOperativo`, `saldo`, `idTransaccion`.
+- **TXT posicional (128 chars/línea), Latin1 (1 byte/char para no descolocar columnas), CRLF**:
+  - **col 1** fecha `dd/mm/aaaa` (10; llena hasta col 10, la descripción arranca en 11).
+  - **col 11** descripción (90, izq, se trunca).
+  - **col 103** nº operación = `nroComprobante` (8, derecha con ceros a la izquierda; vacío = en blanco).
+  - **col 114** importe (15, **coma decimal**, 2 decimales, ceros a la izquierda, **signo `-` en
+    débitos**; créditos sin signo). Se arma poniendo cada campo en su **columna de inicio** exacta.
+  - ⚠️ Supuestos a validar con BAS contra un archivo real: padding del nº operación y encoding Latin1.
+- **`ConciliacionController`** (interno + función `conciliacion`): `GET /bases` (empresas con API),
+  `GET /cuentas?base=`, `GET /movimientos?base=&cuenta=&desde=&hasta=` (para el modal),
+  `GET /txt?base=&cuenta=&desde=&hasta=` (baja el TXT; JSON `{cantidad:0}` si no hay movimientos).
+- **Front** (`secConciliacion`): encabezado estilo E-Cheques (empresa + cuenta + fechas + **Preparar**);
+  el modal (reusa los estilos `ech-*`) lista los movimientos (scroll pasadas ~20 filas, columnas de
+  ancho fijo, débitos en rojo) y tiene el botón **"Generar TXT"**. Recuerda empresa/cuenta por
+  navegador (`conc_base`, `conc_cuenta_<base>`).

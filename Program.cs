@@ -119,6 +119,7 @@ builder.Services.AddHttpClient("bancobie", c => c.Timeout = TimeSpan.FromSeconds
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(10) });
 builder.Services.AddSingleton<BancoBieAuthService>();        // singleton: cachea token por client_id
 builder.Services.AddScoped<BancoBieEcheqService>();
+builder.Services.AddScoped<BancoBieCuentasService>();        // cuentas + movimientos (conciliación)
 
 // ---- Destinos BAS (BARK, PRUEBAB) para ingresos ----
 // Timeout amplio para la carga del padrón (la carga es secuencial y en segundo
@@ -340,6 +341,7 @@ using (var scope = app.Services.CreateScope())
     SembrarFuncionSiFalta("cuenta", "Cuenta corriente", 10, "ambos");
     SembrarFuncionSiFalta("ventas", "Estadísticas de venta", 30, "interno");
     SembrarFuncionSiFalta("echeques", "E-Cheques", 40, "interno");
+    SembrarFuncionSiFalta("conciliacion", "Bco/Conciliación", 50, "interno");
     // "Mis datos" dejó de ser un programa del menú: los datos del cliente ahora se
     // muestran integrados en la card de consulta del portal (junto al buscador),
     // para internos y externos. Quitamos su fila si venía sembrada de antes.

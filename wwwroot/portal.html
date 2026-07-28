@@ -421,6 +421,39 @@
           </div>
         </div>
 
+        <div id="secConciliacion" class="card seccion hidden">
+          <div class="vtafiltros">
+            <label>Empresa
+              <select id="concBase" style="width:130px"></select>
+            </label>
+            <label>Cuenta
+              <select id="concCuenta" style="width:300px"></select>
+            </label>
+            <label>Desde <input id="concDesde" type="date"></label>
+            <label>Hasta <input id="concHasta" type="date"></label>
+            <button id="btnConcPreparar">Preparar</button>
+          </div>
+          <div id="concMsg" class="msg"></div>
+          <div id="concCargando" class="cargando hidden"><span>Consultando movimientos…</span></div>
+        </div>
+
+        <!-- Modal de conciliación: movimientos del banco + generar TXT para BAS -->
+        <div id="concOv" class="ech-ov hidden">
+          <div class="ech-modal">
+            <div class="ech-mhead">
+              <h3 id="concModalTit">Movimientos</h3>
+              <button id="concModalX" class="sec" title="Cerrar">✕</button>
+            </div>
+            <div id="concModalInfo" class="ech-minfo"></div>
+            <div id="concModalBody" class="ech-mbody"></div>
+            <div id="concModalMsg" class="msg"></div>
+            <div class="ech-mfoot">
+              <button id="concBtnTxt">Generar TXT</button>
+              <button id="concBtnCerrar" class="sec">Cerrar</button>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </section>
@@ -569,6 +602,7 @@
     cuenta: { sec: "secCuenta", init: cargarCuenta, requiereCliente: true },
     ventas: { sec: "secVentas", init: iniciarVentas, requiereCliente: false },
     echeques: { sec: "secEcheques", init: iniciarEcheques, requiereCliente: false },
+    conciliacion: { sec: "secConciliacion", init: iniciarConciliacion, requiereCliente: false },
   };
 
   // Funciones del menú del usuario, como las devolvió el backend: [{clave, etiqueta}].
@@ -1682,6 +1716,163 @@
   $("echBtnApi").addEventListener("click", emitirSeleccion);
   $("echBtnCerrar").addEventListener("click", cerrarModalEmision);
   $("echModalX").addEventListener("click", cerrarModalEmision);
+
+  // ================= Bco/Conciliación =================
+  let concCuentas = [];   // cuentas de la empresa elegida
+  let concQS = "";        // filtros de la última preparación (para el TXT)
+
+  async function iniciarConciliacion() {
+    const hoy = new Date(); const p = n => String(n).padStart(2, "0");
+    const hoyStr = hoy.getFullYear() + "-" + p(hoy.getMonth() + 1) + "-" + p(hoy.getDate());
+    if (!$("concDesde").value) $("concDesde").value = hoyStr;
+    if (!$("concHasta").value) $("concHasta").value = hoyStr;
+    limpiar($("concMsg"));
+    let bases = [];
+    try {
+      const r = await fetch("/api/conciliacion/bases", { headers: { "Authorization": "Bearer " + token } });
+      if (r.ok) { const d = await r.json(); bases = Array.isArray(d.bases) ? d.bases : []; }
+    } catch (e) {}
+    const sel = $("concBase");
+    const previa = sel.value || localStorage.getItem("conc_base") || "";
+    if (bases.length) {
+      sel.innerHTML = bases.map(b => '<option value="' + esc(b) + '">' + esc(b) + '</option>').join("");
+      if (previa && bases.includes(previa)) sel.value = previa;
+      $("btnConcPreparar").disabled = false;
+      await cargarCuentasConc();
+    } else {
+      sel.innerHTML = '<option value="">(sin empresas con API)</option>';
+      $("concCuenta").innerHTML = "";
+      $("btnConcPreparar").disabled = true;
+      mostrar($("concMsg"), "Ninguna empresa tiene la API del banco configurada (Editor de bases → Emisión por API).", "info");
+    }
+  }
+
+  async function cargarCuentasConc() {
+    const base = $("concBase").value;
+    const selc = $("concCuenta");
+    selc.innerHTML = '<option value="">(cargando…)</option>';
+    concCuentas = [];
+    try {
+      const r = await fetch("/api/conciliacion/cuentas?base=" + encodeURIComponent(base), { headers: { "Authorization": "Bearer " + token } });
+      if (r.status === 401) { salir(); return; }
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) concCuentas = Array.isArray(d.cuentas) ? d.cuentas : [];
+      else mostrar($("concMsg"), d.mensaje || "No se pudieron traer las cuentas.", "err");
+    } catch (e) { mostrar($("concMsg"), "No se pudo conectar.", "err"); }
+    if (concCuentas.length) {
+      const previa = localStorage.getItem("conc_cuenta_" + base) || "";
+      selc.innerHTML = concCuentas.map(c =>
+        '<option value="' + esc(c.nroCuenta) + '">' + esc(c.nroCuenta) + ' · ' + esc(c.tipoCuenta) + ' ' + esc(c.moneda) + '</option>').join("");
+      if (previa && concCuentas.some(c => c.nroCuenta === previa)) selc.value = previa;
+    } else {
+      selc.innerHTML = '<option value="">(sin cuentas)</option>';
+    }
+  }
+
+  function paramsConc() {
+    const base = $("concBase").value, cuenta = $("concCuenta").value;
+    const desde = $("concDesde").value, hasta = $("concHasta").value;
+    if (!base) return { err: "Elegí una empresa." };
+    if (!cuenta) return { err: "Elegí una cuenta." };
+    if (!desde || !hasta) return { err: "Completá las fechas." };
+    if (desde > hasta) return { err: 'La fecha "Desde" no puede ser mayor que "Hasta".' };
+    localStorage.setItem("conc_base", base);
+    localStorage.setItem("conc_cuenta_" + base, cuenta);
+    return {
+      qs: "base=" + encodeURIComponent(base) + "&cuenta=" + encodeURIComponent(cuenta)
+        + "&desde=" + encodeURIComponent(desde) + "&hasta=" + encodeURIComponent(hasta)
+    };
+  }
+
+  async function prepararConciliacion() {
+    const pr = paramsConc();
+    if (pr.err) { mostrar($("concMsg"), pr.err, "err"); return; }
+    limpiar($("concMsg"));
+    $("concCargando").classList.remove("hidden");
+    $("btnConcPreparar").disabled = true;
+    let r;
+    try {
+      r = await fetch("/api/conciliacion/movimientos?" + pr.qs, { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) {
+      $("concCargando").classList.add("hidden"); $("btnConcPreparar").disabled = false;
+      mostrar($("concMsg"), "No se pudo conectar.", "err"); return;
+    }
+    $("concCargando").classList.add("hidden"); $("btnConcPreparar").disabled = false;
+    if (r.status === 401) { salir(); return; }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { mostrar($("concMsg"), d.mensaje || "No se pudieron traer los movimientos.", "err"); return; }
+    concQS = pr.qs;
+    abrirModalConc(d);
+  }
+
+  function fechaISO(yyyymmdd) {
+    const s = (yyyymmdd || "").trim();
+    return s.length === 8 ? s.substring(0, 4) + "-" + s.substring(4, 6) + "-" + s.substring(6, 8) : s;
+  }
+
+  function abrirModalConc(d) {
+    const movs = d.movimientos || [];
+    $("concModalTit").textContent = "Movimientos — " + $("concCuenta").value;
+    $("concModalInfo").textContent = movs.length + " movimiento" + (movs.length === 1 ? "" : "s") + " en el período.";
+    limpiar($("concModalMsg"));
+    if (!movs.length) {
+      $("concModalBody").innerHTML = '<div class="vacio" style="padding:16px">No hay movimientos para ese período.</div>';
+      $("concBtnTxt").disabled = true;
+    } else {
+      const cel = 'style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"';
+      let h = '<table style="table-layout:fixed;width:100%">'
+        + '<colgroup><col style="width:11%"><col style="width:46%"><col style="width:8%"><col style="width:16%"><col style="width:19%"></colgroup>'
+        + '<thead><tr><th>Fecha</th><th>Descripción</th><th>D/C</th>'
+        + '<th style="text-align:right">Importe</th><th style="text-align:right">Saldo</th></tr></thead><tbody>';
+      movs.forEach(m => {
+        h += "<tr><td " + cel + ">" + esc(fecha(fechaISO(m.fecha))) + "</td>"
+          + '<td ' + cel + ' title="' + esc(m.descripcion) + '">' + esc(m.descripcion) + "</td>"
+          + "<td>" + esc(m.indDBCR) + "</td>"
+          + '<td style="text-align:right' + (m.indDBCR === "DB" ? ";color:#dc2626" : "") + '">' + plata(m.monto) + "</td>"
+          + '<td style="text-align:right">' + plata(m.saldo) + "</td></tr>";
+      });
+      h += "</tbody></table>";
+      $("concModalBody").innerHTML = h;
+      $("concBtnTxt").disabled = false;
+    }
+    $("concOv").classList.remove("hidden");
+  }
+
+  // Genera y descarga el TXT posicional (fetch con auth -> blob -> anchor).
+  async function generarTxtConc() {
+    if (!concQS) return;
+    limpiar($("concModalMsg"));
+    const btn = $("concBtnTxt"); btn.disabled = true;
+    let r;
+    try { r = await fetch("/api/conciliacion/txt?" + concQS, { headers: { "Authorization": "Bearer " + token } }); }
+    catch (e) { mostrar($("concModalMsg"), "No se pudo conectar.", "err"); btn.disabled = false; return; }
+    if (r.status === 401) { salir(); return; }
+    const tipo = r.headers.get("content-type") || "";
+    if (!r.ok) {
+      const e = tipo.includes("json") ? await r.json().catch(() => ({})) : {};
+      mostrar($("concModalMsg"), e.mensaje || "No se pudo generar el TXT.", "err"); btn.disabled = false; return;
+    }
+    if (tipo.includes("json")) { await r.json().catch(() => ({})); mostrar($("concModalMsg"), "No hay movimientos para exportar.", "info"); btn.disabled = false; return; }
+    const blob = await r.blob();
+    const cant = r.headers.get("X-Conciliacion-Cantidad") || "";
+    const dispo = r.headers.get("content-disposition") || "";
+    let nombre = "conciliacion.txt";
+    const mm = dispo.match(/filename="?([^"]+)"?/i); if (mm) nombre = mm[1];
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = u; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(u);
+    btn.disabled = false;
+    mostrar($("concModalMsg"), "TXT generado" + (cant ? " (" + cant + " movimiento" + (cant === "1" ? "" : "s") + ")" : "") + ". Se descargó " + nombre + ".", "ok");
+  }
+
+  function cerrarModalConc() { $("concOv").classList.add("hidden"); $("concModalBody").innerHTML = ""; }
+
+  $("btnConcPreparar").addEventListener("click", prepararConciliacion);
+  $("concBase").addEventListener("change", () => { cargarCuentasConc(); });
+  $("concBtnTxt").addEventListener("click", generarTxtConc);
+  $("concBtnCerrar").addEventListener("click", cerrarModalConc);
+  $("concModalX").addEventListener("click", cerrarModalConc);
   $("btnVtaVista").addEventListener("click", () => {
     vtaVista = vtaVista === "grafico" ? "listado" : "grafico";
     aplicarVistaVentas();
