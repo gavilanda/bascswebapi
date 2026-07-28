@@ -67,6 +67,14 @@ public class ConfiguracionBase
     // pagos@bark-sa.com.ar). Por base porque difiere entre empresas.
     public string SqlEmailPropio { get; set; } = "";
 
+    // Últimos filtros de e-cheques usados, POR BASE (antes vivían sólo en el navegador).
+    // Se guardan al "Preparar" desde el portal y precargan el formulario al elegir la
+    // empresa, así viajan entre PCs/navegadores. Las fechas NO se guardan (cambian siempre).
+    public string EchBanco { get; set; } = "";
+    public string EchChequera { get; set; } = "";
+    public string EchPrefijo { get; set; } = "";
+    public bool EchUsaPrefijo { get; set; } = false;
+
     // ---- Emisión de echeqs por API del Banco Credicoop (BIE) — POR EMPRESA ----
     // Cada empresa (BARK, XARDO) tiene su propio adherente, credenciales y clave privada.
     // Lo compartido (host, realm) vive en appsettings sección BancoBie; acá va lo propio

@@ -66,7 +66,12 @@ public class EchequesController : ControllerBase
             .Where(c => bases.Contains(c.Nombre)).ToListAsync(ct);
         var basesApi = cfgs.Where(c => _bieOpt.Credenciales(c) is not null)
             .Select(c => c.Nombre).ToList();
-        return Ok(new { bases, basesApi });
+        // Filtros guardados por base (banco/chequera/prefijo) para precargar el formulario.
+        var defaults = cfgs.ToDictionary(c => c.Nombre, c => (object)new
+        {
+            banco = c.EchBanco, chequera = c.EchChequera, prefijo = c.EchPrefijo, usaPrefijo = c.EchUsaPrefijo
+        });
+        return Ok(new { bases, basesApi, defaults });
     }
 
     private sealed record Params(string Base, DateOnly D, DateOnly H, string Banco, string Chequera, string ChqD, string ChqH);
@@ -166,6 +171,21 @@ public class EchequesController : ControllerBase
                 .Where(e => e.BaseNombre == baseNombre)
                 .Select(e => e.NumeroCheque).ToListAsync(ct)).ToHashSet();
 
+    // Guarda los últimos filtros de e-cheques de la base (banco/chequera/prefijo) si cambiaron.
+    // Es lo que precarga el formulario al elegir la empresa. Sólo escribe si hubo cambios.
+    private async Task RecordarFiltrosAsync(
+        string baseNombre, string banco, string chequera, string? prefijo, bool usaPrefijo, CancellationToken ct)
+    {
+        var cb = await _db.ConfiguracionesBase.FirstOrDefaultAsync(c => c.Nombre == baseNombre, ct);
+        if (cb is null) return;
+        var pref = (prefijo ?? "").Trim();
+        if (cb.EchBanco == banco && cb.EchChequera == chequera
+            && cb.EchPrefijo == pref && cb.EchUsaPrefijo == usaPrefijo) return;
+        cb.EchBanco = banco; cb.EchChequera = chequera;
+        cb.EchPrefijo = pref; cb.EchUsaPrefijo = usaPrefijo;
+        await _db.SaveChangesAsync(ct);
+    }
+
     // GET /api/echeques/preparar?... -> cheques del rango que TODAVÍA NO se emitieron por API,
     // con el código de proveedor de BAS y si son emitibles por API. Sirve para el modal donde
     // el usuario elige cuáles y por qué canal (API o .xls). No requiere config de API (el .xls
@@ -174,7 +194,8 @@ public class EchequesController : ControllerBase
     public async Task<ActionResult> Preparar(
         [FromQuery(Name = "base")] string? baseNombre, [FromQuery] string? desde, [FromQuery] string? hasta,
         [FromQuery] string? banco, [FromQuery] string? chequera,
-        [FromQuery] string? chqDesde, [FromQuery] string? chqHasta, CancellationToken ct = default)
+        [FromQuery] string? chqDesde, [FromQuery] string? chqHasta,
+        [FromQuery] string? prefijo, [FromQuery] bool usaPrefijo = false, CancellationToken ct = default)
     {
         var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
         var err = Parsear(baseNombre, desde, hasta, banco, chequera, chqDesde, chqHasta, out var p);
@@ -182,6 +203,10 @@ public class EchequesController : ControllerBase
 
         try
         {
+            // Recordar los filtros usados para esta base (banco/chequera/prefijo): se guardan
+            // solos y precargan el formulario la próxima vez (viajan entre PCs, no localStorage).
+            await RecordarFiltrosAsync(p!.Base, p.Banco, p.Chequera, prefijo, usaPrefijo, ct);
+
             var apiHab = await CredsAsync(p!.Base, ct) is not null;
             var filas = await _echeques.ConsultarAsync(p!.Base, p.D, p.H, p.Banco, p.Chequera, p.ChqD, p.ChqH, ct);
             var yaSet = await YaEmitidosAsync(p.Base, ct);
@@ -230,7 +255,8 @@ public class EchequesController : ControllerBase
         catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar el .xls: " + ex.Message }); }
     }
 
-    private sealed record ResultadoFront(long numeroCheque, bool ok, string? estado, long? idOperacion, string? error);
+    private sealed record ResultadoFront(long numeroCheque, string codProveedor, string beneficiario,
+        decimal importe, bool ok, string? estado, long? idOperacion, string? error);
 
     // POST /api/echeques/emitir?... -> emite los cheques NUEVOS y emitibles del rango. Idempotente:
     // omite los ya emitidos. Devuelve el resultado por cheque.
@@ -275,7 +301,8 @@ public class EchequesController : ControllerBase
                 // Si el beneficiario no se pudo dar de alta, no intentamos emitir (fallaría con APIE-1020).
                 if (fallasBenef.TryGetValue(f.NroCuiCdi, out var motivo))
                 {
-                    resultados.Add(new ResultadoFront(f.NumEcheq, false, null, null, "Beneficiario: " + motivo));
+                    resultados.Add(new ResultadoFront(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.Importe,
+                        false, null, null, "Beneficiario: " + motivo));
                     continue;
                 }
 
@@ -307,11 +334,13 @@ public class EchequesController : ControllerBase
                         _db.ChangeTracker.Clear();
                     }
                     okCount++;
-                    resultados.Add(new ResultadoFront(f.NumEcheq, true, res.Estado, res.IdOperacion, null));
+                    resultados.Add(new ResultadoFront(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.Importe,
+                        true, res.Estado, res.IdOperacion, null));
                 }
                 else
                 {
-                    resultados.Add(new ResultadoFront(f.NumEcheq, false, null, null, res.ErrorTexto));
+                    resultados.Add(new ResultadoFront(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.Importe,
+                        false, null, null, res.ErrorTexto));
                 }
             }
 

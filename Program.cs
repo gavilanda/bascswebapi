@@ -283,6 +283,11 @@ using (var scope = app.Services.CreateScope())
     AgregarColumnaSiFalta("ConfiguracionesBase", "SqlUsuario", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "SqlClave", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "SqlEmailPropio", "TEXT NOT NULL DEFAULT ''");
+    // Últimos filtros de e-cheques por base (banco/chequera/prefijo), antes en localStorage.
+    AgregarColumnaSiFalta("ConfiguracionesBase", "EchBanco", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "EchChequera", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "EchPrefijo", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "EchUsaPrefijo", "INTEGER NOT NULL DEFAULT 0");
     // Emisión de echeqs por API del Banco Credicoop, POR EMPRESA (client_id + adherente +
     // CBU + entorno + ruta a la PEM). La clave privada NO va a la base: sólo su ruta.
     AgregarColumnaSiFalta("ConfiguracionesBase", "BieHabilitado", "INTEGER NOT NULL DEFAULT 0");

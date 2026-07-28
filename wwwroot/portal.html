@@ -393,7 +393,8 @@
           .ech-minfo { font-size:13px; color:var(--txt2); margin-bottom:8px; }
           .ech-mtools { display:flex; gap:8px; margin-bottom:8px; }
           .ech-mtools button { padding:6px 12px; }
-          .ech-mbody { overflow:auto; flex:1 1 auto; border:1px solid var(--borde); border-radius:8px; min-height:80px; }
+          /* Tope ~20 filas (encabezado sticky + ~20 x 32px): pasado eso, scrollea adentro. */
+          .ech-mbody { overflow:auto; flex:0 1 auto; border:1px solid var(--borde); border-radius:8px; min-height:80px; max-height:660px; }
           .ech-mbody table { width:100%; border-collapse:collapse; font-size:13px; }
           .ech-mbody th, .ech-mbody td { padding:7px 8px; border-bottom:1px solid var(--borde); text-align:left; white-space:nowrap; }
           .ech-mbody th { position:sticky; top:0; background:#f6f6f7; z-index:1; }
@@ -1420,28 +1421,29 @@
     if (!$("echDesde").value) $("echDesde").value = hoyStr;
     if (!$("echHasta").value) $("echHasta").value = hoyStr;
 
-    // Últimos valores usados por navegador (como el .ini por PC del tool original).
-    const g = k => localStorage.getItem("ech_" + k) || "";
-    if (!$("echBanco").value) $("echBanco").value = g("banco");
-    if (!$("echChequera").value) $("echChequera").value = g("chequera");
-    if (!$("echPrefijo").value) $("echPrefijo").value = g("prefijo");
-    $("echUsaPrefijo").checked = g("usa") === "1";
     limpiar($("echMsg"));
 
-    // Sólo se ofrecen las bases con la config de e-cheques COMPLETA (server + base + mail +
-    // credencial). Si no hay ninguna, se deshabilita y se avisa.
+    // Bases con la config de e-cheques COMPLETA. Los filtros (banco/chequera/prefijo) se
+    // guardan POR BASE en el portal y se precargan al elegir la empresa (ya no en el navegador).
     const sel = $("echBase");
-    const previa = sel.value || g("base");
+    const previa = sel.value || localStorage.getItem("ech_base") || "";
     let bases = [];
     echBasesApi = [];
+    echDefaults = {};
     try {
       const r = await fetch("/api/echeques/bases", { headers: { "Authorization": "Bearer " + token } });
-      if (r.ok) { const d = await r.json(); bases = Array.isArray(d.bases) ? d.bases : []; echBasesApi = Array.isArray(d.basesApi) ? d.basesApi : []; }
+      if (r.ok) {
+        const d = await r.json();
+        bases = Array.isArray(d.bases) ? d.bases : [];
+        echBasesApi = Array.isArray(d.basesApi) ? d.basesApi : [];
+        echDefaults = d.defaults || {};
+      }
     } catch (e) {}
     if (bases.length) {
       sel.innerHTML = bases.map(b => '<option value="' + esc(b) + '">' + esc(b) + '</option>').join("");
       if (previa && bases.includes(previa)) sel.value = previa;
       $("btnEchPreparar").disabled = false;
+      echAplicarDefaults();   // precarga banco/chequera/prefijo de la empresa elegida
     } else {
       sel.innerHTML = '<option value="">(sin bases configuradas)</option>';
       $("btnEchPreparar").disabled = true;
@@ -1449,11 +1451,20 @@
     }
   }
 
-  // Estado del módulo de emisión. echBasesApi = empresas que además pueden emitir por API
-  // (el botón "Emitir por API" del modal aparece según la empresa elegida).
-  let echBasesApi = [];
+  // Estado del módulo de emisión.
+  let echBasesApi = [];       // empresas que además pueden emitir por API
+  let echDefaults = {};       // filtros guardados por base: { nombre: {banco,chequera,prefijo,usaPrefijo} }
   let echModalQS = "";        // filtros de la preparación abierta (para .xls / emisión)
   let echModalApiHab = false; // la empresa de esta preparación puede emitir por API
+
+  // Precarga banco/chequera/prefijo/usar-prefijo con lo guardado para la empresa elegida.
+  function echAplicarDefaults() {
+    const d = echDefaults[$("echBase").value] || {};
+    $("echBanco").value = d.banco || "";
+    $("echChequera").value = d.chequera || "";
+    $("echPrefijo").value = d.prefijo || "";
+    $("echUsaPrefijo").checked = !!d.usaPrefijo;
+  }
 
   // Paso 1: valida filtros, pide los cheques a preparar (los que NO se emitieron por API) y
   // abre el modal para elegir cuáles y por qué canal.
@@ -1493,13 +1504,19 @@
     if (!cheques.length) {
       $("echModalBody").innerHTML = '<div class="vacio" style="padding:16px">No hay cheques nuevos para estos filtros.</div>';
     } else {
-      let h = '<table><thead><tr><th></th><th>Cheque</th><th>Cód. prov.</th><th>Beneficiario</th><th>CUIT</th>'
+      const cel = 'style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"';
+      let h = '<table style="table-layout:fixed;width:100%">'
+        + '<colgroup><col style="width:4%"><col style="width:8%"><col style="width:7%"><col style="width:37%">'
+        + '<col style="width:13%"><col style="width:12%"><col style="width:9%"><col style="width:10%"></colgroup>'
+        + '<thead><tr><th></th><th>Cheque</th><th>Cód. prov.</th><th>Beneficiario</th><th>CUIT</th>'
         + '<th style="text-align:right">Importe</th><th>Pago</th><th>API</th></tr></thead><tbody>';
       cheques.forEach(c => {
         const tag = c.emitibleApi ? echSpan("emitible", "ok") : echSpan(c.problemaApi || "no emitible", "err");
         h += '<tr><td><input type="checkbox" class="echchk" data-num="' + c.numeroCheque + '" data-emit="' + (c.emitibleApi ? 1 : 0) + '" checked style="width:auto"></td>'
-          + '<td>' + c.numeroCheque + '</td><td>' + esc(c.codProveedor) + '</td><td>' + esc(c.beneficiario) + '</td><td>' + esc(c.cuit) + '</td>'
-          + '<td style="text-align:right">' + plata(c.importe) + '</td><td>' + esc(c.fechaPago) + '</td><td>' + tag + '</td></tr>';
+          + "<td " + cel + ">" + c.numeroCheque + "</td><td " + cel + ">" + esc(c.codProveedor) + "</td>"
+          + '<td ' + cel + ' title="' + esc(c.beneficiario) + '">' + esc(c.beneficiario) + "</td><td " + cel + ">" + esc(c.cuit) + "</td>"
+          + '<td style="text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + plata(c.importe) + "</td>"
+          + "<td " + cel + ">" + esc(c.fechaPago) + "</td><td " + cel + ">" + tag + "</td></tr>";
       });
       h += '</tbody></table>';
       $("echModalBody").innerHTML = h;
@@ -1548,11 +1565,14 @@
     if (nDesde && parseInt(nDesde, 10) > parseInt(nHasta, 10)) return { err: 'El cheque "Desde" no puede ser mayor que "Hasta".' };
     const chqDesde = nDesde ? ((usa && prefijo) ? prefijo + nDesde : nDesde) : "";
     const chqHasta = nHasta ? ((usa && prefijo) ? prefijo + nHasta : nHasta) : "";
-    const s = (k, v) => localStorage.setItem("ech_" + k, v);
-    s("base", base); s("banco", banco); s("chequera", chequera); s("prefijo", prefijo); s("usa", usa ? "1" : "0");
+    // Sólo recordamos la última EMPRESA elegida en el navegador; banco/chequera/prefijo se
+    // guardan por base en el portal (el backend los persiste al preparar) y viajan entre PCs.
+    localStorage.setItem("ech_base", base);
+    // prefijo/usaPrefijo van en el qs además para que el backend los guarde con la base.
     const qs = "base=" + encodeURIComponent(base) + "&desde=" + encodeURIComponent(desde)
       + "&hasta=" + encodeURIComponent(hasta) + "&banco=" + encodeURIComponent(banco)
       + "&chequera=" + encodeURIComponent(chequera)
+      + "&prefijo=" + encodeURIComponent(prefijo) + "&usaPrefijo=" + (usa ? "true" : "false")
       + (chqDesde ? "&chqDesde=" + encodeURIComponent(chqDesde) + "&chqHasta=" + encodeURIComponent(chqHasta) : "");
     return { qs };
   }
@@ -1628,10 +1648,20 @@
     const res = d.resultados || [], ok = d.emitidos || 0;
     let h = '<div style="padding:4px"><div style="font-weight:600;margin:6px 4px">Emitidos OK: ' + ok + " de " + res.length + "</div>";
     if (res.length) {
-      h += '<table><thead><tr><th>Cheque</th><th>Resultado</th></tr></thead><tbody>';
-      res.forEach(x => h += "<tr><td>" + x.numeroCheque + "</td><td>"
-        + (x.ok ? echSpan((x.estado || "Emitido") + (x.idOperacion ? " · op " + x.idOperacion : ""), "ok")
-                : echSpan(x.error || "Error", "err")) + "</td></tr>");
+      const cel = 'style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"';
+      h += '<table style="table-layout:fixed;width:100%">'
+        + '<colgroup><col style="width:11%"><col style="width:12%"><col style="width:27%"><col style="width:15%"><col style="width:35%"></colgroup>'
+        + '<thead><tr><th>Cheque</th><th>Cód. prov.</th><th>Beneficiario</th>'
+        + '<th style="text-align:right">Importe</th><th>Resultado</th></tr></thead><tbody>';
+      res.forEach(x => {
+        const resu = x.ok ? echSpan((x.estado || "Emitido") + (x.idOperacion ? " · op " + x.idOperacion : ""), "ok")
+                          : echSpan(x.error || "Error", "err");
+        h += "<tr><td " + cel + ">" + x.numeroCheque + "</td>"
+          + "<td " + cel + ">" + esc(x.codProveedor) + "</td>"
+          + '<td ' + cel + ' title="' + esc(x.beneficiario) + '">' + esc(x.beneficiario) + "</td>"
+          + '<td style="text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + plata(x.importe) + "</td>"
+          + '<td style="white-space:normal;word-break:break-word">' + resu + "</td></tr>";
+      });
       h += "</tbody></table>";
     } else if (d.mensaje) { h += '<div class="vacio" style="padding:12px 4px">' + esc(d.mensaje) + "</div>"; }
     h += "</div>";
@@ -1645,6 +1675,7 @@
   }
 
   $("btnEchPreparar").addEventListener("click", prepararEmision);
+  $("echBase").addEventListener("change", echAplicarDefaults);   // precarga los filtros de la empresa
   $("echMarcarTodos").addEventListener("click", () => { echChecks().forEach(c => c.checked = true); actualizarContadores(); });
   $("echMarcarNinguno").addEventListener("click", () => { echChecks().forEach(c => c.checked = false); actualizarContadores(); });
   $("echBtnXls").addEventListener("click", exportarSeleccion);

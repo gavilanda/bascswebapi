@@ -653,6 +653,11 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
   acepta PKCS#1 y PKCS#8). **Verificado en homologación** con un probe Python (`C:\Agente\echeques\probe_bie.py`).
 - **`BancoBieEcheqService`**: `AsegurarBeneficiariosAsync` (alta idempotente en la agenda,
   ignora `APIE-8010` = ya existe) + `EmitirAsync` (uno por echeq) + `ConsultarEmisionAsync`.
+  > **Nombre del beneficiario (APIE-1013):** el banco **rechaza el `&`** en `beneficiarioNombre`
+  > (verificado en homologación con probe_nombre.py: la coma y un largo de 42 los acepta, sólo
+  > molesta el `&`). `LimpiarNombre` lo reemplaza por "Y" y normaliza espacios antes de emitir.
+  > Sólo aplica a la emisión por API (el `.xls` va tal cual). Si aparece otro carácter rechazado,
+  > se suma ahí.
   > **Verificado en homologación (probe_alta.py):** el alta valida el CUIT contra la **Coelsa
   > REAL** (no una de prueba) → los proveedores reales de BARK se dan de alta OK en homologación;
   > los que dan **`APIE-8011` "no bancarizado"** es porque ese CUIT realmente no está apto para
@@ -701,7 +706,14 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
   proveedor de BAS**, y una marca de si es emitible por API — con **Marcar todos / ninguno**. En el
   pie del modal se elige el canal sobre lo tildado: **"Generar .xls (N)"** (siempre) o **"Emitir por
   API (M)"** (sólo si la empresa tiene API; M = tildados emitibles). El resultado por cheque
-  (estado / `APIE-xxxx`) se muestra en el mismo modal. Es la confirmación previa al envío.
+  (nº, código de proveedor, beneficiario, importe y estado / motivo `descripción (APIE-xxxx)`) se
+  muestra en el mismo modal. Es la confirmación previa al envío. Tablas de **columnas de ancho fijo**
+  y con **scroll interno** pasadas ~20 filas.
+- **Filtros por empresa (no en el navegador)**: `banco`, `chequera`, `prefijo` y `usaPrefijo` se
+  guardan **por base** en `ConfiguracionBase` (`EchBanco`/`EchChequera`/`EchPrefijo`/`EchUsaPrefijo`),
+  **NO** en localStorage. `GET /bases` los devuelve en `defaults` para precargar el formulario al
+  elegir la empresa; `GET /preparar` los **persiste solos** cuando cambian (no se editan a mano).
+  En el navegador sólo queda la última empresa elegida (`ech_base`).
 - **Homologación → producción**: el banco homologa SÓLO los scopes desarrollados
   (`echeqConFirma` + `beneficiarioEcheq`; `cuentas`/`consultaCbuCvuAlias` de apoyo). Datos de
   homologación: adherente `1399230`, client_id `20100794889`, CBU débito `1910044555004401995596`.

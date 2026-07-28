@@ -30,9 +30,11 @@ public class BancoBieEcheqService
         long NumeroCheque, bool Ok, string? Estado, long? IdOperacion, string? IdCheque,
         string IdOrigen, string? ErrorCodigo, string? ErrorDescripcion)
     {
-        public string ErrorTexto => string.IsNullOrEmpty(ErrorCodigo)
-            ? (ErrorDescripcion ?? "Error")
-            : $"{ErrorCodigo}: {ErrorDescripcion}";
+        // Motivo del error: descripción LEGIBLE del banco + el código APIE-xxxx entre
+        // paréntesis (útil para consultar con el banco si hiciera falta).
+        public string ErrorTexto => !string.IsNullOrWhiteSpace(ErrorDescripcion)
+            ? (string.IsNullOrWhiteSpace(ErrorCodigo) ? ErrorDescripcion! : $"{ErrorDescripcion} ({ErrorCodigo})")
+            : (!string.IsNullOrWhiteSpace(ErrorCodigo) ? ErrorCodigo! : "No se pudo emitir.");
     }
 
     // Asegura que cada CUIT esté en la agenda de beneficiarios del adherente. Idempotente:
@@ -58,7 +60,9 @@ public class BancoBieEcheqService
 
             var (codigo, desc) = LeerError(doc);
             if (codigo == "APIE-8010") continue;   // ya está en la agenda => OK
-            fallas[cuit] = string.IsNullOrEmpty(codigo) ? (desc ?? $"HTTP {status}") : $"{codigo}: {desc}";
+            fallas[cuit] = !string.IsNullOrWhiteSpace(desc)
+                ? (string.IsNullOrWhiteSpace(codigo) ? desc! : $"{desc} ({codigo})")
+                : (!string.IsNullOrWhiteSpace(codigo) ? codigo! : $"HTTP {status}");
         }
         return fallas;
     }
@@ -77,7 +81,7 @@ public class BancoBieEcheqService
             ["motivoPago"] = string.IsNullOrWhiteSpace(r.MotivoPago) ? "PAGO" : r.MotivoPago,
             ["caracter"] = r.Caracter.ToString(CultureInfo.InvariantCulture),
             ["modo"] = r.Modo.ToString(CultureInfo.InvariantCulture),
-            ["beneficiarioNombre"] = r.Beneficiario,
+            ["beneficiarioNombre"] = LimpiarNombre(r.Beneficiario),
             ["beneficiarioDocumentoTipo"] = string.IsNullOrWhiteSpace(r.TipoCuiCdi) ? "CUIT" : r.TipoCuiCdi,
             ["beneficiarioDocumento"] = r.NroCuiCdi,
             ["concepto"] = cred.Concepto,                          // código válido (VAR, FAC…)
@@ -172,6 +176,16 @@ public class BancoBieEcheqService
             return (c, d);
         }
         return (null, null);
+    }
+
+    // El banco rechaza el "&" en el nombre del beneficiario (APIE-1013, verificado en
+    // homologación: la coma y el largo de 42 los acepta; sólo molesta el "&"). Lo pasamos a
+    // "Y" (como se lee en español) y normalizamos espacios. Si a futuro aparece otro carácter
+    // rechazado, se suma acá.
+    private static string LimpiarNombre(string s)
+    {
+        var t = (s ?? "").Replace("&", " Y ");
+        return System.Text.RegularExpressions.Regex.Replace(t, @"\s+", " ").Trim();
     }
 
     // dd/MM/yyyy (como viene de ChequeRow.FechaPago) -> yyyyMMdd (como pide el banco).
