@@ -55,7 +55,14 @@ public class BancoBieCuentasService
                 + $"&fechaHasta={fin.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}&topeMovimientos=1000";
             var (status, doc) = await GetAsync(cred, url, ct);
             if (status is < 200 or >= 300)
-                throw new InvalidOperationException($"El banco devolvió {status} al pedir movimientos de la cuenta {nroCuenta}.");
+            {
+                var detalle = "";
+                if (doc is not null && doc.RootElement.TryGetProperty("error", out var err))
+                    detalle = " " + (err.TryGetProperty("descripcion", out var de) ? de.GetString() : "")
+                        + (err.TryGetProperty("codigo", out var co) ? $" ({co.GetString()})" : "");
+                throw new InvalidOperationException(
+                    $"El banco devolvió {status} al pedir movimientos de la cuenta {nroCuenta} ({ini:yyyy-MM-dd} a {fin:yyyy-MM-dd}).{detalle}");
+            }
             if (doc is not null && doc.RootElement.TryGetProperty("consMovCtas", out var arr) && arr.ValueKind == JsonValueKind.Array)
             {
                 foreach (var m in arr.EnumerateArray())
