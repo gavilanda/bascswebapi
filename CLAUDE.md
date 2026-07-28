@@ -729,6 +729,18 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
   > tras el corte, o (b) con una API del banco que LISTE echeqs por cuenta/chequera para chequear
   > existencia antes de emitir. La "Consulta de Echeq Emitido" (`GET /emision?idOperacion=`) NO
   > sirve para eso: necesita el idOperacion, que sólo tenemos de lo emitido por API.
+- **Chequeo anti-duplicado contra el banco (capa extra)**: `BancoBieEcheqService.NumerosGeneradosAsync`
+  consulta **`POST /api/echeq/v1/lista-cheques`** (`gestion="GENERADOS"`, `estado="TODOS"`,
+  `cbuEmisor`=CBU débito) y trae los `numeroCheque` YA GENERADOS en el banco (subidos por Excel y
+  firmados, o por API). `/preparar` y `/emitir` los **suman a los ya-emitidos locales** y los
+  excluyen. Ventana = el **mismo rango de la emisión ± `MargenChequeoBancoDias`** (default 5; se
+  registra/emite/firma en el día). Chunkea en tramos ≤30 días (el banco limita el rango, `APIE-3006`)
+  y pagina. **Best-effort**: si la consulta falla, no frena (quedan tabla local + corte).
+  > ⚠️ **No ve los "Enviada a la firma"** (operaciones pendientes de firma todavía NO son echeqs
+  > generados → no aparecen en lista-cheques). Por eso el chequeo local sigue siendo necesario para
+  > el doble-envío API↔API. Valores de `gestion` válidos verificados: `GENERADOS` y `RECIBIDOS`
+  > (los demás dan `APIE-3024`). El scope `echeq` NO es pedible en el token (da 400); lista-cheques
+  > anda con los scopes ya concedidos (`echeqConFirma`…).
 - **Homologación → producción**: el banco homologa SÓLO los scopes desarrollados
   (`echeqConFirma` + `beneficiarioEcheq`; `cuentas`/`consultaCbuCvuAlias` de apoyo). Datos de
   homologación: adherente `1399230`, client_id `20100794889`, CBU débito `1910044555004401995596`.

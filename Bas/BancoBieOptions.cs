@@ -14,6 +14,12 @@ public class BancoBieOptions
     public string TipoCheque { get; set; } = "ECHD";   // ECHD diferido | ECHC común
     public string Concepto { get; set; } = "VAR";       // código de la tabla de conceptos del banco
 
+    // Margen (en días) que se agrega ANTES y DESPUÉS del rango de fechas de la emisión para el
+    // chequeo anti-duplicado contra el banco (lista-cheques GENERADOS). La ventana natural es el
+    // mismo rango que se usa para emitir (se registra y emite en el día); el margen cubre un
+    // Excel subido/firmado un día antes o después. 0 = exactamente el rango.
+    public int MargenChequeoBancoDias { get; set; } = 5;
+
     public EntornoUrls Homologacion { get; set; } = new();
     public EntornoUrls Produccion { get; set; } = new();
 

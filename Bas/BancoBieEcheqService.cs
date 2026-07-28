@@ -131,6 +131,70 @@ public class BancoBieEcheqService
         return await resp.Content.ReadAsStringAsync(ct);
     }
 
+    // Números de cheque YA GENERADOS en el banco por este adherente (gestion=GENERADOS), en una
+    // ventana de fecha de emisión. Sirve para no re-emitir algo que ya se subió (Excel o API) y
+    // se firmó. Best-effort: cualquier error devuelve lo que se haya juntado (no frena la emisión;
+    // quedan la tabla local + la fecha de corte como respaldo). Chunkea en tramos <=30 días (el
+    // banco limita el rango) y pagina.
+    public async Task<HashSet<long>> NumerosGeneradosAsync(
+        BieCredenciales cred, DateOnly desde, DateOnly hasta, CancellationToken ct = default)
+    {
+        var set = new HashSet<long>();
+        try
+        {
+            var ini = desde;
+            while (ini <= hasta)
+            {
+                var fin = ini.AddDays(29);
+                if (fin > hasta) fin = hasta;
+                await LeerGeneradosAsync(cred, ini, fin, set, ct);
+                ini = fin.AddDays(1);
+            }
+        }
+        catch { /* best-effort */ }
+        return set;
+    }
+
+    private async Task LeerGeneradosAsync(
+        BieCredenciales cred, DateOnly desde, DateOnly hasta, HashSet<long> set, CancellationToken ct)
+    {
+        const int limite = 100;
+        for (int pagina = 1; pagina <= 500; pagina++)   // tope duro por las dudas
+        {
+            var filtro = new Dictionary<string, object?>
+            {
+                ["gestion"] = "GENERADOS",
+                ["estado"] = "TODOS",
+                ["cbuEmisor"] = cred.CbuDebito,
+                ["fechaEmisionDesde"] = desde.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
+                ["fechaEmisionHasta"] = hasta.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
+                ["pagina"] = pagina,
+                ["limite"] = limite,
+            };
+            var body = new Dictionary<string, object?>
+            {
+                ["numeroAdherente"] = cred.NumeroAdherente,
+                ["idOrigen"] = Guid.NewGuid().ToString(),
+                ["filtro"] = filtro,
+            };
+            var (status, doc) = await PostAsync(cred, "/api/echeq/v1/lista-cheques", body, ct);
+            if (status is < 200 or >= 300 || doc is null
+                || !doc.RootElement.TryGetProperty("data", out var data)
+                || !data.TryGetProperty("echeqs", out var arr) || arr.ValueKind != JsonValueKind.Array)
+                return;
+
+            int n = 0;
+            foreach (var e in arr.EnumerateArray())
+            {
+                n++;
+                if (!e.TryGetProperty("numeroCheque", out var nc)) continue;
+                if (nc.ValueKind == JsonValueKind.Number && nc.TryGetInt64(out var v)) set.Add(v);
+                else if (nc.ValueKind == JsonValueKind.String && long.TryParse(nc.GetString(), out var v2)) set.Add(v2);
+            }
+            if (n < limite) return;   // última página
+        }
+    }
+
     // ---- helpers ----
 
     // POST JSON con Bearer y UN reintento ante 401 (token vencido/rechazado). URL absoluta

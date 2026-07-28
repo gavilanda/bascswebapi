@@ -217,10 +217,16 @@ public class EchequesController : ControllerBase
             // solos y precargan el formulario la próxima vez (viajan entre PCs, no localStorage).
             await RecordarFiltrosAsync(p!.Base, p.Banco, p.Chequera, prefijo, usaPrefijo, ct);
 
-            var apiHab = await CredsAsync(p!.Base, ct) is not null;
+            var creds = await CredsAsync(p!.Base, ct);
+            var apiHab = creds is not null;
             var corte = await CorteApiAsync(p.Base, ct);
             var filas = await _echeques.ConsultarAsync(p!.Base, p.D, p.H, p.Banco, p.Chequera, p.ChqD, p.ChqH, ct);
             var yaSet = await YaEmitidosAsync(p.Base, ct);
+            // Capa extra: números ya generados en el banco (Excel firmado o API), en el mismo
+            // rango de la emisión + un margen. Se suman a los ya emitidos localmente (best-effort).
+            if (creds is not null)
+                yaSet.UnionWith(await _bie.NumerosGeneradosAsync(
+                    creds, p.D.AddDays(-_bieOpt.MargenChequeoBancoDias), p.H.AddDays(_bieOpt.MargenChequeoBancoDias), ct));
 
             var cheques = filas.Where(f => !yaSet.Contains(f.NumEcheq)).Select(f =>
             {
@@ -293,6 +299,9 @@ public class EchequesController : ControllerBase
             // Excluir los ya emitidos y los no emitibles (dato faltante); y quedarnos SÓLO con
             // los seleccionados en el modal (si vino selección; sin selección = todos los nuevos).
             var yaSet = await YaEmitidosAsync(p.Base, ct);
+            // Capa extra contra el banco (mismo rango + margen): no re-emitir lo ya generado.
+            yaSet.UnionWith(await _bie.NumerosGeneradosAsync(
+                creds, p.D.AddDays(-_bieOpt.MargenChequeoBancoDias), p.H.AddDays(_bieOpt.MargenChequeoBancoDias), ct));
             var corte = await CorteApiAsync(p.Base, ct);
             var seleccion = sel?.Numeros?.ToHashSet();
             var aEmitir = filas.Where(f => !yaSet.Contains(f.NumEcheq) && ProblemaEmision(f, corte) is null
