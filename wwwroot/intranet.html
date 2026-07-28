@@ -600,6 +600,7 @@
             </div>
             <div class="row compacta-form">
               <div style="flex:0 0 250px"><label>CBU de débito</label><input id="cfgBieCbu" type="text" placeholder="22 dígitos" maxlength="22" /></div>
+              <div style="flex:0 0 170px"><label>Corte API (emitir desde)</label><input id="cfgBieCorte" type="date" /></div>
               <div style="flex:1 1 320px"><label>Ruta de la clave privada (.pem)</label><input id="cfgBiePem" type="text" placeholder="C:\Agente\PortalData\pem\bark.pem" /></div>
             </div>
             <div class="nota" style="margin-top:4px; font-size:12px">La clave privada (.pem) vive como archivo protegido en el servidor; acá se guarda sólo su ruta. Para emitir hacen falta los 4 datos + el archivo existente. Entorno define homologación/producción (independiente por empresa).</div>
@@ -2795,6 +2796,7 @@
     $("cfgBieClientId").value = "";
     $("cfgBieAdherente").value = "";
     $("cfgBieCbu").value = "";
+    $("cfgBieCorte").value = "";
     $("cfgBiePem").value = "";
     $("cfgInfoConexion").textContent = "Al guardar, el padrón de la base nueva (productos y proveedores) se carga en segundo plano; puede tardar unos minutos.";
     $("cfgForm").classList.remove("hidden");
@@ -2836,6 +2838,7 @@
     $("cfgBieClientId").value = b.bieClientId || "";
     $("cfgBieAdherente").value = b.bieNumeroAdherente || "";
     $("cfgBieCbu").value = b.bieCbuDebito || "";
+    $("cfgBieCorte").value = b.echApiDesde || "";
     $("cfgBiePem").value = b.biePemPath || "";
     $("cfgInfoConexion").textContent = "Si cambiás la URL de conexión, el próximo pedido a esa base usa la nueva dirección (se reintenta el login).";
     $("cfgForm").classList.remove("hidden");
@@ -2950,7 +2953,8 @@
       bieClientId: $("cfgBieClientId").value.trim(),
       bieNumeroAdherente: parseInt($("cfgBieAdherente").value, 10) || 0,
       bieCbuDebito: $("cfgBieCbu").value.trim(),
-      biePemPath: $("cfgBiePem").value.trim()
+      biePemPath: $("cfgBiePem").value.trim(),
+      echApiDesde: $("cfgBieCorte").value
     };
     let r;
     try {

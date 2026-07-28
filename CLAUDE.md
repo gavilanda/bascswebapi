@@ -716,6 +716,19 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
   **NO** en localStorage. `GET /bases` los devuelve en `defaults` para precargar el formulario al
   elegir la empresa; `GET /preparar` los **persiste solos** cuando cambian (no se editan a mano).
   En el navegador sólo queda la última empresa elegida (`ech_base`).
+- **Fecha de corte de API (transición al arranque)**: `EchApiDesde` por base (editable en el
+  editor de bases; **no** se autoajusta). La API **no emite** cheques con **fecha de carga
+  (`CHEQUES.FECHA`) anterior** al corte — se asumen ya subidos por Excel al banco, para no
+  duplicar. Se implementa como un motivo más de `ProblemaEmision` (aparecen en el preview como
+  "no emitible por API: anterior a la fecha de corte"), así el `.xls` los sigue exportando pero la
+  API los bloquea. `ChequeRow.FechaCarga` trae `CHEQUES.FECHA` para esto.
+  > ⚠️ **Hueco pendiente (dos canales):** el portal sólo registra lo que emite por API. Un cheque
+  > subido por Excel NO queda registrado → la API podría re-emitirlo (por eso el corte). Al revés,
+  > registrar los Excel como emitidos tampoco sirve (pueden no haberse subido). La **fecha de corte
+  > cubre el arranque**, pero el hueco permanente sólo se cierra: (a) haciendo la API el ÚNICO canal
+  > tras el corte, o (b) con una API del banco que LISTE echeqs por cuenta/chequera para chequear
+  > existencia antes de emitir. La "Consulta de Echeq Emitido" (`GET /emision?idOperacion=`) NO
+  > sirve para eso: necesita el idOperacion, que sólo tenemos de lo emitido por API.
 - **Homologación → producción**: el banco homologa SÓLO los scopes desarrollados
   (`echeqConFirma` + `beneficiarioEcheq`; `cuentas`/`consultaCbuCvuAlias` de apoyo). Datos de
   homologación: adherente `1399230`, client_id `20100794889`, CBU débito `1910044555004401995596`.

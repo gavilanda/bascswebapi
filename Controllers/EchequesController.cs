@@ -154,15 +154,25 @@ public class EchequesController : ControllerBase
     // Selección enviada desde el modal (números de cheque tildados) para emitir/exportar.
     public sealed record SeleccionRequest(long[]? Numeros);
 
-    // Motivo por el que un cheque NO se puede emitir POR API (dato faltante). null = emitible.
-    // (No aplica al .xls: ahí se exporta igual.)
-    private static string? ProblemaEmision(BasEchequesService.ChequeRow r)
+    // Motivo por el que un cheque NO se puede emitir POR API (dato faltante o anterior al corte).
+    // null = emitible. (No aplica al .xls: ahí se exporta igual.)
+    private static string? ProblemaEmision(BasEchequesService.ChequeRow r, DateOnly? corteApi)
     {
+        if (corteApi.HasValue && r.FechaCarga < corteApi.Value)
+            return $"Anterior a la fecha de corte de API ({corteApi.Value:dd/MM/yyyy})";
         if (string.IsNullOrWhiteSpace(r.NroCuiCdi)) return "Sin CUIT del beneficiario";
         if (string.IsNullOrWhiteSpace(r.Mail)) return "Sin e-mail del beneficiario";
         if (r.Importe <= 0) return "Importe en cero";
         if (r.NumEcheq.ToString(CultureInfo.InvariantCulture).Length > 8) return "Nº de cheque > 8 dígitos";
         return null;
+    }
+
+    // Fecha de corte de la emisión por API para una base (EchApiDesde). null = sin corte.
+    private async Task<DateOnly?> CorteApiAsync(string baseNombre, CancellationToken ct)
+    {
+        var s = await _db.ConfiguracionesBase.AsNoTracking()
+            .Where(c => c.Nombre == baseNombre).Select(c => c.EchApiDesde).FirstOrDefaultAsync(ct);
+        return DateOnly.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
     }
 
     // Números de cheque ya emitidos por API para una base (para excluirlos de todo).
@@ -208,12 +218,13 @@ public class EchequesController : ControllerBase
             await RecordarFiltrosAsync(p!.Base, p.Banco, p.Chequera, prefijo, usaPrefijo, ct);
 
             var apiHab = await CredsAsync(p!.Base, ct) is not null;
+            var corte = await CorteApiAsync(p.Base, ct);
             var filas = await _echeques.ConsultarAsync(p!.Base, p.D, p.H, p.Banco, p.Chequera, p.ChqD, p.ChqH, ct);
             var yaSet = await YaEmitidosAsync(p.Base, ct);
 
             var cheques = filas.Where(f => !yaSet.Contains(f.NumEcheq)).Select(f =>
             {
-                var prob = ProblemaEmision(f);
+                var prob = ProblemaEmision(f, corte);
                 return new ChequeItem(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.NroCuiCdi,
                     f.Importe, f.FechaPago, f.Mail, prob is null, prob);
             }).ToList();
@@ -282,8 +293,9 @@ public class EchequesController : ControllerBase
             // Excluir los ya emitidos y los no emitibles (dato faltante); y quedarnos SÓLO con
             // los seleccionados en el modal (si vino selección; sin selección = todos los nuevos).
             var yaSet = await YaEmitidosAsync(p.Base, ct);
+            var corte = await CorteApiAsync(p.Base, ct);
             var seleccion = sel?.Numeros?.ToHashSet();
-            var aEmitir = filas.Where(f => !yaSet.Contains(f.NumEcheq) && ProblemaEmision(f) is null
+            var aEmitir = filas.Where(f => !yaSet.Contains(f.NumEcheq) && ProblemaEmision(f, corte) is null
                 && (seleccion is null || seleccion.Contains(f.NumEcheq))).ToList();
 
             if (aEmitir.Count == 0)

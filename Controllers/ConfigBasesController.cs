@@ -59,6 +59,7 @@ public class ConfigBasesController : ControllerBase
             bieNumeroAdherente = f.BieNumeroAdherente,
             bieCbuDebito = f.BieCbuDebito,
             biePemPath = f.BiePemPath,
+            echApiDesde = f.EchApiDesde,
             ingresos = conteos.TryGetValue(f.Nombre, out var n) ? n : 0,
             conectada = _svc.Memoria(f.Nombre) != null    // está viva en memoria
         });

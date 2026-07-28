@@ -75,6 +75,12 @@ public class ConfiguracionBase
     public string EchPrefijo { get; set; } = "";
     public bool EchUsaPrefijo { get; set; } = false;
 
+    // Fecha de corte de la emisión por API (yyyy-MM-dd), POR EMPRESA. Red de seguridad para el
+    // arranque: la API NO deja emitir cheques con fecha de carga ANTERIOR a esta fecha (se
+    // asumen ya subidos por Excel al banco). Vacío = sin corte. Lo setea el admin una vez en el
+    // editor de bases (no se autoajusta). No afecta al .xls, sólo a la emisión por API.
+    public string EchApiDesde { get; set; } = "";
+
     // ---- Emisión de echeqs por API del Banco Credicoop (BIE) — POR EMPRESA ----
     // Cada empresa (BARK, XARDO) tiene su propio adherente, credenciales y clave privada.
     // Lo compartido (host, realm) vive en appsettings sección BancoBie; acá va lo propio

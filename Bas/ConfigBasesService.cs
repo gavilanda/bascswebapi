@@ -123,7 +123,8 @@ public class ConfigBasesService
             BieClientId = (req.BieClientId ?? "").Trim(),
             BieNumeroAdherente = req.BieNumeroAdherente,
             BieCbuDebito = (req.BieCbuDebito ?? "").Trim(),
-            BiePemPath = (req.BiePemPath ?? "").Trim()
+            BiePemPath = (req.BiePemPath ?? "").Trim(),
+            EchApiDesde = (req.EchApiDesde ?? "").Trim()
         };
 
         _db.ConfiguracionesBase.Add(f);
@@ -175,6 +176,7 @@ public class ConfigBasesService
         f.BieNumeroAdherente = req.BieNumeroAdherente;
         f.BieCbuDebito = (req.BieCbuDebito ?? "").Trim();
         f.BiePemPath = (req.BiePemPath ?? "").Trim();
+        f.EchApiDesde = (req.EchApiDesde ?? "").Trim();
 
         await _db.SaveChangesAsync(ct);
 
@@ -321,7 +323,9 @@ public record CrearConfigBaseRequest(
     string? BieClientId = null,
     long BieNumeroAdherente = 0,
     string? BieCbuDebito = null,
-    string? BiePemPath = null);
+    string? BiePemPath = null,
+    // Fecha de corte de la emisión por API (yyyy-MM-dd), por empresa.
+    string? EchApiDesde = null);
 
 // Request de edición de la config de una base (todos los campos editables, incl. conexión).
 public record ActualizarConfigBaseRequest(
@@ -352,4 +356,6 @@ public record ActualizarConfigBaseRequest(
     string? BieClientId = null,
     long BieNumeroAdherente = 0,
     string? BieCbuDebito = null,
-    string? BiePemPath = null);
+    string? BiePemPath = null,
+    // Fecha de corte de la emisión por API (yyyy-MM-dd), por empresa.
+    string? EchApiDesde = null);

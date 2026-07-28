@@ -27,12 +27,12 @@ public class BasEchequesService
     public sealed record ChequeRow(
         long NumEcheq, string Beneficiario, string TipoCuiCdi, string NroCuiCdi, decimal Importe,
         string FechaPago, string Concepto, string MotivoPago, string TipoCheque, int Caracter, int Modo,
-        string Mail, string CodProveedor);
+        string Mail, string CodProveedor, DateOnly FechaCarga);
 
     // La misma consulta que Echeques.py, parametrizada. Cheques de la CHEQUERA + BANCO en el
     // rango de FECHA (y opcional rango de número), con beneficiario/CUIT/importe/vto/mail.
     private const string Sql = @"
-        SELECT c.NUMEROEXT, v.Alaorden, ct.NRODOC1, v.Importe, c.FECHAVTO, cc.EMAIL, ct.CODCTACTE
+        SELECT c.NUMEROEXT, v.Alaorden, ct.NRODOC1, v.Importe, c.FECHAVTO, cc.EMAIL, ct.CODCTACTE, c.FECHA
         FROM dbo.CHEQUES c
         INNER JOIN dbo.VISTACHEQUES v ON c.NUMEROEXT = v.NumeroExt
         INNER JOIN dbo.CTACTES ct ON (v.cueprefi = ct.CUEPREFI) AND (v.codctacte = ct.CODCTACTE)
@@ -88,7 +88,8 @@ public class BasEchequesService
                 Fecha(rd, 4),                                 // FECHAVTO -> fechaPago (dd/MM/yyyy)
                 "var", "prov", "ECHD", 1, 1,                  // constantes del formato del banco
                 Str(rd, 5),                                   // EMAIL -> mail
-                Str(rd, 6)));                                 // CODCTACTE -> código de proveedor en BAS
+                Str(rd, 6),                                   // CODCTACTE -> código de proveedor en BAS
+                FechaCargaOnly(rd, 7)));                       // FECHA (carga) -> para la fecha de corte de API
         }
 
         // Dedup por número (primero) y orden ascendente, igual que el .py.
@@ -220,4 +221,9 @@ public class BasEchequesService
     }
     private static string Fecha(SqlDataReader rd, int i)
         => rd.IsDBNull(i) || !DateTime.TryParse(rd.GetValue(i)?.ToString(), out var f) ? "" : f.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+    // FECHA de carga como DateOnly (para la fecha de corte de API). Null/ilegible -> MinValue,
+    // que queda ANTERIOR a cualquier corte (se bloquea por API: preferimos bloquear a duplicar).
+    private static DateOnly FechaCargaOnly(SqlDataReader rd, int i)
+        => rd.IsDBNull(i) || !DateTime.TryParse(rd.GetValue(i)?.ToString(), out var f)
+            ? DateOnly.MinValue : DateOnly.FromDateTime(f);
 }

@@ -288,6 +288,8 @@ using (var scope = app.Services.CreateScope())
     AgregarColumnaSiFalta("ConfiguracionesBase", "EchChequera", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "EchPrefijo", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "EchUsaPrefijo", "INTEGER NOT NULL DEFAULT 0");
+    // Fecha de corte de la emisión por API (red de seguridad para el arranque; por empresa).
+    AgregarColumnaSiFalta("ConfiguracionesBase", "EchApiDesde", "TEXT NOT NULL DEFAULT ''");
     // Emisión de echeqs por API del Banco Credicoop, POR EMPRESA (client_id + adherente +
     // CBU + entorno + ruta a la PEM). La clave privada NO va a la base: sólo su ruta.
     AgregarColumnaSiFalta("ConfiguracionesBase", "BieHabilitado", "INTEGER NOT NULL DEFAULT 0");
