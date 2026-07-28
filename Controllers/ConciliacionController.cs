@@ -121,7 +121,7 @@ public class ConciliacionController : ControllerBase
             if (movimientos.Count == 0) return Ok(new { cantidad = 0 });   // sin movimientos: el front avisa
             var bytes = BancoBieCuentasService.ArmarTxt(movimientos);
             Response.Headers["X-Conciliacion-Cantidad"] = movimientos.Count.ToString();
-            var nombre = $"conciliacion_{cta}_{d:yyyyMMdd}_{h:yyyyMMdd}.txt";
+            var nombre = $"CONC_{cta}_{d:yyyyMMdd}_{h:yyyyMMdd}.txt";
             return File(bytes, "text/plain", nombre);
         }
         catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }

@@ -1856,7 +1856,7 @@
     const blob = await r.blob();
     const cant = r.headers.get("X-Conciliacion-Cantidad") || "";
     const dispo = r.headers.get("content-disposition") || "";
-    let nombre = "conciliacion.txt";
+    let nombre = "CONC.txt";
     const mm = dispo.match(/filename="?([^"]+)"?/i); if (mm) nombre = mm[1];
     const u = URL.createObjectURL(blob);
     const a = document.createElement("a");
