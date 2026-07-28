@@ -533,6 +533,18 @@
           <!-- Formulario de alta / edición (oculto hasta elegir o crear una base) -->
           <div id="cfgForm" class="card hidden">
             <h2 id="cfgFormTitulo">Editar base</h2>
+            <style>
+              /* Form de bases más compacto: inputs/selects más bajos y sectores con el título
+                 en la misma línea que sus campos (todos los títulos alineados = misma columna). */
+              /* La regla global ".row > div { min-width:150px }" impedía achicar los campos:
+                 la anulamos acá para que valga el flex-basis (90px, etc.). */
+              #cfgForm .row.compacta-form > div { min-width:0; }
+              #cfgForm .row.compacta-form input:not([type=checkbox]),
+              #cfgForm .row.compacta-form select { padding:5px 8px; font-size:13px; width:100%; }
+              #cfgForm .sec-row { align-items:flex-end; }
+              #cfgForm .sec-tit { flex:0 0 150px; align-self:flex-end; padding-bottom:6px;
+                font-weight:600; font-size:13px; color:#52525b; }
+            </style>
             <div class="row compacta-form">
               <div style="flex:0 0 160px"><label>Base (nombre)</label><input id="cfgNombre" type="text" readonly placeholder="ej. BARK" /></div>
               <div style="flex:1 1 220px"><label>Descripción</label><input id="cfgDescripcion" type="text" placeholder="Nombre para mostrar (ej. BARK · Producción)" /></div>
@@ -544,39 +556,39 @@
             <div class="subt compacta-form">Conexión</div>
             <div class="row compacta-form">
               <div style="flex:1 1 240px"><label>URL del WebAPI</label><input id="cfgBaseUrl" type="text" placeholder="http://localhost:5081" /></div>
-              <div style="flex:0 0 110px"><label>Tipo remito</label><input id="cfgRemitoTipo" type="text" placeholder="N" /></div>
               <div style="flex:0 0 230px; align-self:center; margin-top:18px">
                 <label class="check"><input id="cfgIncluirPortal" type="checkbox" /> Incluir en portal de clientes</label>
               </div>
             </div>
 
-            <div class="subt compacta-form">Empresa</div>
-            <div class="row compacta-form">
-              <div style="flex:0 0 130px"><label>Cód. empresa</label><input id="cfgEmpresa" type="number" min="1" /></div>
-              <div style="flex:0 0 130px"><label>Cód. sucursal</label><input id="cfgSucursal" type="number" min="1" /></div>
+            <div class="row compacta-form sec-row">
+              <div class="sec-tit">Empresa</div>
+              <div style="flex:0 0 90px"><label>Empresa</label><input id="cfgEmpresa" type="number" min="1" /></div>
+              <div style="flex:0 0 90px"><label>Sucursal</label><input id="cfgSucursal" type="number" min="1" /></div>
             </div>
 
-            <div class="subt compacta-form">Remito de ingreso</div>
-            <div class="row compacta-form">
-              <div style="flex:0 0 130px"><label>Prefijo</label><input id="cfgRemPrefijo" type="text" placeholder="1" /></div>
-              <div style="flex:0 0 130px"><label>Concepto</label><input id="cfgRemConcepto" type="text" placeholder="com" /></div>
-              <div style="flex:0 0 130px"><label>Depósito</label><input id="cfgRemDeposito" type="number" min="1" /></div>
+            <div class="row compacta-form sec-row">
+              <div class="sec-tit">Remito de ingreso</div>
+              <div style="flex:0 0 90px"><label>Prefijo</label><input id="cfgRemPrefijo" type="text" placeholder="1" /></div>
+              <div style="flex:0 0 100px"><label>Concepto</label><input id="cfgRemConcepto" type="text" placeholder="com" /></div>
+              <div style="flex:0 0 90px"><label>Depósito</label><input id="cfgRemDeposito" type="number" min="1" /></div>
+              <div style="flex:0 0 90px"><label>Tipo remito</label><input id="cfgRemitoTipo" type="text" placeholder="N" /></div>
             </div>
 
-            <div class="subt compacta-form">Factura de compra</div>
-            <div class="row compacta-form">
-              <div style="flex:0 0 130px"><label>Prefijo</label><input id="cfgFacPrefijo" type="text" placeholder="1" /></div>
-              <div style="flex:0 0 130px"><label>Concepto</label><input id="cfgFacConcepto" type="text" placeholder="com" /></div>
-              <div style="flex:0 0 130px"><label>Depósito</label><input id="cfgFacDeposito" type="number" min="1" /></div>
-              <div style="flex:0 0 160px"><label>Cuenta contable</label><input id="cfgFacImputacion" type="number" min="1" placeholder="21001001" /></div>
+            <div class="row compacta-form sec-row">
+              <div class="sec-tit">Factura de compra</div>
+              <div style="flex:0 0 90px"><label>Prefijo</label><input id="cfgFacPrefijo" type="text" placeholder="1" /></div>
+              <div style="flex:0 0 100px"><label>Concepto</label><input id="cfgFacConcepto" type="text" placeholder="com" /></div>
+              <div style="flex:0 0 90px"><label>Depósito</label><input id="cfgFacDeposito" type="number" min="1" /></div>
+              <div style="flex:0 0 130px"><label>Cuenta contable</label><input id="cfgFacImputacion" type="number" min="1" placeholder="21001001" /></div>
             </div>
 
-            <div class="subt compacta-form">Orden de compra</div>
-            <div class="row compacta-form">
-              <div style="flex:0 0 130px"><label>Prefijo</label><input id="cfgOcPrefijo" type="text" placeholder="1" /></div>
+            <div class="row compacta-form sec-row">
+              <div class="sec-tit">Orden de compra</div>
+              <div style="flex:0 0 90px"><label>Prefijo</label><input id="cfgOcPrefijo" type="text" placeholder="1" /></div>
             </div>
 
-            <div class="subt compacta-form">E-Cheques — conexión SQL directa (solo lectura)</div>
+            <div class="subt compacta-form" style="color:#000; font-weight:700; margin-top:22px">E-Cheques — conexión SQL directa (solo lectura)</div>
             <div class="row compacta-form">
               <div style="flex:0 0 180px"><label>Servidor SQL</label><input id="cfgSqlServidor" type="text" placeholder="gabriel" /></div>
               <div style="flex:0 0 160px"><label>Base de datos</label><input id="cfgSqlBase" type="text" placeholder="bark" /></div>
@@ -584,28 +596,26 @@
               <div style="flex:0 0 180px"><label>Clave</label><input id="cfgSqlClave" type="password" autocomplete="new-password" placeholder="(vacío = no cambiar)" /></div>
               <div style="flex:1 1 220px"><label>Mail propio a excluir</label><input id="cfgSqlEmail" type="text" placeholder="pagos@bark-sa.com.ar" /></div>
             </div>
-            <div class="nota" style="margin-top:4px; font-size:12px">Vacío = e-cheques deshabilitado para esta base. La clave no se muestra por seguridad; dejala vacía para conservar la actual.</div>
 
-            <div class="subt compacta-form">E-Cheques — emisión por API (Banco Credicoop)</div>
+            <div class="subt compacta-form" style="color:#000; font-weight:700">E-Cheques — emisión por API (Banco Credicoop)</div>
             <div class="row compacta-form">
-              <div style="flex:0 0 150px; align-self:flex-end"><label style="display:inline-flex; align-items:center; gap:6px; margin:0"><input id="cfgBieHabilitado" type="checkbox" style="width:auto" /> Emitir por API</label></div>
-              <div style="flex:0 0 160px"><label>Entorno</label>
-                <select id="cfgBieEntorno">
+              <div style="flex:0 0 120px"><label>Entorno</label>
+                <select id="cfgBieEntorno" style="width:100%">
                   <option value="homologacion">Homologación</option>
                   <option value="produccion">Producción</option>
                 </select>
               </div>
-              <div style="flex:0 0 180px"><label>Client ID</label><input id="cfgBieClientId" type="text" placeholder="20100794889" /></div>
-              <div style="flex:0 0 150px"><label>Nº adherente</label><input id="cfgBieAdherente" type="number" min="0" placeholder="1399230" /></div>
+              <div style="flex:0 0 140px"><label>Client ID</label><input id="cfgBieClientId" type="text" placeholder="20100794889" /></div>
+              <div style="flex:0 0 110px"><label>Nº adherente</label><input id="cfgBieAdherente" type="number" min="0" placeholder="1399230" /></div>
+              <div style="flex:0 0 230px"><label>CBU de débito</label><input id="cfgBieCbu" type="text" placeholder="22 dígitos" maxlength="22" /></div>
+              <div style="flex:0 0 140px"><label>Corte API (desde)</label><input id="cfgBieCorte" type="date" /></div>
+              <div style="flex:0 0 130px; align-self:flex-end; display:flex; justify-content:center; padding-bottom:5px">
+                <label style="display:inline-flex; align-items:center; gap:6px; margin:0"><input id="cfgBieHabilitado" type="checkbox" style="width:auto" /> Emitir por API</label>
+              </div>
             </div>
             <div class="row compacta-form">
-              <div style="flex:0 0 250px"><label>CBU de débito</label><input id="cfgBieCbu" type="text" placeholder="22 dígitos" maxlength="22" /></div>
-              <div style="flex:0 0 170px"><label>Corte API (emitir desde)</label><input id="cfgBieCorte" type="date" /></div>
-              <div style="flex:1 1 320px"><label>Ruta de la clave privada (.pem)</label><input id="cfgBiePem" type="text" placeholder="C:\Agente\PortalData\pem\bark.pem" /></div>
+              <div style="flex:0 0 420px"><label>Ruta de la clave privada (.pem)</label><input id="cfgBiePem" type="text" placeholder="C:\Agente\PortalData\pem\bark.pem" /></div>
             </div>
-            <div class="nota" style="margin-top:4px; font-size:12px">La clave privada (.pem) vive como archivo protegido en el servidor; acá se guarda sólo su ruta. Para emitir hacen falta los 4 datos + el archivo existente. Entorno define homologación/producción (independiente por empresa).</div>
-
-            <div class="nota" id="cfgInfoConexion" style="margin-top:12px"></div>
 
             <div style="margin-top:16px; display:flex; gap:8px">
               <button id="btnGuardarCfg">Guardar</button>
@@ -2798,7 +2808,6 @@
     $("cfgBieCbu").value = "";
     $("cfgBieCorte").value = "";
     $("cfgBiePem").value = "";
-    $("cfgInfoConexion").textContent = "Al guardar, el padrón de la base nueva (productos y proveedores) se carga en segundo plano; puede tardar unos minutos.";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => $("cfgNombre").focus(), 0);
@@ -2840,7 +2849,6 @@
     $("cfgBieCbu").value = b.bieCbuDebito || "";
     $("cfgBieCorte").value = b.echApiDesde || "";
     $("cfgBiePem").value = b.biePemPath || "";
-    $("cfgInfoConexion").textContent = "Si cambiás la URL de conexión, el próximo pedido a esa base usa la nueva dirección (se reintenta el login).";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => $("cfgDescripcion").focus(), 0);
