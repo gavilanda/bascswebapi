@@ -26,12 +26,13 @@ public class BasEchequesService
     // Una fila del export (mismos campos y constantes que el .xls que espera el banco).
     public sealed record ChequeRow(
         long NumEcheq, string Beneficiario, string TipoCuiCdi, string NroCuiCdi, decimal Importe,
-        string FechaPago, string Concepto, string MotivoPago, string TipoCheque, int Caracter, int Modo, string Mail);
+        string FechaPago, string Concepto, string MotivoPago, string TipoCheque, int Caracter, int Modo,
+        string Mail, string CodProveedor);
 
     // La misma consulta que Echeques.py, parametrizada. Cheques de la CHEQUERA + BANCO en el
     // rango de FECHA (y opcional rango de número), con beneficiario/CUIT/importe/vto/mail.
     private const string Sql = @"
-        SELECT c.NUMEROEXT, v.Alaorden, ct.NRODOC1, v.Importe, c.FECHAVTO, cc.EMAIL
+        SELECT c.NUMEROEXT, v.Alaorden, ct.NRODOC1, v.Importe, c.FECHAVTO, cc.EMAIL, ct.CODCTACTE
         FROM dbo.CHEQUES c
         INNER JOIN dbo.VISTACHEQUES v ON c.NUMEROEXT = v.NumeroExt
         INNER JOIN dbo.CTACTES ct ON (v.cueprefi = ct.CUEPREFI) AND (v.codctacte = ct.CODCTACTE)
@@ -86,7 +87,8 @@ public class BasEchequesService
                 Dec(rd, 3),                                   // Importe
                 Fecha(rd, 4),                                 // FECHAVTO -> fechaPago (dd/MM/yyyy)
                 "var", "prov", "ECHD", 1, 1,                  // constantes del formato del banco
-                Str(rd, 5)));                                 // EMAIL -> mail
+                Str(rd, 5),                                   // EMAIL -> mail
+                Str(rd, 6)));                                 // CODCTACTE -> código de proveedor en BAS
         }
 
         // Dedup por número (primero) y orden ascendente, igual que el .py.

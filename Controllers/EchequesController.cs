@@ -142,12 +142,15 @@ public class EchequesController : ControllerBase
 
     // ---- Emisión por API (Banco Credicoop) ----
 
-    // Info de una fila para el preview (qué se emitiría / qué ya se emitió).
-    private sealed record PreviewFila(long NumeroCheque, string Beneficiario, string Cuit,
-        decimal Importe, string FechaPago, string Mail, bool Emitible, string? Problema,
-        string? Estado, long? IdOperacion, DateTime? EmitidoEn);
+    // Una fila para el modal de preparación (cheque candidato, todavía NO emitido por API).
+    private sealed record ChequeItem(long numeroCheque, string codProveedor, string beneficiario,
+        string cuit, decimal importe, string fechaPago, string mail, bool emitibleApi, string? problemaApi);
 
-    // Motivo por el que un cheque NO se puede emitir (dato faltante). null = emitible.
+    // Selección enviada desde el modal (números de cheque tildados) para emitir/exportar.
+    public sealed record SeleccionRequest(long[]? Numeros);
+
+    // Motivo por el que un cheque NO se puede emitir POR API (dato faltante). null = emitible.
+    // (No aplica al .xls: ahí se exporta igual.)
     private static string? ProblemaEmision(BasEchequesService.ChequeRow r)
     {
         if (string.IsNullOrWhiteSpace(r.NroCuiCdi)) return "Sin CUIT del beneficiario";
@@ -157,9 +160,18 @@ public class EchequesController : ControllerBase
         return null;
     }
 
-    // GET /api/echeques/emitir-preview?... -> qué cheques son nuevos (emitibles o no) y cuáles ya se emitieron.
-    [HttpGet("emitir-preview")]
-    public async Task<ActionResult> EmitirPreview(
+    // Números de cheque ya emitidos por API para una base (para excluirlos de todo).
+    private async Task<HashSet<long>> YaEmitidosAsync(string baseNombre, CancellationToken ct)
+        => (await _db.EmisionesEcheq.AsNoTracking()
+                .Where(e => e.BaseNombre == baseNombre)
+                .Select(e => e.NumeroCheque).ToListAsync(ct)).ToHashSet();
+
+    // GET /api/echeques/preparar?... -> cheques del rango que TODAVÍA NO se emitieron por API,
+    // con el código de proveedor de BAS y si son emitibles por API. Sirve para el modal donde
+    // el usuario elige cuáles y por qué canal (API o .xls). No requiere config de API (el .xls
+    // anda igual); apiHabilitada indica si esta empresa además puede emitir por API.
+    [HttpGet("preparar")]
+    public async Task<ActionResult> Preparar(
         [FromQuery(Name = "base")] string? baseNombre, [FromQuery] string? desde, [FromQuery] string? hasta,
         [FromQuery] string? banco, [FromQuery] string? chequera,
         [FromQuery] string? chqDesde, [FromQuery] string? chqHasta, CancellationToken ct = default)
@@ -167,37 +179,55 @@ public class EchequesController : ControllerBase
         var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
         var err = Parsear(baseNombre, desde, hasta, banco, chequera, chqDesde, chqHasta, out var p);
         if (err is not null) return err;
-        if (await CredsAsync(p!.Base, ct) is null)
-            return StatusCode(409, new { mensaje = $"La empresa '{p!.Base}' no tiene la emisión por API configurada." });
+
+        try
+        {
+            var apiHab = await CredsAsync(p!.Base, ct) is not null;
+            var filas = await _echeques.ConsultarAsync(p!.Base, p.D, p.H, p.Banco, p.Chequera, p.ChqD, p.ChqH, ct);
+            var yaSet = await YaEmitidosAsync(p.Base, ct);
+
+            var cheques = filas.Where(f => !yaSet.Contains(f.NumEcheq)).Select(f =>
+            {
+                var prob = ProblemaEmision(f);
+                return new ChequeItem(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.NroCuiCdi,
+                    f.Importe, f.FechaPago, f.Mail, prob is null, prob);
+            }).ToList();
+            var yaEmitidosApi = filas.Count(f => yaSet.Contains(f.NumEcheq));
+
+            return Ok(new { baseNombre = p.Base, apiHabilitada = apiHab, yaEmitidosApi, cheques });
+        }
+        catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
+        catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo preparar: " + ex.Message }); }
+    }
+
+    // POST /api/echeques/exportar-sel?... (body { numeros }) -> .xls de los cheques SELECCIONADOS,
+    // excluyendo los ya emitidos por API. (El .xls no valida CUIT/e-mail: exporta lo tildado.)
+    [HttpPost("exportar-sel")]
+    public async Task<ActionResult> ExportarSeleccion(
+        [FromQuery(Name = "base")] string? baseNombre, [FromQuery] string? desde, [FromQuery] string? hasta,
+        [FromQuery] string? banco, [FromQuery] string? chequera,
+        [FromQuery] string? chqDesde, [FromQuery] string? chqHasta,
+        [FromBody] SeleccionRequest? sel, CancellationToken ct = default)
+    {
+        var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
+        var err = Parsear(baseNombre, desde, hasta, banco, chequera, chqDesde, chqHasta, out var p);
+        if (err is not null) return err;
 
         try
         {
             var filas = await _echeques.ConsultarAsync(p!.Base, p.D, p.H, p.Banco, p.Chequera, p.ChqD, p.ChqH, ct);
+            var yaSet = await YaEmitidosAsync(p.Base, ct);
+            var seleccion = sel?.Numeros?.ToHashSet();
+            var elegidos = filas.Where(f => !yaSet.Contains(f.NumEcheq)
+                && (seleccion is null || seleccion.Contains(f.NumEcheq))).ToList();
 
-            // Ya emitidos: los que están en la tabla para esta base.
-            var numeros = filas.Select(f => f.NumEcheq).ToList();
-            var yaMap = await _db.EmisionesEcheq.AsNoTracking()
-                .Where(e => e.BaseNombre == p.Base && numeros.Contains(e.NumeroCheque))
-                .ToDictionaryAsync(e => e.NumeroCheque, ct);
-
-            var nuevos = new List<PreviewFila>();
-            var yaEmitidos = new List<PreviewFila>();
-            foreach (var f in filas)
-            {
-                if (yaMap.TryGetValue(f.NumEcheq, out var em))
-                    yaEmitidos.Add(new PreviewFila(f.NumEcheq, f.Beneficiario, f.NroCuiCdi, f.Importe,
-                        f.FechaPago, f.Mail, false, null, em.Estado, em.IdOperacion, em.EmitidoEn));
-                else
-                {
-                    var prob = ProblemaEmision(f);
-                    nuevos.Add(new PreviewFila(f.NumEcheq, f.Beneficiario, f.NroCuiCdi, f.Importe,
-                        f.FechaPago, f.Mail, prob is null, prob, null, null, null));
-                }
-            }
-            return Ok(new { nuevos, yaEmitidos });
+            if (elegidos.Count == 0) return Ok(new { cantidad = 0 });
+            var bytes = BasEchequesService.ArmarXls(elegidos);
+            Response.Headers["X-Echeques-Cantidad"] = elegidos.Count.ToString();
+            return File(bytes, "application/vnd.ms-excel", "e-cheques_EXPORTACION.xls");
         }
-        catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
-        catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo preparar la emisión: " + ex.Message }); }
+        catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Exportación cancelada." }); }
+        catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar el .xls: " + ex.Message }); }
     }
 
     private sealed record ResultadoFront(long numeroCheque, bool ok, string? estado, long? idOperacion, string? error);
@@ -208,7 +238,8 @@ public class EchequesController : ControllerBase
     public async Task<ActionResult> Emitir(
         [FromQuery(Name = "base")] string? baseNombre, [FromQuery] string? desde, [FromQuery] string? hasta,
         [FromQuery] string? banco, [FromQuery] string? chequera,
-        [FromQuery] string? chqDesde, [FromQuery] string? chqHasta, CancellationToken ct = default)
+        [FromQuery] string? chqDesde, [FromQuery] string? chqHasta,
+        [FromBody] SeleccionRequest? sel, CancellationToken ct = default)
     {
         var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
         var err = Parsear(baseNombre, desde, hasta, banco, chequera, chqDesde, chqHasta, out var p);
@@ -222,16 +253,16 @@ public class EchequesController : ControllerBase
         {
             var filas = await _echeques.ConsultarAsync(p!.Base, p.D, p.H, p.Banco, p.Chequera, p.ChqD, p.ChqH, ct);
 
-            // Excluir los ya emitidos y los no emitibles (dato faltante).
-            var yaEmitidos = await _db.EmisionesEcheq.AsNoTracking()
-                .Where(e => e.BaseNombre == p.Base)
-                .Select(e => e.NumeroCheque).ToListAsync(ct);
-            var yaSet = yaEmitidos.ToHashSet();
-            var aEmitir = filas.Where(f => !yaSet.Contains(f.NumEcheq) && ProblemaEmision(f) is null).ToList();
+            // Excluir los ya emitidos y los no emitibles (dato faltante); y quedarnos SÓLO con
+            // los seleccionados en el modal (si vino selección; sin selección = todos los nuevos).
+            var yaSet = await YaEmitidosAsync(p.Base, ct);
+            var seleccion = sel?.Numeros?.ToHashSet();
+            var aEmitir = filas.Where(f => !yaSet.Contains(f.NumEcheq) && ProblemaEmision(f) is null
+                && (seleccion is null || seleccion.Contains(f.NumEcheq))).ToList();
 
             if (aEmitir.Count == 0)
                 return Ok(new { emitidos = 0, resultados = Array.Empty<ResultadoFront>(),
-                    mensaje = "No hay cheques nuevos para emitir (ya emitidos o con datos faltantes)." });
+                    mensaje = "No hay cheques nuevos para emitir (ya emitidos, no seleccionados o con datos faltantes)." });
 
             // 1) Asegurar los beneficiarios en la agenda (idempotente).
             var fallasBenef = await _bie.AsegurarBeneficiariosAsync(creds, aEmitir.Select(f => f.NroCuiCdi), ct);

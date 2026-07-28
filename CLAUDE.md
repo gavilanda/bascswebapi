@@ -671,16 +671,20 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
   el mismo día (`APIE-1003`). Errores del banco vienen como `{error:{codigo:"APIE-xxxx",descripcion}}`.
 - **Anti-doble-emisión**: tabla **`EmisionesEcheq`** (base del portal) con índice único
   `(BaseNombre, NumeroCheque)`. Sólo se persisten los **aceptados**; los rechazados NO, así se
-  reintentan tras corregir. El preview cruza los cheques de BAS contra esta tabla (nuevos vs ya
-  emitidos). Un cheque no es emitible si le falta CUIT, e-mail, importe>0 o el nº supera 8 díg.
+  reintentan tras corregir. `/preparar` cruza los cheques de BAS contra esta tabla y **sólo lista
+  los NO emitidos** (informa cuántos ya emitidos se omitieron). Un cheque no es emitible POR API si
+  le falta CUIT, e-mail, importe>0 o el nº supera 8 díg (igual se puede exportar al .xls).
   > ⚠️ **Verificado en homologación (probe_duplicado.py):** el banco **NO deduplica por
   > `numeroCheque`** — emitir el mismo número 3 veces (con `idOrigen` distinto) devolvió 3
   > operaciones OK distintas. La idempotencia del banco es sólo por `idOrigen` y sólo el mismo
   > día (APIE-1003). Por eso esta tabla es IMPRESCINDIBLE: sin ella, re-emitir un rango duplica
   > echeqs (plata real en producción). No quitarla "porque el banco lo rechazaría" — no lo hace.
 - **Endpoints** (en `EchequesController`, mismo candado interno+función `echeques`):
-  `GET /emitir-preview`, `POST /emitir`, `GET /emision-estado?base=&idOperacion=`. `GET /bases`
-  devuelve `{ bases, basesApi }` (basesApi = empresas con la emisión por API configurada).
+  `GET /preparar` (cheques NO emitidos por API, con `codProveedor` de BAS + `emitibleApi` +
+  `apiHabilitada`), `POST /emitir` (body `{numeros}` = selección), `POST /exportar-sel` (body
+  `{numeros}` → .xls de los seleccionados), `GET /emision-estado?base=&idOperacion=`. `GET /bases`
+  devuelve `{ bases, basesApi }`. **Tanto la API como el .xls excluyen los ya emitidos por API**
+  (por eso el .xls también sale por `/exportar-sel`, no por el viejo `/exportar`).
 - **Config MULTI-EMPRESA** (cada empresa —BARK, XARDO— tiene su propio adherente, credenciales y
   PEM): lo COMPARTIDO (mismo banco) va en `appsettings` sección `BancoBie`: `Scopes`, `TipoCheque`,
   `Concepto`, y las URLs por entorno (`Homologacion`/`Produccion` → `BaseUrl`+`TokenUrl`). Lo PROPIO
@@ -692,9 +696,12 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
   la DB** — en la base sólo se guarda la ruta. `BancoBieOptions.Credenciales(cb)` arma las
   credenciales efectivas por base (`BieCredenciales`; null si falta algo o el archivo PEM no existe).
   `BancoBieAuthService` (singleton) cachea el token por `client_id` y la clave RSA por archivo.
-- **Front** (`secEcheques`): botón **"Emitir por API"** que aparece según la **empresa elegida** en
-  el selector (`basesApi`), junto a "Generar .xls" (que se mantiene). Flujo: preview (nuevos/con
-  problemas/ya emitidos) → "Confirmar emisión (N)" → resultado por cheque (estado o `APIE-xxxx`).
+- **Front** (`secEcheques`): un solo botón **"Preparar"** abre un **modal** con los cheques del rango
+  que TODAVÍA no se emitieron por API — un **checkbox por cheque (todos tildados)**, el **código de
+  proveedor de BAS**, y una marca de si es emitible por API — con **Marcar todos / ninguno**. En el
+  pie del modal se elige el canal sobre lo tildado: **"Generar .xls (N)"** (siempre) o **"Emitir por
+  API (M)"** (sólo si la empresa tiene API; M = tildados emitibles). El resultado por cheque
+  (estado / `APIE-xxxx`) se muestra en el mismo modal. Es la confirmación previa al envío.
 - **Homologación → producción**: el banco homologa SÓLO los scopes desarrollados
   (`echeqConFirma` + `beneficiarioEcheq`; `cuentas`/`consultaCbuCvuAlias` de apoyo). Datos de
   homologación: adherente `1399230`, client_id `20100794889`, CBU débito `1910044555004401995596`.
