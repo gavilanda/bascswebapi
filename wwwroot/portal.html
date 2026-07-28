@@ -1855,9 +1855,11 @@
     if (tipo.includes("json")) { await r.json().catch(() => ({})); mostrar($("concModalMsg"), "No hay movimientos para exportar.", "info"); btn.disabled = false; return; }
     const blob = await r.blob();
     const cant = r.headers.get("X-Conciliacion-Cantidad") || "";
-    const dispo = r.headers.get("content-disposition") || "";
-    let nombre = "CONC.txt";
-    const mm = dispo.match(/filename="?([^"]+)"?/i); if (mm) nombre = mm[1];
+    // Nombre armado desde los filtros de la preparación (evita parsear Content-Disposition).
+    const pq = new URLSearchParams(concQS);
+    const nombre = "CONC_" + (pq.get("cuenta") || "") + "_"
+      + (pq.get("desde") || "").replace(/-/g, "") + "_"
+      + (pq.get("hasta") || "").replace(/-/g, "") + ".txt";
     const u = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = u; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
