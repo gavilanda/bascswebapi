@@ -19,6 +19,7 @@ public class PortalDbContext : DbContext
     public DbSet<FuncionPortal> FuncionesPortal => Set<FuncionPortal>();
     public DbSet<OrdenCompra> OrdenesCompra => Set<OrdenCompra>();
     public DbSet<OrdenCompraLinea> OrdenCompraLineas => Set<OrdenCompraLinea>();
+    public DbSet<EmisionEcheq> EmisionesEcheq => Set<EmisionEcheq>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -122,5 +123,10 @@ public class PortalDbContext : DbContext
           .WithOne(l => l.OrdenCompra!)
           .HasForeignKey(l => l.OrdenCompraId)
           .OnDelete(DeleteBehavior.Cascade);
+
+        // ---- Echeqs emitidos por API ----
+        // Un cheque (por base) se emite una sola vez: índice único anti-doble-emisión.
+        modelBuilder.Entity<EmisionEcheq>()
+            .HasIndex(e => new { e.BaseNombre, e.NumeroCheque }).IsUnique();
     }
 }

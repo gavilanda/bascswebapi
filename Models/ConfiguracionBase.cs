@@ -66,4 +66,20 @@ public class ConfiguracionBase
     // Mail "propio" de la empresa a EXCLUIR de la consulta de cheques (en BARK:
     // pagos@bark-sa.com.ar). Por base porque difiere entre empresas.
     public string SqlEmailPropio { get; set; } = "";
+
+    // ---- Emisión de echeqs por API del Banco Credicoop (BIE) — POR EMPRESA ----
+    // Cada empresa (BARK, XARDO) tiene su propio adherente, credenciales y clave privada.
+    // Lo compartido (host, realm) vive en appsettings sección BancoBie; acá va lo propio
+    // de la empresa. El host/realm se elige con BieEntorno (homologacion|produccion), así
+    // se puede homologar una empresa y dejar la otra en producción, independientes.
+    // Vacío / BieHabilitado=false = emisión por API deshabilitada para esta base.
+    public bool BieHabilitado { get; set; } = false;
+    public string BieEntorno { get; set; } = "homologacion";   // "homologacion" | "produccion"
+    public string BieClientId { get; set; } = "";
+    public long BieNumeroAdherente { get; set; }
+    public string BieCbuDebito { get; set; } = "";
+    // Ruta al archivo .pem con la clave privada de ESTA empresa. Archivo protegido en el
+    // servidor del portal (ej. C:\Agente\PortalData\pem\bark.pem), fuera de git. En la base
+    // sólo se guarda la ruta (la clave privada NO vive en la DB).
+    public string BiePemPath { get; set; } = "";
 }

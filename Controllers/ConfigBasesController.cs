@@ -52,6 +52,13 @@ public class ConfigBasesController : ControllerBase
             sqlUsuario = f.SqlUsuario,
             sqlEmailPropio = f.SqlEmailPropio,
             sqlTieneClave = !string.IsNullOrWhiteSpace(f.SqlClave),
+            // Banco Credicoop (echeqs por API), por empresa. Campos no-secretos (la PEM es un archivo).
+            bieHabilitado = f.BieHabilitado,
+            bieEntorno = f.BieEntorno,
+            bieClientId = f.BieClientId,
+            bieNumeroAdherente = f.BieNumeroAdherente,
+            bieCbuDebito = f.BieCbuDebito,
+            biePemPath = f.BiePemPath,
             ingresos = conteos.TryGetValue(f.Nombre, out var n) ? n : 0,
             conectada = _svc.Memoria(f.Nombre) != null    // está viva en memoria
         });

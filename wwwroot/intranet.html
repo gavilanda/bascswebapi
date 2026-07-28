@@ -586,6 +586,24 @@
             </div>
             <div class="nota" style="margin-top:4px; font-size:12px">Vacío = e-cheques deshabilitado para esta base. La clave no se muestra por seguridad; dejala vacía para conservar la actual.</div>
 
+            <div class="subt compacta-form">E-Cheques — emisión por API (Banco Credicoop)</div>
+            <div class="row compacta-form">
+              <div style="flex:0 0 150px; align-self:flex-end"><label style="display:inline-flex; align-items:center; gap:6px; margin:0"><input id="cfgBieHabilitado" type="checkbox" style="width:auto" /> Emitir por API</label></div>
+              <div style="flex:0 0 160px"><label>Entorno</label>
+                <select id="cfgBieEntorno">
+                  <option value="homologacion">Homologación</option>
+                  <option value="produccion">Producción</option>
+                </select>
+              </div>
+              <div style="flex:0 0 180px"><label>Client ID</label><input id="cfgBieClientId" type="text" placeholder="20100794889" /></div>
+              <div style="flex:0 0 150px"><label>Nº adherente</label><input id="cfgBieAdherente" type="number" min="0" placeholder="1399230" /></div>
+            </div>
+            <div class="row compacta-form">
+              <div style="flex:0 0 250px"><label>CBU de débito</label><input id="cfgBieCbu" type="text" placeholder="22 dígitos" maxlength="22" /></div>
+              <div style="flex:1 1 320px"><label>Ruta de la clave privada (.pem)</label><input id="cfgBiePem" type="text" placeholder="C:\Agente\PortalData\pem\bark.pem" /></div>
+            </div>
+            <div class="nota" style="margin-top:4px; font-size:12px">La clave privada (.pem) vive como archivo protegido en el servidor; acá se guarda sólo su ruta. Para emitir hacen falta los 4 datos + el archivo existente. Entorno define homologación/producción (independiente por empresa).</div>
+
             <div class="nota" id="cfgInfoConexion" style="margin-top:12px"></div>
 
             <div style="margin-top:16px; display:flex; gap:8px">
@@ -2772,6 +2790,12 @@
     $("cfgSqlClave").value = "";
     $("cfgSqlClave").placeholder = "(vacío = no cambiar)";
     $("cfgSqlEmail").value = "";
+    $("cfgBieHabilitado").checked = false;
+    $("cfgBieEntorno").value = "homologacion";
+    $("cfgBieClientId").value = "";
+    $("cfgBieAdherente").value = "";
+    $("cfgBieCbu").value = "";
+    $("cfgBiePem").value = "";
     $("cfgInfoConexion").textContent = "Al guardar, el padrón de la base nueva (productos y proveedores) se carga en segundo plano; puede tardar unos minutos.";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2807,6 +2831,12 @@
     $("cfgSqlClave").value = "";
     $("cfgSqlClave").placeholder = b.sqlTieneClave ? "(hay una cargada — vacío = no cambiar)" : "(sin clave)";
     $("cfgSqlEmail").value = b.sqlEmailPropio || "";
+    $("cfgBieHabilitado").checked = !!b.bieHabilitado;
+    $("cfgBieEntorno").value = b.bieEntorno || "homologacion";
+    $("cfgBieClientId").value = b.bieClientId || "";
+    $("cfgBieAdherente").value = b.bieNumeroAdherente || "";
+    $("cfgBieCbu").value = b.bieCbuDebito || "";
+    $("cfgBiePem").value = b.biePemPath || "";
     $("cfgInfoConexion").textContent = "Si cambiás la URL de conexión, el próximo pedido a esa base usa la nueva dirección (se reintenta el login).";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2914,7 +2944,13 @@
       sqlBase: $("cfgSqlBase").value.trim(),
       sqlUsuario: $("cfgSqlUsuario").value.trim(),
       sqlClave: $("cfgSqlClave").value,     // vacío = el backend conserva la actual
-      sqlEmailPropio: $("cfgSqlEmail").value.trim()
+      sqlEmailPropio: $("cfgSqlEmail").value.trim(),
+      bieHabilitado: $("cfgBieHabilitado").checked,
+      bieEntorno: $("cfgBieEntorno").value,
+      bieClientId: $("cfgBieClientId").value.trim(),
+      bieNumeroAdherente: parseInt($("cfgBieAdherente").value, 10) || 0,
+      bieCbuDebito: $("cfgBieCbu").value.trim(),
+      biePemPath: $("cfgBiePem").value.trim()
     };
     let r;
     try {

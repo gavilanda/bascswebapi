@@ -377,10 +377,12 @@
             <label class="vta-unificar" style="align-self:flex-end; margin-bottom:6px"><input id="echUsaPrefijo" type="checkbox"> Usar prefijo</label>
             <label>Cheque desde <input id="echChqDesde" type="text" placeholder="(vacío = todos)" style="width:120px"></label>
             <label>Cheque hasta <input id="echChqHasta" type="text" style="width:120px"></label>
-            <button id="btnEchGenerar">Generar .xls</button>
+            <button id="btnEchGenerar" class="sec">Generar .xls</button>
+            <button id="btnEchEmitir" class="hidden">Emitir por API</button>
           </div>
           <div id="echMsg" class="msg"></div>
-          <div id="echCargando" class="cargando hidden"><span>Consultando cheques y generando el archivo…</span></div>
+          <div id="echCargando" class="cargando hidden"><span>Procesando…</span></div>
+          <div id="echPanel"></div>
         </div>
 
       </div>
@@ -1396,9 +1398,10 @@
     const sel = $("echBase");
     const previa = sel.value || g("base");
     let bases = [];
+    echBasesApi = [];
     try {
       const r = await fetch("/api/echeques/bases", { headers: { "Authorization": "Bearer " + token } });
-      if (r.ok) { const d = await r.json(); bases = Array.isArray(d.bases) ? d.bases : []; }
+      if (r.ok) { const d = await r.json(); bases = Array.isArray(d.bases) ? d.bases : []; echBasesApi = Array.isArray(d.basesApi) ? d.basesApi : []; }
     } catch (e) {}
     if (bases.length) {
       sel.innerHTML = bases.map(b => '<option value="' + esc(b) + '">' + esc(b) + '</option>').join("");
@@ -1409,6 +1412,17 @@
       $("btnEchGenerar").disabled = true;
       mostrar($("echMsg"), "Ninguna base tiene la conexión de e-cheques configurada. Cargala en la intranet (editor de bases).", "info");
     }
+    // El botón "Emitir por API" aparece sólo si la EMPRESA elegida tiene la emisión configurada.
+    actualizarBotonEmitir();
+  }
+
+  // Bases (empresas) que tienen la emisión por API configurada. El botón se muestra según
+  // la base elegida en el selector (cada empresa tiene sus credenciales por separado).
+  let echBasesApi = [];
+  function actualizarBotonEmitir() {
+    const hab = echBasesApi.includes($("echBase").value);
+    $("btnEchEmitir").classList.toggle("hidden", !hab);
+    $("btnEchEmitir").disabled = !hab;
   }
 
   async function generarEcheques() {
@@ -1472,6 +1486,136 @@
     mostrar($("echMsg"), "Archivo generado" + (cant ? " (" + cant + " cheque" + (cant === "1" ? "" : "s") + ")" : "") + ". Se descargó e-cheques_EXPORTACION.xls.", "ok");
   }
   $("btnEchGenerar").addEventListener("click", generarEcheques);
+
+  // ---- Emisión por API (Banco Credicoop) ----
+  // Valida los filtros y arma el query string común a preview/emisión. Devuelve
+  // { qs } o { err } (mensaje a mostrar). Misma validación que "Generar .xls".
+  function paramsEcheques() {
+    const base = $("echBase").value;
+    const desde = $("echDesde").value, hasta = $("echHasta").value;
+    const banco = $("echBanco").value.trim(), chequera = $("echChequera").value.trim();
+    const prefijo = $("echPrefijo").value.trim(), usa = $("echUsaPrefijo").checked;
+    const nDesde = $("echChqDesde").value.trim(), nHasta = $("echChqHasta").value.trim();
+    if (!base) return { err: "Elegí una base." };
+    if (!desde || !hasta) return { err: "Completá las fechas." };
+    if (desde > hasta) return { err: 'La fecha "Desde" no puede ser mayor que "Hasta".' };
+    if (!banco || !chequera) return { err: "Cuenta bancaria y chequera son obligatorias." };
+    if ((nDesde !== "") !== (nHasta !== "")) return { err: "Completá ambos números de cheque (Desde y Hasta) o dejá los dos vacíos." };
+    if (nDesde && (!/^\d+$/.test(nDesde) || !/^\d+$/.test(nHasta))) return { err: "Los números de cheque deben ser sólo dígitos." };
+    if (nDesde && parseInt(nDesde, 10) > parseInt(nHasta, 10)) return { err: 'El cheque "Desde" no puede ser mayor que "Hasta".' };
+    const chqDesde = nDesde ? ((usa && prefijo) ? prefijo + nDesde : nDesde) : "";
+    const chqHasta = nHasta ? ((usa && prefijo) ? prefijo + nHasta : nHasta) : "";
+    const s = (k, v) => localStorage.setItem("ech_" + k, v);
+    s("base", base); s("banco", banco); s("chequera", chequera); s("prefijo", prefijo); s("usa", usa ? "1" : "0");
+    const qs = "base=" + encodeURIComponent(base) + "&desde=" + encodeURIComponent(desde)
+      + "&hasta=" + encodeURIComponent(hasta) + "&banco=" + encodeURIComponent(banco)
+      + "&chequera=" + encodeURIComponent(chequera)
+      + (chqDesde ? "&chqDesde=" + encodeURIComponent(chqDesde) + "&chqHasta=" + encodeURIComponent(chqHasta) : "");
+    return { qs };
+  }
+
+  let echPreviewQS = "";   // query string de la última preview (para confirmar la emisión)
+
+  function echSpan(txt, tipo) {
+    const col = tipo === "ok" ? "#16a34a" : tipo === "err" ? "#dc2626" : "#71717a";
+    return '<span style="color:' + col + ';font-weight:600">' + esc(txt) + "</span>";
+  }
+  function echFila(f, estadoHtml) {
+    return "<tr><td>" + f.numeroCheque + "</td><td>" + esc(f.beneficiario) + "</td><td>" + esc(f.cuit)
+      + '</td><td style="text-align:right">' + plata(f.importe) + "</td><td>" + esc(f.fechaPago)
+      + "</td><td>" + estadoHtml + "</td></tr>";
+  }
+
+  async function previewEmision() {
+    const pr = paramsEcheques();
+    if (pr.err) { mostrar($("echMsg"), pr.err, "err"); return; }
+    limpiar($("echMsg")); $("echPanel").innerHTML = "";
+    $("echCargando").classList.remove("hidden");
+    $("btnEchEmitir").disabled = true; $("btnEchGenerar").disabled = true;
+    let r;
+    try {
+      r = await fetch("/api/echeques/emitir-preview?" + pr.qs, { headers: { "Authorization": "Bearer " + token } });
+    } catch (e) {
+      $("echCargando").classList.add("hidden"); $("btnEchEmitir").disabled = false; $("btnEchGenerar").disabled = false;
+      mostrar($("echMsg"), "No se pudo conectar.", "err"); return;
+    }
+    $("echCargando").classList.add("hidden"); $("btnEchEmitir").disabled = false; $("btnEchGenerar").disabled = false;
+    if (r.status === 401) { salir(); return; }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { mostrar($("echMsg"), d.mensaje || "No se pudo preparar la emisión.", "err"); return; }
+    echPreviewQS = pr.qs;
+    renderPreview(d);
+  }
+
+  function renderPreview(d) {
+    const nuevos = d.nuevos || [], ya = d.yaEmitidos || [];
+    if (!nuevos.length && !ya.length) { mostrar($("echMsg"), "No se encontraron cheques para esos filtros.", "info"); return; }
+    const emitibles = nuevos.filter(f => f.emitible);
+    const noEmit = nuevos.filter(f => !f.emitible);
+    let h = '<div style="margin-top:14px">';
+    h += '<div style="font-weight:600;margin-bottom:6px">A emitir: ' + emitibles.length
+      + " · Con problemas: " + noEmit.length + " · Ya emitidos: " + ya.length + "</div>";
+    h += '<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Cheque</th><th>Beneficiario</th><th>CUIT</th>'
+      + '<th style="text-align:right">Importe</th><th>Pago</th><th>Estado</th></tr></thead><tbody>';
+    emitibles.forEach(f => h += echFila(f, echSpan("A emitir", "ok")));
+    noEmit.forEach(f => h += echFila(f, echSpan(f.problema || "No emitible", "err")));
+    ya.forEach(f => h += echFila(f, echSpan("Ya emitido" + (f.estado ? " · " + f.estado : ""), "info")));
+    h += "</tbody></table></div>";
+    h += '<div style="display:flex;gap:8px;margin-top:12px">';
+    if (emitibles.length)
+      h += '<button id="btnEchConfirmar">Confirmar emisión (' + emitibles.length + ")</button>";
+    h += '<button id="btnEchCancelar" class="sec">' + (emitibles.length ? "Cancelar" : "Cerrar") + "</button></div></div>";
+    $("echPanel").innerHTML = h;
+    const bc = $("btnEchConfirmar"); if (bc) bc.addEventListener("click", confirmarEmision);
+    $("btnEchCancelar").addEventListener("click", () => { $("echPanel").innerHTML = ""; });
+  }
+
+  async function confirmarEmision() {
+    if (!echPreviewQS) return;
+    const btn = $("btnEchConfirmar");
+    if (btn) { btn.disabled = true; btn.textContent = "Emitiendo…"; }
+    const cancel = $("btnEchCancelar"); if (cancel) cancel.disabled = true;
+    limpiar($("echMsg"));
+    let r;
+    try {
+      r = await fetch("/api/echeques/emitir?" + echPreviewQS, { method: "POST", headers: { "Authorization": "Bearer " + token } });
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = "Reintentar"; }
+      if (cancel) cancel.disabled = false;
+      mostrar($("echMsg"), "No se pudo conectar.", "err"); return;
+    }
+    if (r.status === 401) { salir(); return; }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (btn) { btn.disabled = false; btn.textContent = "Reintentar"; }
+      if (cancel) cancel.disabled = false;
+      mostrar($("echMsg"), d.mensaje || "No se pudo emitir.", "err"); return;
+    }
+    renderResultados(d);
+  }
+
+  function renderResultados(d) {
+    const res = d.resultados || [], ok = d.emitidos || 0;
+    let h = '<div style="margin-top:14px"><div style="font-weight:600;margin-bottom:6px">Emitidos OK: '
+      + ok + " de " + res.length + "</div>";
+    if (res.length) {
+      h += '<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Cheque</th><th>Resultado</th></tr></thead><tbody>';
+      res.forEach(x => h += "<tr><td>" + x.numeroCheque + "</td><td>"
+        + (x.ok ? echSpan((x.estado || "Emitido") + (x.idOperacion ? " · op " + x.idOperacion : ""), "ok")
+                : echSpan(x.error || "Error", "err")) + "</td></tr>");
+      h += "</tbody></table></div>";
+    }
+    h += '<div style="display:flex;gap:8px;margin-top:12px"><button id="btnEchCerrar" class="sec">Cerrar</button></div></div>';
+    $("echPanel").innerHTML = h;
+    $("btnEchCerrar").addEventListener("click", () => { $("echPanel").innerHTML = ""; });
+    if (ok) mostrar($("echMsg"), "Se emitieron " + ok + " echeq" + (ok === 1 ? "" : "s")
+      + ". Quedan en Banca Internet Empresa para firmar.", "ok");
+    else mostrar($("echMsg"), d.mensaje || "No se emitió ningún echeq (ver detalle).", "err");
+  }
+
+  $("btnEchEmitir").addEventListener("click", previewEmision);
+  // Al cambiar de empresa: limpiar el panel y recalcular si esa empresa emite por API.
+  $("echBase").addEventListener("change", () => { $("echPanel").innerHTML = ""; actualizarBotonEmitir(); });
   $("btnVtaVista").addEventListener("click", () => {
     vtaVista = vtaVista === "grafico" ? "listado" : "grafico";
     aplicarVistaVentas();

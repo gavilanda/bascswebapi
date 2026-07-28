@@ -117,7 +117,13 @@ public class ConfigBasesService
             SqlBase = (req.SqlBase ?? "").Trim(),
             SqlUsuario = (req.SqlUsuario ?? "").Trim(),
             SqlClave = (req.SqlClave ?? "").Trim(),
-            SqlEmailPropio = (req.SqlEmailPropio ?? "").Trim()
+            SqlEmailPropio = (req.SqlEmailPropio ?? "").Trim(),
+            BieHabilitado = req.BieHabilitado,
+            BieEntorno = string.IsNullOrWhiteSpace(req.BieEntorno) ? "homologacion" : req.BieEntorno!.Trim(),
+            BieClientId = (req.BieClientId ?? "").Trim(),
+            BieNumeroAdherente = req.BieNumeroAdherente,
+            BieCbuDebito = (req.BieCbuDebito ?? "").Trim(),
+            BiePemPath = (req.BiePemPath ?? "").Trim()
         };
 
         _db.ConfiguracionesBase.Add(f);
@@ -161,6 +167,14 @@ public class ConfigBasesService
         f.SqlEmailPropio = (req.SqlEmailPropio ?? "").Trim();
         // Clave: sólo se actualiza si viene una nueva; vacío = se mantiene la actual.
         if (!string.IsNullOrWhiteSpace(req.SqlClave)) f.SqlClave = req.SqlClave.Trim();
+        // Banco Credicoop (echeqs por API), por empresa. Todos los campos son no-secretos
+        // (la clave privada vive como archivo en disco; acá sólo su ruta).
+        f.BieHabilitado = req.BieHabilitado;
+        f.BieEntorno = string.IsNullOrWhiteSpace(req.BieEntorno) ? "homologacion" : req.BieEntorno!.Trim();
+        f.BieClientId = (req.BieClientId ?? "").Trim();
+        f.BieNumeroAdherente = req.BieNumeroAdherente;
+        f.BieCbuDebito = (req.BieCbuDebito ?? "").Trim();
+        f.BiePemPath = (req.BiePemPath ?? "").Trim();
 
         await _db.SaveChangesAsync(ct);
 
@@ -300,7 +314,14 @@ public record CrearConfigBaseRequest(
     string? SqlBase = null,
     string? SqlUsuario = null,
     string? SqlClave = null,
-    string? SqlEmailPropio = null);
+    string? SqlEmailPropio = null,
+    // Emisión de echeqs por API del Banco Credicoop, por empresa.
+    bool BieHabilitado = false,
+    string? BieEntorno = null,
+    string? BieClientId = null,
+    long BieNumeroAdherente = 0,
+    string? BieCbuDebito = null,
+    string? BiePemPath = null);
 
 // Request de edición de la config de una base (todos los campos editables, incl. conexión).
 public record ActualizarConfigBaseRequest(
@@ -324,4 +345,11 @@ public record ActualizarConfigBaseRequest(
     string? SqlBase = null,
     string? SqlUsuario = null,
     string? SqlClave = null,
-    string? SqlEmailPropio = null);
+    string? SqlEmailPropio = null,
+    // Emisión de echeqs por API del Banco Credicoop, por empresa.
+    bool BieHabilitado = false,
+    string? BieEntorno = null,
+    string? BieClientId = null,
+    long BieNumeroAdherente = 0,
+    string? BieCbuDebito = null,
+    string? BiePemPath = null);

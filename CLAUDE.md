@@ -638,3 +638,65 @@ SQL-directo del portal (pensado para reusar en futuras "consultas").
   prefijo/base por navegador en `localStorage` (como el `.ini` por PC).
 - **Red**: el server del portal tiene que alcanzar el SQL Server de cada base (puerto 1433) — dependencia
   nueva además de los puertos del WebAPI.
+
+## 16.1 E-Cheques — EMISIÓN por API del Banco Credicoop (BIE)
+
+Además de exportar el `.xls` (que se sube a mano), el portal ahora puede **emitir los echeqs
+por la API del Banco Credicoop** (Banca Internet Empresa). Toma las **mismas filas** que
+saca `BasEchequesService` del SQL de BAS y las emite. La firma queda **"Enviada a la firma"**:
+el banco acepta la operación y una persona la completa en Banca Internet Empresa (no por API).
+
+- **Auth = OAuth2 `client_credentials` con `private_key_jwt`** (NO client_secret): se firma un
+  JWT RS256 con la clave privada RSA (`client_assertion`). `BancoBieAuthService` (singleton)
+  arma el JWT (iss=sub=client_id, aud=TokenUrl, jti, iat, nbf, exp+5min), pide el token y lo
+  cachea (~30min, margen 60s). La clave se lee de un `.pem` en disco (`RSA.ImportFromPem`,
+  acepta PKCS#1 y PKCS#8). **Verificado en homologación** con un probe Python (`C:\Agente\echeques\probe_bie.py`).
+- **`BancoBieEcheqService`**: `AsegurarBeneficiariosAsync` (alta idempotente en la agenda,
+  ignora `APIE-8010` = ya existe) + `EmitirAsync` (uno por echeq) + `ConsultarEmisionAsync`.
+  > **Verificado en homologación (probe_alta.py):** el alta valida el CUIT contra la **Coelsa
+  > REAL** (no una de prueba) → los proveedores reales de BARK se dan de alta OK en homologación;
+  > los que dan **`APIE-8011` "no bancarizado"** es porque ese CUIT realmente no está apto para
+  > echeqs (pasaría igual en producción → revisar el CUIT en BAS). Ese cheque se omite y se
+  > reporta por fila; el resto se emite. Sirve además como control de calidad de CUIT.
+- **Body real de emisión** (`POST /api/echeq/v1/ConFirma/emision`) — OJO, el ejemplo del
+  Postman del banco está copiado del de transferencias y es INCORRECTO. El real:
+  cabecera `{numeroAdherente, idOrigen, cbuCuentaDebito, operadoresFirmantes?, echeqs[]}`; cada
+  echeq con campos **planos**: `monto` (string "0.00"), `fechaPago` (**`yyyyMMdd`**),
+  `motivoPago`, `caracter`/`modo` (string "1"), `beneficiarioNombre`/`beneficiarioDocumentoTipo`/
+  `beneficiarioDocumento`, `concepto` (código: VAR/FAC/…), `tipoCheque` (ECHD diferido→fecha
+  futura, ECHC común→hoy), `mails[]`, y `numeroCheque` (**opcional, ≤8 díg = el NUMEROEXT de
+  BAS**; no se pueden mezclar echeqs con y sin número). `operadoresFirmantes` es opcional: sin
+  él, igual queda "Enviada a la firma".
+- **`idOrigen`** = clave de idempotencia (guid único por echeq). El banco rechaza uno repetido
+  el mismo día (`APIE-1003`). Errores del banco vienen como `{error:{codigo:"APIE-xxxx",descripcion}}`.
+- **Anti-doble-emisión**: tabla **`EmisionesEcheq`** (base del portal) con índice único
+  `(BaseNombre, NumeroCheque)`. Sólo se persisten los **aceptados**; los rechazados NO, así se
+  reintentan tras corregir. El preview cruza los cheques de BAS contra esta tabla (nuevos vs ya
+  emitidos). Un cheque no es emitible si le falta CUIT, e-mail, importe>0 o el nº supera 8 díg.
+  > ⚠️ **Verificado en homologación (probe_duplicado.py):** el banco **NO deduplica por
+  > `numeroCheque`** — emitir el mismo número 3 veces (con `idOrigen` distinto) devolvió 3
+  > operaciones OK distintas. La idempotencia del banco es sólo por `idOrigen` y sólo el mismo
+  > día (APIE-1003). Por eso esta tabla es IMPRESCINDIBLE: sin ella, re-emitir un rango duplica
+  > echeqs (plata real en producción). No quitarla "porque el banco lo rechazaría" — no lo hace.
+- **Endpoints** (en `EchequesController`, mismo candado interno+función `echeques`):
+  `GET /emitir-preview`, `POST /emitir`, `GET /emision-estado?base=&idOperacion=`. `GET /bases`
+  devuelve `{ bases, basesApi }` (basesApi = empresas con la emisión por API configurada).
+- **Config MULTI-EMPRESA** (cada empresa —BARK, XARDO— tiene su propio adherente, credenciales y
+  PEM): lo COMPARTIDO (mismo banco) va en `appsettings` sección `BancoBie`: `Scopes`, `TipoCheque`,
+  `Concepto`, y las URLs por entorno (`Homologacion`/`Produccion` → `BaseUrl`+`TokenUrl`). Lo PROPIO
+  de cada empresa va POR BASE en `ConfiguracionBase`, **editable desde el editor de bases de la
+  intranet**: `BieHabilitado`, `BieEntorno` (homologacion|produccion, **independiente por empresa**
+  → se puede homologar una y dejar la otra en prod), `BieClientId`, `BieNumeroAdherente`,
+  `BieCbuDebito`, y **`BiePemPath`** (ruta a la `.pem` de esa empresa). La clave privada vive como
+  **ARCHIVO protegido en el server** (ej. `C:\Agente\PortalData\pem\bark.pem`), **NUNCA en git ni en
+  la DB** — en la base sólo se guarda la ruta. `BancoBieOptions.Credenciales(cb)` arma las
+  credenciales efectivas por base (`BieCredenciales`; null si falta algo o el archivo PEM no existe).
+  `BancoBieAuthService` (singleton) cachea el token por `client_id` y la clave RSA por archivo.
+- **Front** (`secEcheques`): botón **"Emitir por API"** que aparece según la **empresa elegida** en
+  el selector (`basesApi`), junto a "Generar .xls" (que se mantiene). Flujo: preview (nuevos/con
+  problemas/ya emitidos) → "Confirmar emisión (N)" → resultado por cheque (estado o `APIE-xxxx`).
+- **Homologación → producción**: el banco homologa SÓLO los scopes desarrollados
+  (`echeqConFirma` + `beneficiarioEcheq`; `cuentas`/`consultaCbuCvuAlias` de apoyo). Datos de
+  homologación: adherente `1399230`, client_id `20100794889`, CBU débito `1910044555004401995596`.
+- **Red**: el server del portal debe alcanzar `homoapibccl.bancocredicoop.coop` (y el host de
+  producción) por HTTPS 443.

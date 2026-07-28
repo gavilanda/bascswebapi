@@ -108,6 +108,18 @@ builder.Services.AddScoped<BasEchequesService>();            // e-cheques (SQL d
 builder.Services.AddScoped<BasOrdenCompraService>();         // órdenes de compra (grabado a BAS)
 builder.Services.AddScoped<PortalClientes.Auth.AccesoFuncionesService>();  // acceso por función (menú + endpoints)
 
+// ---- Banco Credicoop (BIE): emisión de echeqs por API (multi-empresa) ----
+// Auth OAuth2 client_credentials con JWT firmado (private_key_jwt), por empresa. El
+// singleton cachea el token por client_id. Las URLs son absolutas (el host depende del
+// entorno de cada empresa), así que el cliente NO fija BaseAddress. Lo compartido
+// (scopes, URLs por entorno) va en la sección BancoBie; lo propio de cada empresa, por base.
+builder.Services.Configure<BancoBieOptions>(
+    builder.Configuration.GetSection(BancoBieOptions.Seccion));
+builder.Services.AddHttpClient("bancobie", c => c.Timeout = TimeSpan.FromSeconds(30))
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(10) });
+builder.Services.AddSingleton<BancoBieAuthService>();        // singleton: cachea token por client_id
+builder.Services.AddScoped<BancoBieEcheqService>();
+
 // ---- Destinos BAS (BARK, PRUEBAB) para ingresos ----
 // Timeout amplio para la carga del padrón (la carga es secuencial y en segundo
 // plano; una base lenta puede tardar). La consulta EN VIVO se topea aparte,
@@ -271,6 +283,14 @@ using (var scope = app.Services.CreateScope())
     AgregarColumnaSiFalta("ConfiguracionesBase", "SqlUsuario", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "SqlClave", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "SqlEmailPropio", "TEXT NOT NULL DEFAULT ''");
+    // Emisión de echeqs por API del Banco Credicoop, POR EMPRESA (client_id + adherente +
+    // CBU + entorno + ruta a la PEM). La clave privada NO va a la base: sólo su ruta.
+    AgregarColumnaSiFalta("ConfiguracionesBase", "BieHabilitado", "INTEGER NOT NULL DEFAULT 0");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "BieEntorno", "TEXT NOT NULL DEFAULT 'homologacion'");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "BieClientId", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "BieNumeroAdherente", "INTEGER NOT NULL DEFAULT 0");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "BieCbuDebito", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "BiePemPath", "TEXT NOT NULL DEFAULT ''");
     // IncluirEnPortal: al CREAR la columna por primera vez, backfill de las bases que
     // HOY forman la cuenta corriente del portal (BARK + PRUEBAB), para preservar el
     // comportamiento existente. De ahí en más lo controla el admin (checkbox por base);
@@ -361,6 +381,28 @@ using (var scope = app.Services.CreateScope())
                 REFERENCES ""OrdenesCompra"" (""Id"") ON DELETE CASCADE
         );");
     db.Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_OrdenCompraLineas_OrdenCompraId"" ON ""OrdenCompraLineas"" (""OrdenCompraId"");");
+
+    // ---- Echeqs emitidos por API (idempotencia anti-doble-emisión) ----
+    // Sólo guarda los que el banco aceptó. El índice único (BaseNombre, NumeroCheque)
+    // evita emitir dos veces el mismo cheque. Idempotente (EnsureCreated no la agrega
+    // a una base ya existente).
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS ""EmisionesEcheq"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_EmisionesEcheq"" PRIMARY KEY AUTOINCREMENT,
+            ""BaseNombre"" TEXT NOT NULL DEFAULT '',
+            ""NumeroCheque"" INTEGER NOT NULL DEFAULT 0,
+            ""Cuit"" TEXT NOT NULL DEFAULT '',
+            ""Beneficiario"" TEXT NOT NULL DEFAULT '',
+            ""Monto"" TEXT NOT NULL DEFAULT '0',
+            ""FechaPago"" TEXT NOT NULL DEFAULT '',
+            ""IdOrigen"" TEXT NOT NULL DEFAULT '',
+            ""IdOperacion"" INTEGER NULL,
+            ""IdCheque"" TEXT NULL,
+            ""Estado"" TEXT NOT NULL DEFAULT '',
+            ""EmitidoPor"" TEXT NOT NULL DEFAULT '',
+            ""EmitidoEn"" TEXT NOT NULL
+        );");
+    db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_EmisionesEcheq_Base_Numero"" ON ""EmisionesEcheq"" (""BaseNombre"", ""NumeroCheque"");");
 
     // ---- Columnas nuevas de Usuarios (agregadas después de la creación original) ----
     // AccedePortalClientes: habilita a un usuario interno a usar el portal de
