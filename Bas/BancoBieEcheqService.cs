@@ -170,7 +170,7 @@ public class BancoBieEcheqService
     private async Task LeerGeneradosAsync(
         BieCredenciales cred, DateOnly desde, DateOnly hasta, HashSet<long> set, CancellationToken ct)
     {
-        const int limite = 100;
+        const int limite = 20;   // el banco rechaza limites altos (APIE-3006); 20 verificado OK
         for (int pagina = 1; pagina <= 500; pagina++)   // tope duro por las dudas
         {
             var filtro = new Dictionary<string, object?>
@@ -229,7 +229,7 @@ public class BancoBieEcheqService
         BieCredenciales cred, DateOnly desde, DateOnly hasta,
         List<EcheqGenerado> acc, HashSet<long> vistos, CancellationToken ct)
     {
-        const int limite = 100;
+        const int limite = 20;   // el banco rechaza limites altos (APIE-3006); 20 verificado OK
         for (int pagina = 1; pagina <= 500; pagina++)
         {
             var filtro = new Dictionary<string, object?>
