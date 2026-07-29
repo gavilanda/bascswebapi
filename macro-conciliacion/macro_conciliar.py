@@ -470,8 +470,17 @@ def _cartel_final(exito, msg=None):
         texto, icono = ("No se pudo completar la conciliación.\n"
                         "Revisá el detalle en conciliar.log."), 0x10                   # MB_ICONERROR
     try:
-        # MB_TOPMOST (0x40000) + MB_SETFOREGROUND (0x10000) -> queda al frente, delante de BAS.
-        ctypes.windll.user32.MessageBoxW(0, texto, "Conciliación BAS", icono | 0x40000 | 0x10000)
+        # Desbloquear el foreground de Windows: si abortamos temprano, nuestro proceso no tiene
+        # el foco y el MessageBox no saldría al frente (titila en la barra). Un toque de ALT
+        # (down+up) habilita que la ventana siguiente pueda tomar el primer plano.
+        u = ctypes.windll.user32
+        u.keybd_event(0x12, 0, 0, 0)   # ALT down
+        u.keybd_event(0x12, 0, 2, 0)   # ALT up  (KEYEVENTF_KEYUP)
+    except Exception:
+        pass
+    try:
+        # MB_TOPMOST (0x40000) + MB_SETFOREGROUND (0x10000) + MB_SYSTEMMODAL (0x1000).
+        ctypes.windll.user32.MessageBoxW(0, texto, "Conciliación BAS", icono | 0x40000 | 0x10000 | 0x1000)
     except Exception:
         pass
 
@@ -484,6 +493,10 @@ def _volver_a(hwnd):
     import ctypes
     try:
         u = ctypes.windll.user32
+        # Desbloquear el foreground (toque de ALT) para poder traer el portal al frente aunque
+        # nuestro proceso no tenga el foco (caso aborto temprano).
+        u.keybd_event(0x12, 0, 0, 0)   # ALT down
+        u.keybd_event(0x12, 0, 2, 0)   # ALT up
         if u.IsIconic(hwnd):           # SOLO si está minimizada la restauramos
             u.ShowWindow(hwnd, 9)      # SW_RESTORE  (no tocar si está maximizada/normal)
         u.SetForegroundWindow(hwnd)
