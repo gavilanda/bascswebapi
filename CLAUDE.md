@@ -815,6 +815,12 @@ manejar el escritorio donde está BAS, así que **no puede lanzar la macro direc
 sesión del usuario, la que ve BAS):
 - **`conciliar_bas.bat`**: lo que Windows ejecuta al abrir el protocolo (recibe la URL como `%1`, corre
   `python macro_conciliar.py %1`; la macro extrae la empresa de la URL). Consola visible + `pause` (log).
+  ⚠️ **Auto-elevación (UAC)**: BAS corre **elevado** (admin) y por **UIPI** un proceso no-elevado no
+  puede automatizarlo (UIA da timeout: "No encontré la ventana de BAS (uia)"). El navegador lanza el
+  `.bat` **sin elevar**, así que el `.bat` se **re-lanza a sí mismo elevado** (`Start-Process -Verb RunAs`)
+  → UAC pregunta 1 vez por corrida. (Alternativa sin prompt: una **tarea programada** con "máximos
+  privilegios" que corra `python macro_conciliar.py` —sin arg, toma el `.info` más reciente— disparada
+  con `schtasks /run`; requiere crearla una vez como admin.)
 - **`registrar_protocolo.reg`**: registra `HKCU\Software\Classes\conciliarbas` → el `.bat` (HKCU = **no
   necesita admin**). **Se corre una vez por PC** donde se concilie. Si se mueve la carpeta, re-correrlo.
 - **Front**: el botón **"Generar e importar a BAS"** genera TXT+`.info` y, tras el aviso *"Tené BAScs
