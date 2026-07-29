@@ -1,0 +1,16 @@
+Windows Registry Editor Version 5.00
+
+; Registra el protocolo conciliarbas:// para el USUARIO ACTUAL (no necesita admin).
+; Cuando el navegador abre un link conciliarbas://EMPRESA, Windows ejecuta el lanzador
+; conciliar_bas.bat pasandole la URL como %1. Se corre una sola vez por PC (doble clic).
+
+[HKEY_CURRENT_USER\Software\Classes\conciliarbas]
+@="URL:Conciliar BAS"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\conciliarbas\shell]
+
+[HKEY_CURRENT_USER\Software\Classes\conciliarbas\shell\open]
+
+[HKEY_CURRENT_USER\Software\Classes\conciliarbas\shell\open\command]
+@="\"C:\\Agente\\webapi\\macro-conciliacion\\conciliar_bas.bat\" \"%1\""
