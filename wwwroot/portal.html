@@ -1839,6 +1839,7 @@
   }
 
   // Genera y descarga el TXT posicional (fetch con auth -> blob -> anchor).
+  // Genera el TXT y lo GUARDA en la carpeta del servidor (no descarga → no pregunta dónde).
   async function generarTxtConc() {
     if (!concQS) return;
     limpiar($("concModalMsg"));
@@ -1847,27 +1848,12 @@
     try { r = await fetch("/api/conciliacion/txt?" + concQS, { headers: { "Authorization": "Bearer " + token } }); }
     catch (e) { mostrar($("concModalMsg"), "No se pudo conectar.", "err"); btn.disabled = false; return; }
     if (r.status === 401) { salir(); return; }
-    const tipo = r.headers.get("content-type") || "";
-    if (!r.ok) {
-      const e = tipo.includes("json") ? await r.json().catch(() => ({})) : {};
-      mostrar($("concModalMsg"), e.mensaje || "No se pudo generar el TXT.", "err"); btn.disabled = false; return;
-    }
-    if (tipo.includes("json")) { await r.json().catch(() => ({})); mostrar($("concModalMsg"), "No hay movimientos para exportar.", "info"); btn.disabled = false; return; }
-    const blob = await r.blob();
-    const cant = r.headers.get("X-Conciliacion-Cantidad") || "";
-    const ruta = r.headers.get("X-Conciliacion-Ruta") || "";
-    const errG = r.headers.get("X-Conciliacion-ErrGuardar") || "";
-    const nombre = "CONC_" + (new URLSearchParams(concQS).get("base") || "") + ".txt";   // nombre fijo por empresa
-    const u = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = u; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(u);
+    const d = await r.json().catch(() => ({}));
     btn.disabled = false;
-    let msg = "TXT generado" + (cant ? " (" + cant + " movimiento" + (cant === "1" ? "" : "s") + ")" : "") + ".";
-    if (ruta) msg += " Guardado en " + ruta + " (y descargado).";
-    else if (errG) msg += " Se descargó, pero NO se pudo guardar en la carpeta: " + errG;
-    else msg += " Se descargó " + nombre + ".";
-    mostrar($("concModalMsg"), msg, ruta || !errG ? "ok" : "err");
+    if (!r.ok) { mostrar($("concModalMsg"), d.mensaje || "No se pudo generar el TXT.", "err"); return; }
+    if (!d.cantidad) { mostrar($("concModalMsg"), "No hay movimientos para exportar.", "info"); return; }
+    mostrar($("concModalMsg"), "TXT generado (" + d.cantidad + " movimiento" + (d.cantidad === 1 ? "" : "s")
+      + "). Guardado en " + (d.ruta || "la carpeta de conciliación") + ".", "ok");
   }
 
   function cerrarModalConc() { $("concOv").classList.add("hidden"); $("concModalBody").innerHTML = ""; }

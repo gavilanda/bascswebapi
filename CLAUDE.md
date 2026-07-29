@@ -768,11 +768,12 @@ configurada. Función `conciliacion`, audiencia **interno**, se registra en "Pro
   - ⚠️ Supuestos a validar con BAS contra un archivo real: padding del nº operación y encoding Latin1.
 - **`ConciliacionController`** (interno + función `conciliacion`): `GET /bases` (empresas con API),
   `GET /cuentas?base=`, `GET /movimientos?base=&cuenta=&desde=&hasta=` (para el modal),
-  `GET /txt?base=&cuenta=&desde=&hasta=` (baja el TXT; JSON `{cantidad:0}` si no hay movimientos).
-  El TXT tiene **nombre FIJO por empresa `CONC_<EMPRESA>.txt`** (ej. `CONC_BARK.txt`; se sobrescribe)
-  para que el macro tome siempre el mismo archivo por empresa. El `/txt` **además guarda una copia**
-  en `BancoBie:CarpetaConciliacion` (default `C:\conciliacion`, en la máquina del servicio; se **crea
-  si no existe**) para que el macro que lo importa a BAS lo encuentre siempre ahí. Best-effort: si no puede escribir, igual descarga (headers `X-Conciliacion-Ruta`
+  `GET /txt?base=&cuenta=&desde=&hasta=` → **GUARDA** el TXT en la carpeta del servidor y devuelve
+  JSON `{cantidad, ruta}` (`{cantidad:0}` si no hay movimientos). **NO descarga** por el navegador
+  (así no pregunta dónde guardar). El TXT tiene **nombre FIJO por empresa `CONC_<EMPRESA>.txt`**
+  (ej. `CONC_BARK.txt`; se sobrescribe). Se guarda en `BancoBie:CarpetaConciliacion` (default
+  `C:\conciliacion`, en la máquina del servicio; se **crea si no existe**) para que el macro que lo
+  importa a BAS lo encuentre siempre ahí. Best-effort: si no puede escribir, igual descarga (headers `X-Conciliacion-Ruta`
   / `X-Conciliacion-ErrGuardar`). La importación en BAS es **manual** (pantalla; BAS no tiene API de
   conciliación — verificado en su swagger), por eso el camino de automatización es un macro de UI
   (ej. Pulover's Macro Creator) que toma el archivo de esa carpeta.

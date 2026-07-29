@@ -120,33 +120,21 @@ public class ConciliacionController : ControllerBase
             var movimientos = await _cuentas.MovimientosAsync(creds, cta, d, h, ct);
             if (movimientos.Count == 0) return Ok(new { cantidad = 0 });   // sin movimientos: el front avisa
             var bytes = BancoBieCuentasService.ArmarTxt(movimientos);
-            // Nombre FIJO por empresa: el macro que importa a BAS siempre toma el mismo archivo
-            // por empresa (CONC_<EMPRESA>.txt). Se sobrescribe en cada exportación.
+            // Nombre FIJO por empresa (CONC_<EMPRESA>.txt): el macro toma siempre el mismo archivo.
             var empresa = new string(b.Where(ch => !Path.GetInvalidFileNameChars().Contains(ch)).ToArray());
             var nombre = $"CONC_{empresa}.txt";
-            Response.Headers["X-Conciliacion-Cantidad"] = movimientos.Count.ToString();
 
-            // Copia en la carpeta fija del servidor (para el macro que la importa a BAS). Si la
-            // carpeta no existe, se crea. Best-effort: si falla, igual se descarga.
+            // Se GUARDA directo en la carpeta del servidor (pisando el anterior); NO se descarga
+            // (así el navegador no pregunta dónde). La carpeta se crea si no existe.
             var carpeta = (_bieOpt.CarpetaConciliacion ?? "").Trim();
-            if (carpeta.Length > 0)
-            {
-                try
-                {
-                    Directory.CreateDirectory(carpeta);
-                    var ruta = Path.Combine(carpeta, nombre);
-                    await System.IO.File.WriteAllBytesAsync(ruta, bytes, ct);
-                    Response.Headers["X-Conciliacion-Ruta"] = ruta;
-                }
-                catch (Exception ex)
-                {
-                    Response.Headers["X-Conciliacion-ErrGuardar"] =
-                        ex.Message.Replace("\r", " ").Replace("\n", " ");
-                }
-            }
-            return File(bytes, "text/plain", nombre);
+            if (carpeta.Length == 0)
+                return StatusCode(409, new { mensaje = "No hay carpeta de conciliación configurada (BancoBie:CarpetaConciliacion)." });
+            Directory.CreateDirectory(carpeta);
+            var rutaArchivo = Path.Combine(carpeta, nombre);
+            await System.IO.File.WriteAllBytesAsync(rutaArchivo, bytes, ct);
+            return Ok(new { cantidad = movimientos.Count, ruta = rutaArchivo });
         }
         catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
-        catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar el TXT: " + ex.Message }); }
+        catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar/guardar el TXT: " + ex.Message }); }
     }
 }
