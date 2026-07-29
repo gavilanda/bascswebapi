@@ -402,7 +402,7 @@
           .ech-mfoot { display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
         </style>
         <div id="echOv" class="ech-ov hidden">
-          <div class="ech-modal">
+          <div class="ech-modal" style="max-width:1120px">
             <div class="ech-mhead">
               <h3 id="echModalTit">Cheques a emitir</h3>
               <button id="echModalX" class="sec" title="Cerrar">✕</button>
@@ -1578,8 +1578,8 @@
     } else {
       const cel = 'style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"';
       let h = '<table style="table-layout:fixed;width:100%">'
-        + '<colgroup><col style="width:4%"><col style="width:8%"><col style="width:7%"><col style="width:37%">'
-        + '<col style="width:13%"><col style="width:12%"><col style="width:9%"><col style="width:10%"></colgroup>'
+        + '<colgroup><col style="width:4%"><col style="width:12%"><col style="width:8%"><col style="width:29%">'
+        + '<col style="width:13%"><col style="width:12%"><col style="width:10%"><col style="width:12%"></colgroup>'
         + '<thead><tr><th></th><th>Cheque</th><th>Cód. prov.</th><th>Beneficiario</th><th>CUIT</th>'
         + '<th style="text-align:right">Importe</th><th>Pago</th><th>API</th></tr></thead><tbody>';
       cheques.forEach(c => {
