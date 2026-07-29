@@ -461,7 +461,8 @@ def _volver_a(hwnd):
     import ctypes
     try:
         u = ctypes.windll.user32
-        u.ShowWindow(hwnd, 9)          # SW_RESTORE (por si quedó minimizada)
+        if u.IsIconic(hwnd):           # SOLO si está minimizada la restauramos
+            u.ShowWindow(hwnd, 9)      # SW_RESTORE  (no tocar si está maximizada/normal)
         u.SetForegroundWindow(hwnd)
     except Exception:
         pass
