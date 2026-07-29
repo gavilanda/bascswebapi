@@ -76,6 +76,7 @@ if INFO is None:
     sys.exit(1)
 _info = _leer_info(INFO)
 EMPRESA = _info.get("empresa", "")
+TITULO_BAS = _info.get("tituloBas", "")         # marca que DEBE estar en el título de BAS (seguridad)
 CUENTA_BANCO = _info.get("cuenta", "")          # Nº de cuenta bancaria (del .info)
 # Código interno de BAS: primero lo que ya trae el portal en el .info; si no, la tabla local.
 CUENTA = _info.get("cuentaBas", "") or CUENTAS_BAS.get(CUENTA_BANCO, "")
@@ -233,6 +234,25 @@ def main():
         paso("BAS traído al frente.")
     except Exception as e:
         print("No pude activar la ventana de BAS. ¿Está abierto? ¿Admin?  Detalle:", e); return
+
+    # 0.1) SEGURIDAD (crítico): BAS permite cambiar de empresa (BARK/XARDO). Si el operador quedó
+    #      en OTRA empresa/entorno, importaríamos en la equivocada. La marca `tituloBas` (config
+    #      por empresa en el portal, ej. "bark-Bark") DEBE aparecer en el título de la ventana de
+    #      BAS. Si no está configurada o no coincide -> ABORTAMOS sin tocar nada.
+    titulo_bas = ""
+    try: titulo_bas = winframe.window_text() or ""
+    except Exception: pass
+    paso("Título de BAS: '%s'  (marca esperada: '%s')" % (titulo_bas, TITULO_BAS))
+    if not TITULO_BAS:
+        return ("No está configurada la marca de título de BAS para la empresa %s.\n\n"
+                "Cargala en el portal (Configuración de bases -> 'Marca en título de BAS')\n"
+                "y reintentá. NO se importó nada." % (EMPRESA or "?"))
+    if TITULO_BAS.upper() not in titulo_bas.upper():
+        return ("BAS NO está en la empresa/entorno del export.\n\n"
+                "Marca esperada:  %s\n"
+                "BAS activo:\n%s\n\n"
+                "Cambiá de empresa en BAS y reintentá.\nNO se importó nada."
+                % (TITULO_BAS, titulo_bas or "(desconocido)"))
 
     # 1) Asegurar la pantalla "Conciliación bancaria". Si no está abierta, la abrimos desde
     #    el menú (Procesos > Conciliación Bancaria > Ingreso).
@@ -437,12 +457,15 @@ def main():
     return True
 
 
-def _cartel_final(exito):
+def _cartel_final(exito, msg=None):
     """Cartel modal al terminar. TOPMOST -> sale DELANTE de BAS (la macro corre elevada, igual
-    que BAS). Ok si terminó bien; error apuntando al log si algo falló."""
+    que BAS). Ok si terminó bien; si `msg` viene (aborto/errores conocidos) muestra ese texto;
+    si no, mensaje genérico apuntando al log."""
     import ctypes
     if exito:
         texto, icono = "Conciliación importada en BAS correctamente.", 0x40           # MB_ICONINFORMATION
+    elif msg:
+        texto, icono = msg, 0x30                                                       # MB_ICONWARNING
     else:
         texto, icono = ("No se pudo completar la conciliación.\n"
                         "Revisá el detalle en conciliar.log."), 0x10                   # MB_ICONERROR
@@ -476,10 +499,15 @@ if __name__ == "__main__":
         _hwnd_portal = ctypes.windll.user32.GetForegroundWindow()
     except Exception:
         _hwnd_portal = 0
-    exito = False
+    resultado = None
     try:
-        exito = bool(main())
+        resultado = main()             # True = OK ; str = aborto con mensaje ; None = error genérico
     except Exception:
         import traceback; traceback.print_exc()
-    _cartel_final(exito)
-    _volver_a(_hwnd_portal)            # volver al portal
+    if resultado is True:
+        _cartel_final(True)
+    elif isinstance(resultado, str):
+        _cartel_final(False, resultado)
+    else:
+        _cartel_final(False)
+    _volver_a(_hwnd_portal)            # volver al portal (siempre, también tras abortar)

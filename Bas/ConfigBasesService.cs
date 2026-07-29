@@ -125,6 +125,7 @@ public class ConfigBasesService
             BieCbuDebito = (req.BieCbuDebito ?? "").Trim(),
             BiePemPath = (req.BiePemPath ?? "").Trim(),
             CuentasBas = (req.CuentasBas ?? "").Trim(),
+            TituloBas = (req.TituloBas ?? "").Trim(),
             EchApiDesde = (req.EchApiDesde ?? "").Trim()
         };
 
@@ -178,6 +179,7 @@ public class ConfigBasesService
         f.BieCbuDebito = (req.BieCbuDebito ?? "").Trim();
         f.BiePemPath = (req.BiePemPath ?? "").Trim();
         f.CuentasBas = (req.CuentasBas ?? "").Trim();
+        f.TituloBas = (req.TituloBas ?? "").Trim();
         f.EchApiDesde = (req.EchApiDesde ?? "").Trim();
 
         await _db.SaveChangesAsync(ct);
@@ -328,6 +330,8 @@ public record CrearConfigBaseRequest(
     string? BiePemPath = null,
     // Mapa Nº cuenta banco -> código de cuenta en BAS (conciliación), una línea por cuenta.
     string? CuentasBas = null,
+    // Marca que debe figurar en el título de BAS para confirmar la empresa antes de importar.
+    string? TituloBas = null,
     // Fecha de corte de la emisión por API (yyyy-MM-dd), por empresa.
     string? EchApiDesde = null);
 
@@ -363,5 +367,7 @@ public record ActualizarConfigBaseRequest(
     string? BiePemPath = null,
     // Mapa Nº cuenta banco -> código de cuenta en BAS (conciliación), una línea por cuenta.
     string? CuentasBas = null,
+    // Marca que debe figurar en el título de BAS para confirmar la empresa antes de importar.
+    string? TituloBas = null,
     // Fecha de corte de la emisión por API (yyyy-MM-dd), por empresa.
     string? EchApiDesde = null);

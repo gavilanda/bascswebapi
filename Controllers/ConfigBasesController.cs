@@ -60,6 +60,7 @@ public class ConfigBasesController : ControllerBase
             bieCbuDebito = f.BieCbuDebito,
             biePemPath = f.BiePemPath,
             cuentasBas = f.CuentasBas,
+            tituloBas = f.TituloBas,
             echApiDesde = f.EchApiDesde,
             ingresos = conteos.TryGetValue(f.Nombre, out var n) ? n : 0,
             conectada = _svc.Memoria(f.Nombre) != null    // está viva en memoria

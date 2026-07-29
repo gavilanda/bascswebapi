@@ -143,6 +143,7 @@ public class ConciliacionController : ControllerBase
                 $"empresa={b}",
                 $"cuenta={cta}",
                 $"cuentaBas={cuentaBas}",
+                $"tituloBas={cb.TituloBas?.Trim() ?? ""}",   // marca que la macro exige en el título de BAS
                 $"desde={d:dd/MM/yyyy}",
                 $"hasta={h:dd/MM/yyyy}",
                 $"cantidad={movimientos.Count}",

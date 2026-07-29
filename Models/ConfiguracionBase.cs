@@ -103,4 +103,12 @@ public class ConfiguracionBase
     // multilínea, una línea por cuenta:  <nroCuentaBanco>=<codigoEnBas>  (ej. 00440199559=011).
     // El export de conciliación lo vuelca al .info (clave cuentaBas) para el macro de BAS.
     public string CuentasBas { get; set; } = "";
+
+    // RED DE SEGURIDAD para la conciliación: texto que DEBE aparecer en el título de la ventana
+    // de BAS para confirmar que está en ESTA empresa/entorno antes de importar (BAS permite
+    // cambiar de empresa; si el operador quedó en otra, importaríamos en la equivocada). El
+    // título de BAS es del tipo "BASCS XE ... (bark-Bark/SA - 1:Bark S.A. ...)"; acá va la marca
+    // inequívoca, ej. "bark-Bark" (prod) o "bark-Test" (testeo). Se vuelca al .info (tituloBas);
+    // si no coincide con el título real, la macro ABORTA sin importar nada.
+    public string TituloBas { get; set; } = "";
 }

@@ -617,8 +617,11 @@
               <div style="flex:0 0 420px"><label>Ruta de la clave privada (.pem)</label><input id="cfgBiePem" type="text" placeholder="C:\Agente\PortalData\pem\bark.pem" /></div>
             </div>
             <div class="row compacta-form">
-              <div style="flex:1 1 100%"><label>Cuentas para conciliación (Nº banco = código BAS, una por línea)</label>
+              <div style="flex:0 0 300px"><label>Cuentas conciliación (Nº banco = cód. BAS, 1 x línea)</label>
                 <textarea id="cfgCuentasBas" rows="2" style="width:100%; font-family:monospace" placeholder="00440199559=011"></textarea>
+              </div>
+              <div style="flex:0 0 220px"><label>Marca en título de BAS (seguridad)</label>
+                <input id="cfgTituloBas" type="text" style="width:100%; font-family:monospace" placeholder="bark-Bark" title="Texto que debe figurar en el título de BAS para importar. Si no coincide, la macro aborta." />
               </div>
             </div>
 
@@ -2814,6 +2817,7 @@
     $("cfgBieCorte").value = "";
     $("cfgBiePem").value = "";
     $("cfgCuentasBas").value = "";
+    $("cfgTituloBas").value = "";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => $("cfgNombre").focus(), 0);
@@ -2856,6 +2860,7 @@
     $("cfgBieCorte").value = b.echApiDesde || "";
     $("cfgBiePem").value = b.biePemPath || "";
     $("cfgCuentasBas").value = b.cuentasBas || "";
+    $("cfgTituloBas").value = b.tituloBas || "";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => $("cfgDescripcion").focus(), 0);
@@ -2970,6 +2975,7 @@
       bieCbuDebito: $("cfgBieCbu").value.trim(),
       biePemPath: $("cfgBiePem").value.trim(),
       cuentasBas: $("cfgCuentasBas").value.trim(),
+      tituloBas: $("cfgTituloBas").value.trim(),
       echApiDesde: $("cfgBieCorte").value
     };
     let r;

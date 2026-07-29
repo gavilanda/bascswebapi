@@ -790,6 +790,15 @@ cuenta `NºCuentaBanco=códigoBAS`. Editable en la **intranet** (editor de bases
 "Cuentas para conciliación"). `ConciliacionController.MapearCuentaBas` resuelve el código de la cuenta
 consultada y lo escribe en el `.info` como `cuentaBas`.
 
+**Red de seguridad `ConfiguracionBase.TituloBas`** (crítica): BAS permite cambiar de empresa
+(BARK/XARDO) en la misma sesión; si el operador quedó en otra, la macro importaría en la empresa
+equivocada. Por eso, por empresa se configura una **marca que debe figurar en el título de la
+ventana de BAS** (el título es tipo `BASCS XE ... (bark-Bark/SA - 1:Bark S.A. ...)`; la marca es
+p.ej. `bark-Bark` en prod o `bark-Test` en testeo). Editable en la intranet (card BIE, "Marca en
+título de BAS"), se vuelca al `.info` como `tituloBas`. La macro, **antes de tocar nada**, exige que
+esa marca esté en el título; si **falta la config** o **no coincide**, **ABORTA** con un cartel de
+aviso (sin importar nada) y vuelve al portal.
+
 ### 17.3 Importación en BAS = macro de UI (BAS NO tiene API de conciliación)
 Verificado en el swagger de BAS: no hay endpoint de conciliación, la pantalla es manual. La importación
 la hace un **macro de automatización de UI** con **pywinauto** (BAS es una app **Gupta Team Developer**).
