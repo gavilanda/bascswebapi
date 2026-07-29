@@ -132,7 +132,20 @@ public class ConciliacionController : ControllerBase
             Directory.CreateDirectory(carpeta);
             var rutaArchivo = Path.Combine(carpeta, nombre);
             await System.IO.File.WriteAllBytesAsync(rutaArchivo, bytes, ct);
-            return Ok(new { cantidad = movimientos.Count, ruta = rutaArchivo });
+
+            // Companion CONC_<EMPRESA>.info: metadatos (key=value) para que el macro de BAS
+            // arme el "período" de la descripción. Sin BOM (el macro lee UTF-8 simple).
+            var rutaInfo = Path.Combine(carpeta, $"CONC_{empresa}.info");
+            var info = string.Join("\r\n", new[]
+            {
+                $"empresa={b}",
+                $"cuenta={cta}",
+                $"desde={d:dd/MM/yyyy}",
+                $"hasta={h:dd/MM/yyyy}",
+                $"cantidad={movimientos.Count}",
+            }) + "\r\n";
+            await System.IO.File.WriteAllTextAsync(rutaInfo, info, new System.Text.UTF8Encoding(false), ct);
+            return Ok(new { cantidad = movimientos.Count, ruta = rutaArchivo, info = rutaInfo });
         }
         catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
         catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar/guardar el TXT: " + ex.Message }); }
