@@ -14,6 +14,11 @@ public class BancoBieOptions
     public string TipoCheque { get; set; } = "ECHD";   // ECHD diferido | ECHC común
     public string Concepto { get; set; } = "VAR";       // código de la tabla de conceptos del banco
 
+    // Carpeta del servidor donde se guarda el TXT de conciliación (además de descargarlo), para
+    // que el macro que lo importa a BAS lo encuentre siempre en el mismo lugar. Es la ruta EN LA
+    // MÁQUINA DEL SERVICIO del portal (misma que BAS). Vacío = no guarda copia, sólo descarga.
+    public string CarpetaConciliacion { get; set; } = @"C:\conciliacion";
+
     // Margen (en días) que se agrega ANTES y DESPUÉS del rango de fechas de la emisión para el
     // chequeo anti-duplicado contra el banco (lista-cheques GENERADOS). La ventana natural es el
     // mismo rango que se usa para emitir (se registra y emite en el día); el margen cubre un

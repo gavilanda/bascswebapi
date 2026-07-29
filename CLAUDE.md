@@ -769,6 +769,14 @@ configurada. Función `conciliacion`, audiencia **interno**, se registra en "Pro
 - **`ConciliacionController`** (interno + función `conciliacion`): `GET /bases` (empresas con API),
   `GET /cuentas?base=`, `GET /movimientos?base=&cuenta=&desde=&hasta=` (para el modal),
   `GET /txt?base=&cuenta=&desde=&hasta=` (baja el TXT; JSON `{cantidad:0}` si no hay movimientos).
+  El TXT tiene **nombre FIJO `CONC.txt`** (se sobrescribe) para que el macro tome siempre el mismo
+  archivo. El `/txt` **además guarda una copia** en `BancoBie:CarpetaConciliacion` (default
+  `C:\conciliacion`, en la máquina del servicio; se **crea si no existe**) para que el macro que lo
+  importa a BAS lo encuentre siempre ahí. ⚠️ Al ser nombre único, si dos empresas exportan sin
+  importar en el medio, la segunda pisa a la primera (el flujo es exportar→importar de a una). Best-effort: si no puede escribir, igual descarga (headers `X-Conciliacion-Ruta`
+  / `X-Conciliacion-ErrGuardar`). La importación en BAS es **manual** (pantalla; BAS no tiene API de
+  conciliación — verificado en su swagger), por eso el camino de automatización es un macro de UI
+  (ej. Pulover's Macro Creator) que toma el archivo de esa carpeta.
 - **Front** (`secConciliacion`): encabezado estilo E-Cheques (empresa + cuenta + fechas + **Preparar**);
   el modal (reusa los estilos `ech-*`) lista los movimientos (scroll pasadas ~20 filas, columnas de
   ancho fijo, débitos en rojo) y tiene el botón **"Generar TXT"**. Recuerda empresa/cuenta por

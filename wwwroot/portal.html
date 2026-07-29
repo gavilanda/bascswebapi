@@ -1855,17 +1855,19 @@
     if (tipo.includes("json")) { await r.json().catch(() => ({})); mostrar($("concModalMsg"), "No hay movimientos para exportar.", "info"); btn.disabled = false; return; }
     const blob = await r.blob();
     const cant = r.headers.get("X-Conciliacion-Cantidad") || "";
-    // Nombre armado desde los filtros de la preparación (evita parsear Content-Disposition).
-    const pq = new URLSearchParams(concQS);
-    const nombre = "CONC_" + (pq.get("cuenta") || "") + "_"
-      + (pq.get("desde") || "").replace(/-/g, "") + "_"
-      + (pq.get("hasta") || "").replace(/-/g, "") + ".txt";
+    const ruta = r.headers.get("X-Conciliacion-Ruta") || "";
+    const errG = r.headers.get("X-Conciliacion-ErrGuardar") || "";
+    const nombre = "CONC.txt";   // nombre fijo (el macro siempre toma el mismo archivo)
     const u = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = u; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(u);
     btn.disabled = false;
-    mostrar($("concModalMsg"), "TXT generado" + (cant ? " (" + cant + " movimiento" + (cant === "1" ? "" : "s") + ")" : "") + ". Se descargó " + nombre + ".", "ok");
+    let msg = "TXT generado" + (cant ? " (" + cant + " movimiento" + (cant === "1" ? "" : "s") + ")" : "") + ".";
+    if (ruta) msg += " Guardado en " + ruta + " (y descargado).";
+    else if (errG) msg += " Se descargó, pero NO se pudo guardar en la carpeta: " + errG;
+    else msg += " Se descargó " + nombre + ".";
+    mostrar($("concModalMsg"), msg, ruta || !errG ? "ok" : "err");
   }
 
   function cerrarModalConc() { $("concOv").classList.add("hidden"); $("concModalBody").innerHTML = ""; }

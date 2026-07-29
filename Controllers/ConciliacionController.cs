@@ -120,8 +120,28 @@ public class ConciliacionController : ControllerBase
             var movimientos = await _cuentas.MovimientosAsync(creds, cta, d, h, ct);
             if (movimientos.Count == 0) return Ok(new { cantidad = 0 });   // sin movimientos: el front avisa
             var bytes = BancoBieCuentasService.ArmarTxt(movimientos);
+            // Nombre FIJO: el macro que importa a BAS siempre toma el mismo archivo. Se sobrescribe.
+            var nombre = "CONC.txt";
             Response.Headers["X-Conciliacion-Cantidad"] = movimientos.Count.ToString();
-            var nombre = $"CONC_{cta}_{d:yyyyMMdd}_{h:yyyyMMdd}.txt";
+
+            // Copia en la carpeta fija del servidor (para el macro que la importa a BAS). Si la
+            // carpeta no existe, se crea. Best-effort: si falla, igual se descarga.
+            var carpeta = (_bieOpt.CarpetaConciliacion ?? "").Trim();
+            if (carpeta.Length > 0)
+            {
+                try
+                {
+                    Directory.CreateDirectory(carpeta);
+                    var ruta = Path.Combine(carpeta, nombre);
+                    await System.IO.File.WriteAllBytesAsync(ruta, bytes, ct);
+                    Response.Headers["X-Conciliacion-Ruta"] = ruta;
+                }
+                catch (Exception ex)
+                {
+                    Response.Headers["X-Conciliacion-ErrGuardar"] =
+                        ex.Message.Replace("\r", " ").Replace("\n", " ");
+                }
+            }
             return File(bytes, "text/plain", nombre);
         }
         catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
