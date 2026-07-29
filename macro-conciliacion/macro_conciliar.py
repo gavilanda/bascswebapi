@@ -453,10 +453,32 @@ def _cartel_final(exito):
         pass
 
 
+def _volver_a(hwnd):
+    """Restaura al frente la ventana `hwnd` (el portal/navegador desde donde se disparó).
+    La macro corre elevada y fue la que cambió el foco, así que puede devolverlo."""
+    if not hwnd:
+        return
+    import ctypes
+    try:
+        u = ctypes.windll.user32
+        u.ShowWindow(hwnd, 9)          # SW_RESTORE (por si quedó minimizada)
+        u.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
+    # Capturamos la ventana en foco AL INICIO (el lanzador es oculto -> sigue siendo el
+    # portal/navegador) para volver ahí al terminar.
+    try:
+        import ctypes
+        _hwnd_portal = ctypes.windll.user32.GetForegroundWindow()
+    except Exception:
+        _hwnd_portal = 0
     exito = False
     try:
         exito = bool(main())
     except Exception:
         import traceback; traceback.print_exc()
     _cartel_final(exito)
+    _volver_a(_hwnd_portal)            # volver al portal
