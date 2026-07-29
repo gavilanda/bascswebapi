@@ -149,7 +149,7 @@ public class EchequesController : ControllerBase
             {
                 if (enBanco.Contains(e.NumeroCheque)) continue;
                 decimal.TryParse(e.Monto, NumberStyles.Any, CultureInfo.InvariantCulture, out var m);
-                var estado = string.IsNullOrWhiteSpace(e.Estado) ? "Enviada a la firma (local)" : $"{e.Estado} (local)";
+                var estado = "Pendiente de firma";   // ya enviado al banco; falta firmarlo en BIE
                 cheques.Add(new BancoBieEcheqService.EcheqGenerado(
                     e.NumeroCheque, e.IdCheque ?? "", estado, "",
                     e.EmitidoEn.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture), e.FechaPago ?? "",
