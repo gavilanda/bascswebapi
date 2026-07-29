@@ -1578,8 +1578,8 @@
     } else {
       const cel = 'style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"';
       let h = '<table style="table-layout:fixed;width:100%">'
-        + '<colgroup><col style="width:4%"><col style="width:10%"><col style="width:6%"><col style="width:33%">'
-        + '<col style="width:13%"><col style="width:12%"><col style="width:10%"><col style="width:12%"></colgroup>'
+        + '<colgroup><col style="width:4%"><col style="width:8%"><col style="width:8%"><col style="width:28%">'
+        + '<col style="width:11%"><col style="width:11%"><col style="width:8%"><col style="width:22%"></colgroup>'
         + '<thead><tr><th></th><th>Cheque</th><th>Cód. prov.</th><th>Beneficiario</th><th>CUIT</th>'
         + '<th style="text-align:right">Importe</th><th>Pago</th><th>API</th></tr></thead><tbody>';
       cheques.forEach(c => {
@@ -1588,7 +1588,7 @@
           + "<td " + cel + ">" + c.numeroCheque + "</td><td " + cel + ">" + esc(c.codProveedor) + "</td>"
           + '<td ' + cel + ' title="' + esc(c.beneficiario) + '">' + esc(c.beneficiario) + "</td><td " + cel + ">" + esc(c.cuit) + "</td>"
           + '<td style="text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + plata(c.importe) + "</td>"
-          + "<td " + cel + ">" + esc(c.fechaPago) + "</td><td " + cel + ">" + tag + "</td></tr>";
+          + "<td " + cel + ">" + esc(c.fechaPago) + '</td><td style="white-space:normal">' + tag + "</td></tr>";
       });
       h += '</tbody></table>';
       $("echModalBody").innerHTML = h;
@@ -1749,7 +1749,7 @@
   // ---- Ver E-Cheques: listado de emitidos (del banco) + estado, con PDF ----
   let echVerDatos = null, echVerMeta = null;
   const ECH_VER_COLS = [
-    { k: "numeroCheque", t: "Número", pct: 8, num: true },
+    { k: "numeroCheque", t: "Número", pct: 8 },
     { k: "estado", t: "Estado", pct: 20 },
     { k: "fechaEmision", t: "Emisión", pct: 8 },
     { k: "fechaPago", t: "Pago", pct: 8 },
