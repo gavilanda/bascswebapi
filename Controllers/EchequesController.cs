@@ -230,7 +230,10 @@ public class EchequesController : ControllerBase
         if (!DateOnly.TryParseExact(r.FechaPago, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fp))
             return "Fecha de pago inválida";
         var hoy = DateOnly.FromDateTime(DateTime.Today);
+        // E-cheque DIFERIDO (ECHD): la fecha de pago debe ser POSTERIOR a hoy. Hoy o anterior
+        // el banco lo rechaza (APIE-1022 "fecha de pago no válida").
         if (fp < hoy) return $"Fecha de pago vencida ({r.FechaPago})";
+        if (fp == hoy) return $"Vence hoy ({r.FechaPago}): el e-cheque diferido requiere fecha futura";
         if (fp > hoy.AddDays(360)) return $"Fecha de pago a más de 360 días ({r.FechaPago})";
         return null;
     }
