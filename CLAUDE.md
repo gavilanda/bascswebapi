@@ -763,7 +763,7 @@ de la cuenta en el rango, **traídos del banco** con su **estado** (ej. `EMITIDO
 - **Front**: modal `echVerOv` con tabla de **columnas fijas** + botón **PDF**. El PDF es **plano**
   (jsPDF 2.5.1 + autotable 3.8.2, **locales** en `wwwroot/lib/`, no CDN — PCs internos), **sin** las
   convenciones del proyecto Horario. Descarga directa `doc.save("ECheques-<cuenta>-<desde>-<hasta>-<empresa>.pdf")`;
-  el usuario decide si lo guarda. (CMC7 se omite en pantalla/PDF por ancho; los campos están en el DTO si se quisiera.)
+  el usuario decide si lo guarda. (CMC7 y chequeId se omiten en pantalla/PDF por ancho; están en el DTO si se quisieran.)
 
 ## 17. Bco/Conciliación (función interna)
 

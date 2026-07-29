@@ -424,7 +424,7 @@
 
         <!-- Modal "Ver E-Cheques": listado de emitidos de la cuenta (del banco) + estado -->
         <div id="echVerOv" class="ech-ov hidden">
-          <div class="ech-modal" style="max-width:1100px">
+          <div class="ech-modal" style="max-width:1320px">
             <div class="ech-mhead">
               <h3 id="echVerTit">E-Cheques emitidos</h3>
               <button id="echVerX" class="sec" title="Cerrar">✕</button>
@@ -1749,16 +1749,15 @@
   // ---- Ver E-Cheques: listado de emitidos (del banco) + estado, con PDF ----
   let echVerDatos = null, echVerMeta = null;
   const ECH_VER_COLS = [
-    { k: "numeroCheque", t: "Número", w: "8%", num: true },
-    { k: "estado", t: "Estado", w: "12%" },
-    { k: "fechaEmision", t: "Emisión", w: "8%" },
-    { k: "fechaPago", t: "Pago", w: "8%" },
-    { k: "monto", t: "Monto", w: "9%", num: true },
-    { k: "beneficiario", t: "Beneficiario", w: "17%" },
-    { k: "cuit", t: "CUIT", w: "9%" },
-    { k: "motivoPago", t: "Motivo", w: "11%" },
-    { k: "caracter", t: "Carácter", w: "8%" },
-    { k: "chequeId", t: "Cheque ID", w: "10%" },
+    { k: "numeroCheque", t: "Número", pct: 8, num: true },
+    { k: "estado", t: "Estado", pct: 13 },
+    { k: "fechaEmision", t: "Emisión", pct: 8 },
+    { k: "fechaPago", t: "Pago", pct: 8 },
+    { k: "monto", t: "Monto", pct: 10, num: true },
+    { k: "beneficiario", t: "Beneficiario", pct: 25 },
+    { k: "cuit", t: "CUIT", pct: 10 },
+    { k: "motivoPago", t: "Motivo", pct: 11 },
+    { k: "caracter", t: "Carácter", pct: 7 },
   ];
   function fmtFechaISO(iso) {   // yyyy-mm-dd -> dd/MM/yyyy
     if (!iso) return "";
@@ -1804,7 +1803,7 @@
       $("echVerPdf").disabled = true;
     } else {
       let h = '<table style="table-layout:fixed;width:100%"><colgroup>';
-      ECH_VER_COLS.forEach(c => h += '<col style="width:' + c.w + '">');
+      ECH_VER_COLS.forEach(c => h += '<col style="width:' + c.pct + '%">');
       h += "</colgroup><thead><tr>";
       ECH_VER_COLS.forEach(c => h += '<th style="' + (c.num ? "text-align:right" : "") + '">' + esc(c.t) + "</th>");
       h += "</tr></thead><tbody>";
@@ -1838,13 +1837,17 @@
       + fmtFechaISO(echVerMeta.desde) + " a " + fmtFechaISO(echVerMeta.hasta)
       + "   |   " + echVerDatos.length + " e-cheques", 40, 56);
     doc.setTextColor(0);
+    // Columnas FIJAS: mismos porcentajes que en pantalla, repartidos sobre el ancho útil.
+    const usable = doc.internal.pageSize.getWidth() - 80;   // márgenes 40 + 40
+    const columnStyles = {};
+    ECH_VER_COLS.forEach((c, i) => { columnStyles[i] = { cellWidth: usable * c.pct / 100, halign: c.num ? "right" : "left" }; });
     doc.autoTable({
       startY: 66,
       head: [ECH_VER_COLS.map(c => c.t)],
       body: echVerDatos.map(e => ECH_VER_COLS.map(c => c.k === "monto" ? plata(e[c.k]) : (e[c.k] == null ? "" : String(e[c.k])))),
       styles: { fontSize: 7, cellPadding: 3, overflow: "linebreak" },
       headStyles: { fillColor: [60, 60, 70], textColor: 255, fontStyle: "bold" },
-      columnStyles: { 0: { halign: "right" }, 4: { halign: "right" } },
+      columnStyles,
       margin: { left: 40, right: 40 }
     });
     const nombre = "ECheques-" + echVerMeta.cuentaCod + "-" + echVerMeta.desde + "-" + echVerMeta.hasta + "-" + echVerMeta.base + ".pdf";
