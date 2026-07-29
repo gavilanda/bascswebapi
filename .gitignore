@@ -30,3 +30,6 @@ appsettings.*.Local.json
 *.log
 .DS_Store
 Thumbs.db
+
+# Log de la macro de conciliación (salida en runtime)
+macro-conciliacion/conciliar.log

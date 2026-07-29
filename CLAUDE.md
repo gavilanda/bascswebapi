@@ -157,7 +157,8 @@ C:\Agente\webapi\
 │   └── intranet.html    Intranet completa
 │
 ├── macro-conciliacion/  Macro de importación a BAS (pywinauto) + protocolo conciliarbas:// (ver §17)
-│                        macro_conciliar.py, conciliar_bas.bat, registrar_protocolo.reg
+│                        macro_conciliar.py, conciliar_oculto.vbs, conciliar_bas.bat,
+│                        registrar_protocolo.reg (conciliar.log = salida, gitignored)
 ├── instaladores/        .ps1 de servicio y tray (Portal-* y BAS-WebAPI-*)
 ├── BASCS/               Manuales del WebAPI propio (Esquema/Respuestas .xlsx + swagger.json).
 │                        2,35 MB. NO es basura, no borrar.
@@ -813,14 +814,14 @@ El servicio del portal corre como **LocalSystem en la sesión 0 (no interactiva)
 manejar el escritorio donde está BAS, así que **no puede lanzar la macro directamente**. Solución: un
 **protocolo de URL propio** `conciliarbas://<EMPRESA>` que dispara **el navegador** (que corre en la
 sesión del usuario, la que ve BAS):
-- **`conciliar_bas.bat`**: lo que Windows ejecuta al abrir el protocolo (recibe la URL como `%1`, corre
-  `python macro_conciliar.py %1`; la macro extrae la empresa de la URL). Consola visible + `pause` (log).
-  ⚠️ **Auto-elevación (UAC)**: BAS corre **elevado** (admin) y por **UIPI** un proceso no-elevado no
-  puede automatizarlo (UIA da timeout: "No encontré la ventana de BAS (uia)"). El navegador lanza el
-  `.bat` **sin elevar**, así que el `.bat` se **re-lanza a sí mismo elevado** (`Start-Process -Verb RunAs`)
-  → UAC pregunta 1 vez por corrida. (Alternativa sin prompt: una **tarea programada** con "máximos
-  privilegios" que corra `python macro_conciliar.py` —sin arg, toma el `.info` más reciente— disparada
-  con `schtasks /run`; requiere crearla una vez como admin.)
+- **`conciliar_oculto.vbs`** → **`conciliar_bas.bat`**: el protocolo invoca el `.vbs` con `wscript`,
+  que corre el `.bat` **sin consola visible** (window style 0). El `.bat` corre `python macro_conciliar.py %1`
+  y manda el log a **`conciliar.log`** (junto al `.bat`) para diagnosticar sin consola.
+  ⚠️ **Elevación**: BAS corre **elevado** (admin) y por **UIPI** un proceso no-elevado no puede
+  automatizarlo (UIA da timeout: "No encontré la ventana de BAS (uia)"). El `.bat` chequea admin con
+  **`fltmc`**: si ya es admin (o UAC deshabilitado) corre directo; si no, se **re-lanza elevado y oculto**
+  (`Start-Process -Verb RunAs -WindowStyle Hidden`) → con UAC "Nunca notificar" no muestra prompt.
+  (Alternativa: **tarea programada** con "máximos privilegios" disparada con `schtasks /run`.)
 - **`registrar_protocolo.reg`**: registra `HKCU\Software\Classes\conciliarbas` → el `.bat` (HKCU = **no
   necesita admin**). **Se corre una vez por PC** donde se concilie. Si se mueve la carpeta, re-correrlo.
 - **Front**: el botón **"Generar e importar a BAS"** genera TXT+`.info` y, tras el aviso *"Tené BAScs
