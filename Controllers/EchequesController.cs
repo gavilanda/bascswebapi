@@ -135,7 +135,29 @@ public class EchequesController : ControllerBase
                 }
                 catch { /* si BAS no responde, el listado igual sale (sin beneficiario) */ }
             }
-            return Ok(new { cantidad = cheques.Count, cheques });
+
+            // Sumar lo EMITIDO por el portal (tabla local) que todavía NO figura en el banco
+            // (operaciones "Enviada a la firma": lista-cheques no las trae hasta firmarlas). Se
+            // marcan con estado "(local)" para distinguirlas de las generadas en el banco.
+            var enBanco = cheques.Select(c => c.NumeroCheque).ToHashSet();
+            var dStart = d.ToDateTime(TimeOnly.MinValue);
+            var hEnd = h.AddDays(1).ToDateTime(TimeOnly.MinValue);
+            var locales = await _db.EmisionesEcheq.AsNoTracking()
+                .Where(e => e.BaseNombre == b && e.EmitidoEn >= dStart && e.EmitidoEn < hEnd)
+                .ToListAsync(ct);
+            foreach (var e in locales)
+            {
+                if (enBanco.Contains(e.NumeroCheque)) continue;
+                decimal.TryParse(e.Monto, NumberStyles.Any, CultureInfo.InvariantCulture, out var m);
+                var estado = string.IsNullOrWhiteSpace(e.Estado) ? "Enviada a la firma (local)" : $"{e.Estado} (local)";
+                cheques.Add(new BancoBieEcheqService.EcheqGenerado(
+                    e.NumeroCheque, e.IdCheque ?? "", estado, "",
+                    e.EmitidoEn.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture), e.FechaPago ?? "",
+                    m, "ARS", "", "", "")
+                { Beneficiario = e.Beneficiario ?? "", Cuit = e.Cuit ?? "" });
+            }
+            var orden = cheques.OrderBy(c => c.NumeroCheque).ToList();
+            return Ok(new { cantidad = orden.Count, cheques = orden });
         }
         catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
         catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo traer el listado del banco: " + ex.Message }); }
