@@ -434,7 +434,29 @@ def main():
             print("  OJO: 'Archivos para conciliar' no cerró tras el &Ok (revisá manualmente).")
     else:
         paso("MODO PRUEBA (IMPORTAR=False): campos llenados, NO se importó. Verificá y poné IMPORTAR=True.")
+    return True
+
+
+def _cartel_final(exito):
+    """Cartel modal al terminar. TOPMOST -> sale DELANTE de BAS (la macro corre elevada, igual
+    que BAS). Ok si terminó bien; error apuntando al log si algo falló."""
+    import ctypes
+    if exito:
+        texto, icono = "Conciliación importada en BAS correctamente.", 0x40           # MB_ICONINFORMATION
+    else:
+        texto, icono = ("No se pudo completar la conciliación.\n"
+                        "Revisá el detalle en conciliar.log."), 0x10                   # MB_ICONERROR
+    try:
+        # MB_TOPMOST (0x40000) + MB_SETFOREGROUND (0x10000) -> queda al frente, delante de BAS.
+        ctypes.windll.user32.MessageBoxW(0, texto, "Conciliación BAS", icono | 0x40000 | 0x10000)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
-    main()
+    exito = False
+    try:
+        exito = bool(main())
+    except Exception:
+        import traceback; traceback.print_exc()
+    _cartel_final(exito)
