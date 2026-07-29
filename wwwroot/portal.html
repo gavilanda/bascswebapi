@@ -1857,7 +1857,7 @@
     const cant = r.headers.get("X-Conciliacion-Cantidad") || "";
     const ruta = r.headers.get("X-Conciliacion-Ruta") || "";
     const errG = r.headers.get("X-Conciliacion-ErrGuardar") || "";
-    const nombre = "CONC.txt";   // nombre fijo (el macro siempre toma el mismo archivo)
+    const nombre = "CONC_" + (new URLSearchParams(concQS).get("base") || "") + ".txt";   // nombre fijo por empresa
     const u = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = u; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();

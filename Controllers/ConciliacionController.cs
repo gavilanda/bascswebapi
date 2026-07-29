@@ -120,8 +120,10 @@ public class ConciliacionController : ControllerBase
             var movimientos = await _cuentas.MovimientosAsync(creds, cta, d, h, ct);
             if (movimientos.Count == 0) return Ok(new { cantidad = 0 });   // sin movimientos: el front avisa
             var bytes = BancoBieCuentasService.ArmarTxt(movimientos);
-            // Nombre FIJO: el macro que importa a BAS siempre toma el mismo archivo. Se sobrescribe.
-            var nombre = "CONC.txt";
+            // Nombre FIJO por empresa: el macro que importa a BAS siempre toma el mismo archivo
+            // por empresa (CONC_<EMPRESA>.txt). Se sobrescribe en cada exportación.
+            var empresa = new string(b.Where(ch => !Path.GetInvalidFileNameChars().Contains(ch)).ToArray());
+            var nombre = $"CONC_{empresa}.txt";
             Response.Headers["X-Conciliacion-Cantidad"] = movimientos.Count.ToString();
 
             // Copia en la carpeta fija del servidor (para el macro que la importa a BAS). Si la
