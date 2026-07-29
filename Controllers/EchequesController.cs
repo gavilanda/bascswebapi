@@ -203,6 +203,13 @@ public class EchequesController : ControllerBase
         if (string.IsNullOrWhiteSpace(r.Mail)) return "Sin e-mail del beneficiario";
         if (r.Importe <= 0) return "Importe en cero";
         if (r.NumEcheq.ToString(CultureInfo.InvariantCulture).Length > 8) return "Nº de cheque > 8 dígitos";
+        // Fecha de pago (vencimiento): el banco exige HOY o futura y dentro de ~360 días
+        // (si no, rechaza al emitir con APIE-1022). La validamos acá para no mandarla.
+        if (!DateOnly.TryParseExact(r.FechaPago, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fp))
+            return "Fecha de pago inválida";
+        var hoy = DateOnly.FromDateTime(DateTime.Today);
+        if (fp < hoy) return $"Fecha de pago vencida ({r.FechaPago})";
+        if (fp > hoy.AddDays(360)) return $"Fecha de pago a más de 360 días ({r.FechaPago})";
         return null;
     }
 
