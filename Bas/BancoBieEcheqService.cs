@@ -37,6 +37,18 @@ public class BancoBieEcheqService
             : (!string.IsNullOrWhiteSpace(ErrorCodigo) ? ErrorCodigo! : "No se pudo emitir.");
     }
 
+    // Un echeq EMITIDO (gestion=GENERADOS) tal como lo lista el banco. Es lo que muestra
+    // "Ver E-Cheques". El banco NO devuelve beneficiario/CUIT del beneficiario (solo emisor):
+    // esos se completan aparte, best-effort, desde BAS (por numeroCheque).
+    public sealed record EcheqGenerado(
+        long NumeroCheque, string ChequeId, string Estado, string Cmc7,
+        string FechaEmision, string FechaPago, decimal Monto, string Moneda,
+        string Caracter, string MotivoPago, string Cuenta)
+    {
+        public string Beneficiario { get; set; } = "";
+        public string Cuit { get; set; } = "";
+    }
+
     // Asegura que cada CUIT esté en la agenda de beneficiarios del adherente. Idempotente:
     // el banco responde APIE-8010 si ya existe (lo tomamos como OK). Devuelve las fallas
     // reales (cuit -> motivo), si las hubiera (ej. APIE-8011 "no bancarizado").
@@ -194,6 +206,96 @@ public class BancoBieEcheqService
             if (n < limite) return;   // última página
         }
     }
+
+    // Lista COMPLETA de echeqs emitidos (para "Ver E-Cheques"): mismos criterios que
+    // NumerosGeneradosAsync (chunk ≤30 días + paginado) pero mapeando TODOS los campos.
+    public async Task<List<EcheqGenerado>> ListarGeneradosAsync(
+        BieCredenciales cred, DateOnly desde, DateOnly hasta, CancellationToken ct = default)
+    {
+        var lista = new List<EcheqGenerado>();
+        var vistos = new HashSet<long>();
+        var ini = desde;
+        while (ini <= hasta)
+        {
+            var fin = ini.AddDays(29);
+            if (fin > hasta) fin = hasta;
+            await LeerGeneradosDetalleAsync(cred, ini, fin, lista, vistos, ct);
+            ini = fin.AddDays(1);
+        }
+        return lista.OrderBy(e => e.NumeroCheque).ToList();
+    }
+
+    private async Task LeerGeneradosDetalleAsync(
+        BieCredenciales cred, DateOnly desde, DateOnly hasta,
+        List<EcheqGenerado> acc, HashSet<long> vistos, CancellationToken ct)
+    {
+        const int limite = 100;
+        for (int pagina = 1; pagina <= 500; pagina++)
+        {
+            var filtro = new Dictionary<string, object?>
+            {
+                ["gestion"] = "GENERADOS",
+                ["estado"] = "TODOS",
+                ["cbuEmisor"] = cred.CbuDebito,
+                ["fechaEmisionDesde"] = desde.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
+                ["fechaEmisionHasta"] = hasta.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
+                ["pagina"] = pagina,
+                ["limite"] = limite,
+            };
+            var body = new Dictionary<string, object?>
+            {
+                ["numeroAdherente"] = cred.NumeroAdherente,
+                ["idOrigen"] = Guid.NewGuid().ToString(),
+                ["filtro"] = filtro,
+            };
+            var (status, doc) = await PostAsync(cred, "/api/echeq/v1/lista-cheques", body, ct);
+            if (status is < 200 or >= 300 || doc is null
+                || !doc.RootElement.TryGetProperty("data", out var data)
+                || !data.TryGetProperty("echeqs", out var arr) || arr.ValueKind != JsonValueKind.Array)
+                return;
+
+            int n = 0;
+            foreach (var e in arr.EnumerateArray())
+            {
+                n++;
+                var num = JLong(e, "numeroCheque");
+                if (num == 0 || !vistos.Add(num)) continue;   // dedup por número
+                acc.Add(new EcheqGenerado(
+                    num, JStr(e, "chequeId"), JStr(e, "estado"), JStr(e, "cmc7completo"),
+                    JFecha(e, "fechaEmision"), JFecha(e, "fechaPago"), JDec(e, "monto"),
+                    JStr(e, "moneda"), JStr(e, "caracter"), JStr(e, "motivoPago"), JCuenta(e)));
+            }
+            if (n < limite) return;
+        }
+    }
+
+    // ---- parseo de campos del echeq (lista-cheques) ----
+    private static string JStr(JsonElement e, string prop)
+        => e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
+    private static long JLong(JsonElement e, string prop)
+    {
+        if (!e.TryGetProperty(prop, out var v)) return 0;
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n)) return n;
+        if (v.ValueKind == JsonValueKind.String && long.TryParse(v.GetString(), out var n2)) return n2;
+        return 0;
+    }
+    private static decimal JDec(JsonElement e, string prop)
+    {
+        if (!e.TryGetProperty(prop, out var v)) return 0m;
+        var s = v.ValueKind == JsonValueKind.String ? v.GetString() : v.GetRawText();
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+    }
+    // { "value": "2026-07-08T16:31:38" } -> dd/MM/yyyy
+    private static string JFecha(JsonElement e, string prop)
+    {
+        if (!e.TryGetProperty(prop, out var v) || v.ValueKind != JsonValueKind.Object
+            || !v.TryGetProperty("value", out var vv)) return "";
+        var s = vv.GetString();
+        return DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var f)
+            ? f.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) : (s ?? "");
+    }
+    private static string JCuenta(JsonElement e)
+        => e.TryGetProperty("cmc7", out var c) && c.ValueKind == JsonValueKind.Object ? JStr(c, "numeroCuenta") : "";
 
     // ---- helpers ----
 

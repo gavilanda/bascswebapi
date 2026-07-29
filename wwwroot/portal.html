@@ -378,6 +378,7 @@
             <label>Cheque desde <input id="echChqDesde" type="text" placeholder="(vacío = todos)" style="width:120px"></label>
             <label>Cheque hasta <input id="echChqHasta" type="text" style="width:120px"></label>
             <button id="btnEchPreparar">Preparar</button>
+            <button id="btnEchVer" class="sec">Ver E-Cheques</button>
           </div>
           <div id="echMsg" class="msg"></div>
           <div id="echCargando" class="cargando hidden"><span>Procesando…</span></div>
@@ -417,6 +418,23 @@
               <button id="echBtnXls" class="sec">Generar .xls</button>
               <button id="echBtnApi">Emitir por API</button>
               <button id="echBtnCerrar" class="sec">Cerrar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal "Ver E-Cheques": listado de emitidos de la cuenta (del banco) + estado -->
+        <div id="echVerOv" class="ech-ov hidden">
+          <div class="ech-modal" style="max-width:1100px">
+            <div class="ech-mhead">
+              <h3 id="echVerTit">E-Cheques emitidos</h3>
+              <button id="echVerX" class="sec" title="Cerrar">✕</button>
+            </div>
+            <div id="echVerInfo" class="ech-minfo"></div>
+            <div id="echVerBody" class="ech-mbody"></div>
+            <div id="echVerMsg" class="msg"></div>
+            <div class="ech-mfoot">
+              <button id="echVerPdf">PDF</button>
+              <button id="echVerCerrar" class="sec">Cerrar</button>
             </div>
           </div>
         </div>
@@ -476,6 +494,9 @@
   </section>
 </main>
 
+<!-- jsPDF + autotable (locales, sin CDN) para el PDF de "Ver E-Cheques". -->
+<script src="/lib/jspdf.umd.min.js"></script>
+<script src="/lib/jspdf.plugin.autotable.min.js"></script>
 <script>
   const $ = id => document.getElementById(id);
   let token = localStorage.getItem("pc_token") || "";
@@ -1725,7 +1746,116 @@
     if (ok) mostrar($("echMsg"), "Se emitieron " + ok + " echeq" + (ok === 1 ? "" : "s") + ". Quedan en Banca Internet Empresa para firmar.", "ok");
   }
 
+  // ---- Ver E-Cheques: listado de emitidos (del banco) + estado, con PDF ----
+  let echVerDatos = null, echVerMeta = null;
+  const ECH_VER_COLS = [
+    { k: "numeroCheque", t: "Número", w: "8%", num: true },
+    { k: "estado", t: "Estado", w: "12%" },
+    { k: "fechaEmision", t: "Emisión", w: "8%" },
+    { k: "fechaPago", t: "Pago", w: "8%" },
+    { k: "monto", t: "Monto", w: "9%", num: true },
+    { k: "beneficiario", t: "Beneficiario", w: "17%" },
+    { k: "cuit", t: "CUIT", w: "9%" },
+    { k: "motivoPago", t: "Motivo", w: "11%" },
+    { k: "caracter", t: "Carácter", w: "8%" },
+    { k: "chequeId", t: "Cheque ID", w: "10%" },
+  ];
+  function fmtFechaISO(iso) {   // yyyy-mm-dd -> dd/MM/yyyy
+    if (!iso) return "";
+    const p = ("" + iso).split("-");
+    return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : iso;
+  }
+
+  async function verEcheques() {
+    const base = $("echBase").value;
+    const desde = $("echDesde").value, hasta = $("echHasta").value;
+    const banco = $("echBanco").value.trim(), chequera = $("echChequera").value.trim();
+    if (!base) { mostrar($("echMsg"), "Elegí una base.", "err"); return; }
+    if (!desde || !hasta) { mostrar($("echMsg"), "Completá las fechas.", "err"); return; }
+    if (desde > hasta) { mostrar($("echMsg"), 'La fecha "Desde" no puede ser mayor que "Hasta".', "err"); return; }
+    limpiar($("echMsg"));
+    $("echCargando").classList.remove("hidden"); $("btnEchVer").disabled = true;
+    const qs = "base=" + encodeURIComponent(base) + "&desde=" + encodeURIComponent(desde)
+      + "&hasta=" + encodeURIComponent(hasta)
+      + (banco ? "&banco=" + encodeURIComponent(banco) : "")
+      + (chequera ? "&chequera=" + encodeURIComponent(chequera) : "");
+    let r;
+    try { r = await fetch("/api/echeques/lista?" + qs, { headers: { "Authorization": "Bearer " + token } }); }
+    catch (e) { $("echCargando").classList.add("hidden"); $("btnEchVer").disabled = false; mostrar($("echMsg"), "No se pudo conectar.", "err"); return; }
+    $("echCargando").classList.add("hidden"); $("btnEchVer").disabled = false;
+    if (r.status === 401) { salir(); return; }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { mostrar($("echMsg"), d.mensaje || "No se pudo traer el listado.", "err"); return; }
+    echVerDatos = d.cheques || [];
+    const cuentaCod = banco || (echVerDatos[0] && echVerDatos[0].cuenta) || "cuenta";
+    echVerMeta = { base, desde, hasta, cuentaCod, cuenta: (echVerDatos[0] && echVerDatos[0].cuenta) || "" };
+    abrirModalVerEch();
+  }
+
+  function abrirModalVerEch() {
+    const n = echVerDatos.length;
+    $("echVerTit").textContent = "E-Cheques emitidos — " + echVerMeta.base;
+    $("echVerInfo").textContent = n + " e-cheque" + (n === 1 ? "" : "s") + " entre "
+      + fmtFechaISO(echVerMeta.desde) + " y " + fmtFechaISO(echVerMeta.hasta)
+      + (echVerMeta.cuenta ? "  ·  cuenta " + echVerMeta.cuenta : "") + ".";
+    limpiar($("echVerMsg"));
+    if (!n) {
+      $("echVerBody").innerHTML = '<div class="vacio" style="padding:16px">No hay e-cheques emitidos en ese período.</div>';
+      $("echVerPdf").disabled = true;
+    } else {
+      let h = '<table style="table-layout:fixed;width:100%"><colgroup>';
+      ECH_VER_COLS.forEach(c => h += '<col style="width:' + c.w + '">');
+      h += "</colgroup><thead><tr>";
+      ECH_VER_COLS.forEach(c => h += '<th style="' + (c.num ? "text-align:right" : "") + '">' + esc(c.t) + "</th>");
+      h += "</tr></thead><tbody>";
+      echVerDatos.forEach(e => {
+        h += "<tr>";
+        ECH_VER_COLS.forEach(c => {
+          const raw = e[c.k] == null ? "" : String(e[c.k]);
+          const txt = c.num && c.k === "monto" ? plata(e[c.k]) : raw;
+          h += '<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap' + (c.num ? ";text-align:right" : "")
+            + '" title="' + esc(raw) + '">' + esc(txt) + "</td>";
+        });
+        h += "</tr>";
+      });
+      h += "</tbody></table>";
+      $("echVerBody").innerHTML = h;
+      $("echVerPdf").disabled = false;
+    }
+    $("echVerOv").classList.remove("hidden");
+  }
+
+  function cerrarModalVerEch() { $("echVerOv").classList.add("hidden"); $("echVerBody").innerHTML = ""; echVerDatos = null; }
+
+  // PDF plano (jsPDF + autotable), directo, sin las convenciones del proyecto Horario.
+  function pdfEcheques() {
+    if (!echVerDatos || !echVerDatos.length || !window.jspdf) return;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    doc.setFontSize(13); doc.text("E-Cheques emitidos — " + echVerMeta.base, 40, 40);
+    doc.setFontSize(9); doc.setTextColor(110);
+    doc.text("Cuenta " + (echVerMeta.cuenta || echVerMeta.cuentaCod) + "   |   "
+      + fmtFechaISO(echVerMeta.desde) + " a " + fmtFechaISO(echVerMeta.hasta)
+      + "   |   " + echVerDatos.length + " e-cheques", 40, 56);
+    doc.setTextColor(0);
+    doc.autoTable({
+      startY: 66,
+      head: [ECH_VER_COLS.map(c => c.t)],
+      body: echVerDatos.map(e => ECH_VER_COLS.map(c => c.k === "monto" ? plata(e[c.k]) : (e[c.k] == null ? "" : String(e[c.k])))),
+      styles: { fontSize: 7, cellPadding: 3, overflow: "linebreak" },
+      headStyles: { fillColor: [60, 60, 70], textColor: 255, fontStyle: "bold" },
+      columnStyles: { 0: { halign: "right" }, 4: { halign: "right" } },
+      margin: { left: 40, right: 40 }
+    });
+    const nombre = "ECheques-" + echVerMeta.cuentaCod + "-" + echVerMeta.desde + "-" + echVerMeta.hasta + "-" + echVerMeta.base + ".pdf";
+    doc.save(nombre);
+  }
+
   $("btnEchPreparar").addEventListener("click", prepararEmision);
+  $("btnEchVer").addEventListener("click", verEcheques);
+  $("echVerPdf").addEventListener("click", pdfEcheques);
+  $("echVerCerrar").addEventListener("click", cerrarModalVerEch);
+  $("echVerX").addEventListener("click", cerrarModalVerEch);
   $("echBase").addEventListener("change", echAplicarDefaults);   // precarga los filtros de la empresa
   $("echMarcarTodos").addEventListener("click", () => { echChecks().forEach(c => c.checked = true); actualizarContadores(); });
   $("echMarcarNinguno").addEventListener("click", () => { echChecks().forEach(c => c.checked = false); actualizarContadores(); });

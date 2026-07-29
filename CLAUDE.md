@@ -751,6 +751,20 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
 - **Red**: el server del portal debe alcanzar `homoapibccl.bancocredicoop.coop` (y el host de
   producción) por HTTPS 443.
 
+### 16.2 Ver E-Cheques (listado + PDF)
+Botón **"Ver E-Cheques"** (junto a "Preparar", `secEcheques`): lista los e-cheques **EMITIDOS**
+de la cuenta en el rango, **traídos del banco** con su **estado** (ej. `EMITIDO-PENDIENTE`).
+- **Backend**: `GET /api/echeques/lista?base=&desde=&hasta=&banco=&chequera=` → `BancoBieEcheqService.ListarGeneradosAsync`
+  (mismo `lista-cheques` GENERADOS, chunk ≤30 días + paginado, mapea TODOS los campos al record
+  `EcheqGenerado`: numeroCheque, estado, fechaEmision/Pago, monto, moneda, caracter, motivoPago,
+  cmc7completo, chequeId, cuenta). El banco **NO trae beneficiario/CUIT del beneficiario** (solo
+  emisor): se completan **best-effort desde BAS** (`BasEchequesService.ConsultarAsync`, por
+  `numeroCheque`) si vinieron `banco`+`chequera`. `banco`/`chequera` opcionales; base+fechas obligatorios.
+- **Front**: modal `echVerOv` con tabla de **columnas fijas** + botón **PDF**. El PDF es **plano**
+  (jsPDF 2.5.1 + autotable 3.8.2, **locales** en `wwwroot/lib/`, no CDN — PCs internos), **sin** las
+  convenciones del proyecto Horario. Descarga directa `doc.save("ECheques-<cuenta>-<desde>-<hasta>-<empresa>.pdf")`;
+  el usuario decide si lo guarda. (CMC7 se omite en pantalla/PDF por ancho; los campos están en el DTO si se quisiera.)
+
 ## 17. Bco/Conciliación (función interna)
 
 Trae los **movimientos bancarios** de una cuenta (API Credicoop, scope `cuentas`), genera el **TXT

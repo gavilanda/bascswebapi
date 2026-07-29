@@ -102,6 +102,45 @@ public class EchequesController : ControllerBase
         return null;
     }
 
+    // GET /api/echeques/lista?base=&desde=&hasta=&banco=&chequera= -> e-cheques EMITIDOS de la
+    // cuenta (del BANCO, con su estado) en el rango. banco/chequera son OPCIONALES: si vienen,
+    // se completa beneficiario/CUIT best-effort desde BAS (por numeroCheque).
+    [HttpGet("lista")]
+    public async Task<ActionResult> Lista(
+        [FromQuery(Name = "base")] string? baseNombre, [FromQuery] string? desde, [FromQuery] string? hasta,
+        [FromQuery] string? banco, [FromQuery] string? chequera, CancellationToken ct = default)
+    {
+        var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
+        if (!DateOnly.TryParse(desde, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ||
+            !DateOnly.TryParse(hasta, CultureInfo.InvariantCulture, DateTimeStyles.None, out var h))
+            return BadRequest(new { mensaje = "Fechas inválidas (usá yyyy-MM-dd)." });
+        if (h < d) return BadRequest(new { mensaje = "La fecha 'Desde' no puede ser mayor que 'Hasta'." });
+        var b = (baseNombre ?? "").Trim();
+        if (b.Length == 0) return BadRequest(new { mensaje = "Elegí una empresa." });
+        var creds = await CredsAsync(b, ct);
+        if (creds is null) return StatusCode(409, new { mensaje = $"La empresa '{b}' no tiene la API del banco configurada." });
+        try
+        {
+            var cheques = await _bie.ListarGeneradosAsync(creds, d, h, ct);
+            // Beneficiario/CUIT desde BAS (best-effort): sólo si vinieron banco+chequera.
+            var bco = (banco ?? "").Trim(); var chq = (chequera ?? "").Trim();
+            if (cheques.Count > 0 && bco.Length > 0 && chq.Length > 0)
+            {
+                try
+                {
+                    var filas = await _echeques.ConsultarAsync(b, d, h, bco, chq, null, null, ct);
+                    var mapa = filas.GroupBy(f => f.NumEcheq).ToDictionary(g => g.Key, g => g.First());
+                    foreach (var e in cheques)
+                        if (mapa.TryGetValue(e.NumeroCheque, out var f)) { e.Beneficiario = f.Beneficiario; e.Cuit = f.NroCuiCdi; }
+                }
+                catch { /* si BAS no responde, el listado igual sale (sin beneficiario) */ }
+            }
+            return Ok(new { cantidad = cheques.Count, cheques });
+        }
+        catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
+        catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo traer el listado del banco: " + ex.Message }); }
+    }
+
     // GET /api/echeques?... -> JSON (recuento/prueba)
     [HttpGet]
     public async Task<ActionResult> Consultar(
