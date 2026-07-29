@@ -249,7 +249,14 @@ public class BancoBieEcheqService
                 ["filtro"] = filtro,
             };
             var (status, doc) = await PostAsync(cred, "/api/echeq/v1/lista-cheques", body, ct);
-            if (status is < 200 or >= 300 || doc is null
+            if (status is < 200 or >= 300)
+            {
+                var (ec, ed) = LeerError(doc);
+                throw new InvalidOperationException(
+                    $"El banco respondió {status} al listar cheques"
+                    + (ed != null ? $": {ed}" : "") + (ec != null ? $" ({ec})" : "") + ".");
+            }
+            if (doc is null
                 || !doc.RootElement.TryGetProperty("data", out var data)
                 || !data.TryGetProperty("echeqs", out var arr) || arr.ValueKind != JsonValueKind.Array)
                 return;
