@@ -299,6 +299,8 @@ using (var scope = app.Services.CreateScope())
     AgregarColumnaSiFalta("ConfiguracionesBase", "BieNumeroAdherente", "INTEGER NOT NULL DEFAULT 0");
     AgregarColumnaSiFalta("ConfiguracionesBase", "BieCbuDebito", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "BiePemPath", "TEXT NOT NULL DEFAULT ''");
+    // Mapa Nº cuenta banco -> código de cuenta en BAS (para conciliación), por empresa.
+    AgregarColumnaSiFalta("ConfiguracionesBase", "CuentasBas", "TEXT NOT NULL DEFAULT ''");
     // IncluirEnPortal: al CREAR la columna por primera vez, backfill de las bases que
     // HOY forman la cuenta corriente del portal (BARK + PRUEBAB), para preservar el
     // comportamiento existente. De ahí en más lo controla el admin (checkbox por base);

@@ -113,7 +113,8 @@ public class ConciliacionController : ControllerBase
         var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
         var err = Parsear(baseNombre, cuenta, desde, hasta, out var b, out var cta, out var d, out var h);
         if (err is not null) return err;
-        var creds = await CredsAsync(b, ct);
+        var cb = await _db.ConfiguracionesBase.AsNoTracking().FirstOrDefaultAsync(c => c.Nombre == b, ct);
+        var creds = cb is null ? null : _bieOpt.Credenciales(cb);
         if (creds is null) return StatusCode(409, new { mensaje = $"La empresa '{b}' no tiene la API del banco configurada." });
         try
         {
@@ -136,10 +137,12 @@ public class ConciliacionController : ControllerBase
             // Companion CONC_<EMPRESA>.info: metadatos (key=value) para que el macro de BAS
             // arme el "período" de la descripción. Sin BOM (el macro lee UTF-8 simple).
             var rutaInfo = Path.Combine(carpeta, $"CONC_{empresa}.info");
+            var cuentaBas = MapearCuentaBas(cb!.CuentasBas, cta);   // código interno de BAS (config por empresa)
             var info = string.Join("\r\n", new[]
             {
                 $"empresa={b}",
                 $"cuenta={cta}",
+                $"cuentaBas={cuentaBas}",
                 $"desde={d:dd/MM/yyyy}",
                 $"hasta={h:dd/MM/yyyy}",
                 $"cantidad={movimientos.Count}",
@@ -149,5 +152,20 @@ public class ConciliacionController : ControllerBase
         }
         catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
         catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar/guardar el TXT: " + ex.Message }); }
+    }
+
+    // Busca en el mapa por-empresa (líneas "nroCuentaBanco=codigoBAS") el código interno de
+    // BAS para la cuenta bancaria dada. Devuelve "" si no está mapeada (el macro avisa/usa fallback).
+    private static string MapearCuentaBas(string? mapa, string cuentaBanco)
+    {
+        foreach (var linea in (mapa ?? "").Split('\n'))
+        {
+            var l = linea.Trim();
+            var i = l.IndexOf('=');
+            if (i <= 0) continue;
+            if (string.Equals(l[..i].Trim(), cuentaBanco.Trim(), StringComparison.OrdinalIgnoreCase))
+                return l[(i + 1)..].Trim();
+        }
+        return "";
     }
 }

@@ -96,4 +96,11 @@ public class ConfiguracionBase
     // servidor del portal (ej. C:\Agente\PortalData\pem\bark.pem), fuera de git. En la base
     // sólo se guarda la ruta (la clave privada NO vive en la DB).
     public string BiePemPath { get; set; } = "";
+
+    // Mapa Nº de cuenta bancaria (el que el portal usa contra Credicoop) -> código INTERNO
+    // de esa cuenta en BAS (el que espera la pantalla de conciliación, ej. "011"). BAS no
+    // conoce el Nº del banco, así que la traducción se configura acá, POR EMPRESA. Texto
+    // multilínea, una línea por cuenta:  <nroCuentaBanco>=<codigoEnBas>  (ej. 00440199559=011).
+    // El export de conciliación lo vuelca al .info (clave cuentaBas) para el macro de BAS.
+    public string CuentasBas { get; set; } = "";
 }

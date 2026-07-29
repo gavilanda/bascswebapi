@@ -616,6 +616,11 @@
             <div class="row compacta-form">
               <div style="flex:0 0 420px"><label>Ruta de la clave privada (.pem)</label><input id="cfgBiePem" type="text" placeholder="C:\Agente\PortalData\pem\bark.pem" /></div>
             </div>
+            <div class="row compacta-form">
+              <div style="flex:1 1 100%"><label>Cuentas para conciliación (Nº banco = código BAS, una por línea)</label>
+                <textarea id="cfgCuentasBas" rows="2" style="width:100%; font-family:monospace" placeholder="00440199559=011"></textarea>
+              </div>
+            </div>
 
             <div style="margin-top:16px; display:flex; gap:8px">
               <button id="btnGuardarCfg">Guardar</button>
@@ -2808,6 +2813,7 @@
     $("cfgBieCbu").value = "";
     $("cfgBieCorte").value = "";
     $("cfgBiePem").value = "";
+    $("cfgCuentasBas").value = "";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => $("cfgNombre").focus(), 0);
@@ -2849,6 +2855,7 @@
     $("cfgBieCbu").value = b.bieCbuDebito || "";
     $("cfgBieCorte").value = b.echApiDesde || "";
     $("cfgBiePem").value = b.biePemPath || "";
+    $("cfgCuentasBas").value = b.cuentasBas || "";
     $("cfgForm").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => $("cfgDescripcion").focus(), 0);
@@ -2962,6 +2969,7 @@
       bieNumeroAdherente: parseInt($("cfgBieAdherente").value, 10) || 0,
       bieCbuDebito: $("cfgBieCbu").value.trim(),
       biePemPath: $("cfgBiePem").value.trim(),
+      cuentasBas: $("cfgCuentasBas").value.trim(),
       echApiDesde: $("cfgBieCorte").value
     };
     let r;
