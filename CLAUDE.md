@@ -750,6 +750,13 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
   homologación: adherente `1399230`, client_id `20100794889`, CBU débito `1910044555004401995596`.
 - **Red**: el server del portal debe alcanzar `homoapibccl.bancocredicoop.coop` (y el host de
   producción) por HTTPS 443.
+- **Emitir FIRMADO (ConFirma)**: la emisión `ConFirma/emision` acepta `operadoresFirmantes`
+  (`[{documento, documentoTipo}]`). Si la empresa tiene `ConfiguracionBase.BieFirmantes` cargado
+  (documentos separados por coma, `doc` o `doc:TIPO`, tipo **DNI** por defecto), la emisión los manda
+  y el e-cheque sale **firmado** (no queda "Enviada a la firma"). Vacío = pendiente de firma (se firma
+  a mano en BIE). Editable en la intranet (card BIE, campo "Firmantes"). `BancoBieEcheqService.
+  ParsearFirmantes` arma el array; se agrega al body sólo si hay firmantes. (Confirmar con el banco
+  que los operadores estén habilitados como firmantes del adherente.)
 
 ### 16.2 Ver E-Cheques (listado + PDF)
 Botón **"Ver E-Cheques"** (junto a "Preparar", `secEcheques`): lista los e-cheques **EMITIDOS**

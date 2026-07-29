@@ -605,9 +605,10 @@
                   <option value="produccion">Producción</option>
                 </select>
               </div>
-              <div style="flex:0 0 140px"><label>Client ID</label><input id="cfgBieClientId" type="text" placeholder="20100794889" /></div>
-              <div style="flex:0 0 110px"><label>Nº adherente</label><input id="cfgBieAdherente" type="number" min="0" placeholder="1399230" /></div>
-              <div style="flex:0 0 230px"><label>CBU de débito</label><input id="cfgBieCbu" type="text" placeholder="22 dígitos" maxlength="22" /></div>
+              <div style="flex:0 0 110px"><label>Client ID</label><input id="cfgBieClientId" type="text" placeholder="20100794889" /></div>
+              <div style="flex:0 0 85px"><label>Nº adherente</label><input id="cfgBieAdherente" type="number" min="0" placeholder="1399230" /></div>
+              <div style="flex:0 0 175px"><label>CBU de débito</label><input id="cfgBieCbu" type="text" placeholder="22 dígitos" maxlength="22" /></div>
+              <div style="flex:0 0 150px"><label>Firmantes</label><input id="cfgBieFirmantes" type="text" placeholder="DNI (coma p/ varios)" title="Documentos de operadores firmantes para emitir e-cheques FIRMADOS por API (ConFirma). Ej: 12345678 o 12345678:DNI, 20...:CUIT. Vacío = queda pendiente de firma." /></div>
               <div style="flex:0 0 140px"><label>Corte API (desde)</label><input id="cfgBieCorte" type="date" /></div>
               <div style="flex:0 0 130px; align-self:flex-end; display:flex; justify-content:center; padding-bottom:5px">
                 <label style="display:inline-flex; align-items:center; gap:6px; margin:0"><input id="cfgBieHabilitado" type="checkbox" style="width:auto" /> Emitir por API</label>
@@ -2816,6 +2817,7 @@
     $("cfgBieCbu").value = "";
     $("cfgBieCorte").value = "";
     $("cfgBiePem").value = "";
+    $("cfgBieFirmantes").value = "";
     $("cfgCuentasBas").value = "";
     $("cfgTituloBas").value = "";
     $("cfgForm").classList.remove("hidden");
@@ -2859,6 +2861,7 @@
     $("cfgBieCbu").value = b.bieCbuDebito || "";
     $("cfgBieCorte").value = b.echApiDesde || "";
     $("cfgBiePem").value = b.biePemPath || "";
+    $("cfgBieFirmantes").value = b.bieFirmantes || "";
     $("cfgCuentasBas").value = b.cuentasBas || "";
     $("cfgTituloBas").value = b.tituloBas || "";
     $("cfgForm").classList.remove("hidden");
@@ -2974,6 +2977,7 @@
       bieNumeroAdherente: parseInt($("cfgBieAdherente").value, 10) || 0,
       bieCbuDebito: $("cfgBieCbu").value.trim(),
       biePemPath: $("cfgBiePem").value.trim(),
+      bieFirmantes: $("cfgBieFirmantes").value.trim(),
       cuentasBas: $("cfgCuentasBas").value.trim(),
       tituloBas: $("cfgTituloBas").value.trim(),
       echApiDesde: $("cfgBieCorte").value

@@ -97,6 +97,12 @@ public class ConfiguracionBase
     // sólo se guarda la ruta (la clave privada NO vive en la DB).
     public string BiePemPath { get; set; } = "";
 
+    // Operadores FIRMANTES para emitir e-cheques ya FIRMADOS por API (servicio ConFirma).
+    // Documentos separados por coma; cada uno "documento" (DNI por defecto) o "documento:TIPO"
+    // (ej. "12345678:DNI, 20100794889:CUIT"). Vacío = la emisión queda "Pendiente de firma"
+    // (se firma a mano en Banca Internet Empresa). Con firmantes -> se manda operadoresFirmantes.
+    public string BieFirmantes { get; set; } = "";
+
     // Mapa Nº de cuenta bancaria (el que el portal usa contra Credicoop) -> código INTERNO
     // de esa cuenta en BAS (el que espera la pantalla de conciliación, ej. "011"). BAS no
     // conoce el Nº del banco, así que la traducción se configura acá, POR EMPRESA. Texto

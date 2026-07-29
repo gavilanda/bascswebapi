@@ -124,6 +124,7 @@ public class ConfigBasesService
             BieNumeroAdherente = req.BieNumeroAdherente,
             BieCbuDebito = (req.BieCbuDebito ?? "").Trim(),
             BiePemPath = (req.BiePemPath ?? "").Trim(),
+            BieFirmantes = (req.BieFirmantes ?? "").Trim(),
             CuentasBas = (req.CuentasBas ?? "").Trim(),
             TituloBas = (req.TituloBas ?? "").Trim(),
             EchApiDesde = (req.EchApiDesde ?? "").Trim()
@@ -178,6 +179,7 @@ public class ConfigBasesService
         f.BieNumeroAdherente = req.BieNumeroAdherente;
         f.BieCbuDebito = (req.BieCbuDebito ?? "").Trim();
         f.BiePemPath = (req.BiePemPath ?? "").Trim();
+        f.BieFirmantes = (req.BieFirmantes ?? "").Trim();
         f.CuentasBas = (req.CuentasBas ?? "").Trim();
         f.TituloBas = (req.TituloBas ?? "").Trim();
         f.EchApiDesde = (req.EchApiDesde ?? "").Trim();
@@ -328,6 +330,8 @@ public record CrearConfigBaseRequest(
     long BieNumeroAdherente = 0,
     string? BieCbuDebito = null,
     string? BiePemPath = null,
+    // Operadores firmantes (emitir e-cheques firmados por API). Vacío = pendiente de firma.
+    string? BieFirmantes = null,
     // Mapa Nº cuenta banco -> código de cuenta en BAS (conciliación), una línea por cuenta.
     string? CuentasBas = null,
     // Marca que debe figurar en el título de BAS para confirmar la empresa antes de importar.
@@ -365,6 +369,8 @@ public record ActualizarConfigBaseRequest(
     long BieNumeroAdherente = 0,
     string? BieCbuDebito = null,
     string? BiePemPath = null,
+    // Operadores firmantes (emitir e-cheques firmados por API). Vacío = pendiente de firma.
+    string? BieFirmantes = null,
     // Mapa Nº cuenta banco -> código de cuenta en BAS (conciliación), una línea por cuenta.
     string? CuentasBas = null,
     // Marca que debe figurar en el título de BAS para confirmar la empresa antes de importar.

@@ -109,6 +109,10 @@ public class BancoBieEcheqService
             ["cbuCuentaDebito"] = cred.CbuDebito,
             ["echeqs"] = new[] { echeq },
         };
+        // Si la empresa tiene firmantes configurados, se emite FIRMADO (ConFirma): el banco
+        // aplica la firma de esos operadores en vez de dejar la operación "Enviada a la firma".
+        var firmantes = ParsearFirmantes(cred.Firmantes);
+        if (firmantes.Count > 0) body["operadoresFirmantes"] = firmantes;
 
         var (status, doc) = await PostAsync(cred, "/api/echeq/v1/ConFirma/emision", body, ct);
 
@@ -378,4 +382,21 @@ public class BancoBieEcheqService
                DateTimeStyles.None, out var f)
             ? f.ToString("yyyyMMdd", CultureInfo.InvariantCulture)
             : ddMMyyyy;
+
+    // Config "12345678, 20100794889:CUIT" -> [{documento, documentoTipo}]. Tipo por defecto DNI.
+    private static List<Dictionary<string, object?>> ParsearFirmantes(string? cfg)
+    {
+        var lista = new List<Dictionary<string, object?>>();
+        foreach (var parte in (cfg ?? "").Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var item = parte.Trim();
+            if (item.Length == 0) continue;
+            var doc = item; var tipo = "DNI";
+            var i = item.IndexOf(':');
+            if (i > 0) { doc = item[..i].Trim(); tipo = item[(i + 1)..].Trim().ToUpperInvariant(); }
+            if (doc.Length == 0) continue;
+            lista.Add(new Dictionary<string, object?> { ["documento"] = doc, ["documentoTipo"] = string.IsNullOrEmpty(tipo) ? "DNI" : tipo });
+        }
+        return lista;
+    }
 }

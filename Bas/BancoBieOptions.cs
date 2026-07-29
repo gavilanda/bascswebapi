@@ -55,13 +55,15 @@ public class BancoBieOptions
         return new BieCredenciales(
             cb.Nombre, urls.BaseUrl, urls.TokenUrl, Scopes,
             cb.BieClientId.Trim(), cb.BieNumeroAdherente, cb.BieCbuDebito.Trim(),
-            cb.BiePemPath.Trim(), TipoCheque, Concepto);
+            cb.BiePemPath.Trim(), TipoCheque, Concepto, (cb.BieFirmantes ?? "").Trim());
     }
 }
 
 // Credenciales efectivas de UNA empresa para operar contra el banco. Todo lo que los
 // servicios necesitan en una sola pieza (no dependen del DbContext).
+// Firmantes: texto de config (documentos de operadores firmantes, ej. "12345678" o
+// "12345678:DNI, 20...:CUIT"); si viene, la emisión sale FIRMADA (operadoresFirmantes).
 public sealed record BieCredenciales(
     string BaseNombre, string BaseUrl, string TokenUrl, string Scopes,
     string ClientId, long NumeroAdherente, string CbuDebito, string PemPath,
-    string TipoCheque, string Concepto);
+    string TipoCheque, string Concepto, string Firmantes = "");
