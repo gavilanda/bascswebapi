@@ -448,8 +448,25 @@
             <div id="concModalBody" class="ech-mbody"></div>
             <div id="concModalMsg" class="msg"></div>
             <div class="ech-mfoot">
-              <button id="concBtnTxt">Generar TXT</button>
+              <button id="concBtnTxt">Generar e importar a BAS</button>
               <button id="concBtnCerrar" class="sec">Cerrar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Aviso previo antes de disparar la macro (que corre en la sesión del usuario) -->
+        <div id="basAvisoOv" class="ech-ov hidden">
+          <div class="ech-modal" style="max-width:460px">
+            <div class="ech-mhead"><h3>Importar a BAS</h3></div>
+            <div class="ech-minfo">
+              Asegurate de tener <b>BAScs abierto</b> (en el menú principal, o ya en la pantalla
+              de Conciliación bancaria). Al continuar, la conciliación se hace <b>sola</b>:
+              <b>no toques el mouse ni el teclado</b> ni cambies de ventana hasta que termine.
+            </div>
+            <div id="basAvisoMsg" class="msg"></div>
+            <div class="ech-mfoot">
+              <button id="basAvisoOk">Continuar e importar</button>
+              <button id="basAvisoCancel" class="sec">Cancelar</button>
             </div>
           </div>
         </div>
@@ -1854,6 +1871,27 @@
     if (!d.cantidad) { mostrar($("concModalMsg"), "No hay movimientos para exportar.", "info"); return; }
     mostrar($("concModalMsg"), "TXT generado (" + d.cantidad + " movimiento" + (d.cantidad === 1 ? "" : "s")
       + "). Guardado en " + (d.ruta || "la carpeta de conciliación") + ".", "ok");
+    // TXT + .info listos -> pedir confirmación y disparar la macro (protocolo conciliarbas://).
+    pedirImportarBas($("concBase").value);
+  }
+
+  // Muestra el aviso "Tené BAScs abierto" antes de lanzar la macro en la sesión del usuario.
+  let basEmpresaPend = "";
+  function pedirImportarBas(base) {
+    basEmpresaPend = base || "";
+    limpiar($("basAvisoMsg"));
+    $("basAvisoOv").classList.remove("hidden");
+  }
+  function cerrarAvisoBas() { $("basAvisoOv").classList.add("hidden"); }
+  // Dispara el protocolo. Windows lanza el lanzador (conciliar_bas.bat) EN LA SESIÓN DEL
+  // USUARIO (por eso ve BAS y maneja el mouse); el servicio del portal no podría hacerlo.
+  function importarBasConfirmado() {
+    if (!basEmpresaPend) { cerrarAvisoBas(); return; }
+    const a = document.createElement("a");
+    a.href = "conciliarbas://" + encodeURIComponent(basEmpresaPend);
+    document.body.appendChild(a); a.click(); a.remove();
+    mostrar($("basAvisoMsg"), "Lanzando la conciliación en BAS… seguí en la ventana que se abrió.", "ok");
+    setTimeout(cerrarAvisoBas, 2500);
   }
 
   function cerrarModalConc() { $("concOv").classList.add("hidden"); $("concModalBody").innerHTML = ""; }
@@ -1863,6 +1901,8 @@
   $("concBtnTxt").addEventListener("click", generarTxtConc);
   $("concBtnCerrar").addEventListener("click", cerrarModalConc);
   $("concModalX").addEventListener("click", cerrarModalConc);
+  $("basAvisoOk").addEventListener("click", importarBasConfirmado);
+  $("basAvisoCancel").addEventListener("click", cerrarAvisoBas);
   $("btnVtaVista").addEventListener("click", () => {
     vtaVista = vtaVista === "grafico" ? "listado" : "grafico";
     aplicarVistaVentas();
