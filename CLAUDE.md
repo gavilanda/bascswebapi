@@ -137,6 +137,7 @@ C:\Agente\webapi\
 │   ├── PreRemitosController.cs    (~36 KB) Alta/edición/conformado/grabado de pre-remitos
 │   ├── UsuariosAdminController.cs ABM de usuarios + GET /api/admin/bases-portal
 │   ├── ConfigBasesController.cs   ABM de bases BAS
+│   ├── ConciliacionController.cs  Bco/Conciliación: movimientos + TXT + .info (ver §17)
 │   ├── AuditoriaController.cs
 │   ├── BasAdminController.cs      Refresco manual del caché
 │   └── HealthController.cs        /api/health/apis (solo loopback)
@@ -155,6 +156,8 @@ C:\Agente\webapi\
 │   ├── portal.html      Portal de clientes (+ vista de staff)
 │   └── intranet.html    Intranet completa
 │
+├── macro-conciliacion/  Macro de importación a BAS (pywinauto) + protocolo conciliarbas:// (ver §17)
+│                        macro_conciliar.py, conciliar_bas.bat, registrar_protocolo.reg
 ├── instaladores/        .ps1 de servicio y tray (Portal-* y BAS-WebAPI-*)
 ├── BASCS/               Manuales del WebAPI propio (Esquema/Respuestas .xlsx + swagger.json).
 │                        2,35 MB. NO es basura, no borrar.
@@ -749,11 +752,13 @@ el banco acepta la operación y una persona la completa en Banca Internet Empres
 
 ## 17. Bco/Conciliación (función interna)
 
-Trae los **movimientos bancarios** de una cuenta (API Credicoop, scope `cuentas`) y genera el
-**TXT posicional** que importa BAS para conciliar. Usa la **misma config del banco por empresa**
-que E-Cheques (`BieCredenciales`); las empresas que pueden conciliar son las que tienen la API
-configurada. Función `conciliacion`, audiencia **interno**, se registra en "Programas para el Portal".
+Trae los **movimientos bancarios** de una cuenta (API Credicoop, scope `cuentas`), genera el **TXT
+posicional** que importa BAS, y **dispara una macro** que hace la importación en BAS automáticamente.
+Usa la **misma config del banco por empresa** que E-Cheques (`BieCredenciales`); las empresas que
+pueden conciliar son las que tienen la API configurada. Función `conciliacion`, audiencia **interno**,
+se registra en "Programas para el Portal".
 
+### 17.1 Movimientos + TXT + `.info`
 - **`BancoBieCuentasService`**: `ListarCuentasAsync` (`GET /api/cuentas/v1/listaCuentas`) +
   `MovimientosAsync` (`GET /api/cuentas/v1/{nroCuenta}/movimientos?fechaDesde=&fechaHasta=&topeMovimientos=1000`,
   **chunkea ≤31 días** porque el banco limita el rango; descarta el `ENCABEZADO` = `indDBCR` vacío) +
@@ -765,19 +770,60 @@ configurada. Función `conciliacion`, audiencia **interno**, se registra en "Pro
   - **col 103** nº operación = `nroComprobante` (8, derecha con ceros a la izquierda; vacío = en blanco).
   - **col 114** importe (15, **coma decimal**, 2 decimales, ceros a la izquierda, **signo `-` en
     débitos**; créditos sin signo). Se arma poniendo cada campo en su **columna de inicio** exacta.
-  - ⚠️ Supuestos a validar con BAS contra un archivo real: padding del nº operación y encoding Latin1.
 - **`ConciliacionController`** (interno + función `conciliacion`): `GET /bases` (empresas con API),
   `GET /cuentas?base=`, `GET /movimientos?base=&cuenta=&desde=&hasta=` (para el modal),
-  `GET /txt?base=&cuenta=&desde=&hasta=` → **GUARDA** el TXT en la carpeta del servidor y devuelve
-  JSON `{cantidad, ruta}` (`{cantidad:0}` si no hay movimientos). **NO descarga** por el navegador
-  (así no pregunta dónde guardar). El TXT tiene **nombre FIJO por empresa `CONC_<EMPRESA>.txt`**
-  (ej. `CONC_BARK.txt`; se sobrescribe). Se guarda en `BancoBie:CarpetaConciliacion` (default
-  `C:\conciliacion`, en la máquina del servicio; se **crea si no existe**) para que el macro que lo
-  importa a BAS lo encuentre siempre ahí. Best-effort: si no puede escribir, igual descarga (headers `X-Conciliacion-Ruta`
-  / `X-Conciliacion-ErrGuardar`). La importación en BAS es **manual** (pantalla; BAS no tiene API de
-  conciliación — verificado en su swagger), por eso el camino de automatización es un macro de UI
-  (ej. Pulover's Macro Creator) que toma el archivo de esa carpeta.
-- **Front** (`secConciliacion`): encabezado estilo E-Cheques (empresa + cuenta + fechas + **Preparar**);
-  el modal (reusa los estilos `ech-*`) lista los movimientos (scroll pasadas ~20 filas, columnas de
-  ancho fijo, débitos en rojo) y tiene el botón **"Generar TXT"**. Recuerda empresa/cuenta por
-  navegador (`conc_base`, `conc_cuenta_<base>`).
+  `GET /txt?base=&cuenta=&desde=&hasta=` → **GUARDA** `CONC_<EMPRESA>.txt` (nombre FIJO por empresa,
+  se sobrescribe) en `BancoBie:CarpetaConciliacion` (default `C:\conciliacion`, en la máquina del
+  servicio; se **crea si no existe**) y devuelve `{cantidad, ruta, info}` (`{cantidad:0}` si no hay
+  movimientos). **NO descarga** por el navegador (así no pregunta dónde). Ante error de escritura → 502.
+- **Companion `CONC_<EMPRESA>.info`** (UTF-8 **sin BOM**, junto al TXT, se sobrescribe): líneas
+  `key=value` — `empresa`, `cuenta` (Nº bancario consultado), `cuentaBas` (código interno de BAS, ver
+  17.2), `desde`/`hasta` (dd/MM/yyyy), `cantidad`. Lo lee la macro.
+
+### 17.2 Código de cuenta de BAS por empresa (`ConfiguracionBase.CuentasBas`)
+El `.info` trae el **Nº de cuenta bancaria** (el que el portal usa contra Credicoop, ej. `00440199559`).
+La pantalla de conciliación de BAS usa un **código interno propio** (ej. `011`), distinto, que BAS no
+expone por API. La traducción se configura **por empresa** en `ConfiguracionBase.CuentasBas` (columna
+TEXT, migración idempotente `AgregarColumnaSiFalta` en `Program.cs`): texto multilínea, una línea por
+cuenta `NºCuentaBanco=códigoBAS`. Editable en la **intranet** (editor de bases → card BIE → campo
+"Cuentas para conciliación"). `ConciliacionController.MapearCuentaBas` resuelve el código de la cuenta
+consultada y lo escribe en el `.info` como `cuentaBas`.
+
+### 17.3 Importación en BAS = macro de UI (BAS NO tiene API de conciliación)
+Verificado en el swagger de BAS: no hay endpoint de conciliación, la pantalla es manual. La importación
+la hace un **macro de automatización de UI** con **pywinauto** (BAS es una app **Gupta Team Developer**).
+Vive en `macro-conciliacion/` (versionado con el portal por git):
+- **`macro_conciliar.py`**: empresa por argumento (o del `.info` más reciente de la carpeta); lee del
+  `.info` la cuenta y `cuentaBas`; abre la pantalla desde el menú **Procesos → Conciliación Bancaria →
+  Ingreso** si no está abierta (si ya está, la usa); teclea el código de cuenta; espera que carguen los
+  movimientos; y recorre la cadena **Archivo → &Archivos → &Agregar → (path del TXT + descripción) →
+  &Importar → &Ok**. Descripción = `CREDICOOP - <fecha de hoy>`.
+- **Gotchas Gupta (críticos)**: (a) los campos hay que **teclearlos de verdad** (`type_keys`), NO
+  `set_edit_text` — Gupta no dispara su lógica interna y el Importar queda "vacío" / "como si no
+  clickearas"; (b) los botones se clickean con **clic real** (`click_input`) sobre la ventana
+  **enfocada** (los clics por mensaje se ignoran), con **fallback por acelerador** (Alt+I / Alt+O) si no
+  toma; (c) **BAS debe estar al frente todo el tiempo**: la macro maneja el mouse/teclado reales, si otra
+  ventana roba el foco se frena (re-enfoca antes de cada paso clave, pero **no hay que tocar nada mientras
+  corre**); (d) el botón "Archivo" **no responde hasta que terminan de cargar** los movimientos.
+- Diagnóstico incorporado: si no encuentra un diálogo, lista las ventanas abiertas (`_listar_ventanas`);
+  si un botón falla, vuelca los controles de esa ventana (`print_control_identifiers`).
+
+### 17.4 Disparo desde el portal (protocolo `conciliarbas://`)
+El servicio del portal corre como **LocalSystem en la sesión 0 (no interactiva)** → **no puede** ver ni
+manejar el escritorio donde está BAS, así que **no puede lanzar la macro directamente**. Solución: un
+**protocolo de URL propio** `conciliarbas://<EMPRESA>` que dispara **el navegador** (que corre en la
+sesión del usuario, la que ve BAS):
+- **`conciliar_bas.bat`**: lo que Windows ejecuta al abrir el protocolo (recibe la URL como `%1`, corre
+  `python macro_conciliar.py %1`; la macro extrae la empresa de la URL). Consola visible + `pause` (log).
+- **`registrar_protocolo.reg`**: registra `HKCU\Software\Classes\conciliarbas` → el `.bat` (HKCU = **no
+  necesita admin**). **Se corre una vez por PC** donde se concilie. Si se mueve la carpeta, re-correrlo.
+- **Front**: el botón **"Generar e importar a BAS"** genera TXT+`.info` y, tras el aviso *"Tené BAScs
+  abierto"* (modal `basAvisoOv`), abre `conciliarbas://<empresa>` con un `<a>` temporal (no navega la
+  página). **Heurístico** blur/visibilitychange: si al disparar la pestaña **no pierde el foco en ~1,5s**,
+  asume que el protocolo **no está registrado** en esa PC y muestra *"Falta registrar protocolo — Avise al
+  Administrador"* + la ruta del `.reg` (no hay API de navegador para chequear registro; es best-effort).
+
+### 17.5 Front (`secConciliacion`)
+Encabezado estilo E-Cheques (empresa + cuenta + fechas + **Preparar**); el modal (estilos `ech-*`) lista
+los movimientos (scroll pasadas ~20 filas, ancho fijo, débitos en rojo) con el botón **"Generar e
+importar a BAS"**. Recuerda empresa/cuenta por navegador (`conc_base`, `conc_cuenta_<base>`).
