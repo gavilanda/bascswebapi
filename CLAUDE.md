@@ -797,7 +797,8 @@ ventana de BAS** (el título es tipo `BASCS XE ... (bark-Bark/SA - 1:Bark S.A. .
 p.ej. `bark-Bark` en prod o `bark-Test` en testeo). Editable en la intranet (card BIE, "Marca en
 título de BAS"), se vuelca al `.info` como `tituloBas`. La macro, **antes de tocar nada**, exige que
 esa marca esté en el título; si **falta la config** o **no coincide**, **ABORTA** con un cartel de
-aviso (sin importar nada) y vuelve al portal.
+aviso (sin importar nada) y vuelve al portal. La comparación es **case-insensitive** (el `-nombre`
+se configura por puesto y puede venir `bark` o `Bark`); solo importa la secuencia de letras.
 
 ### 17.3 Importación en BAS = macro de UI (BAS NO tiene API de conciliación)
 Verificado en el swagger de BAS: no hay endpoint de conciliación, la pantalla es manual. La importación
