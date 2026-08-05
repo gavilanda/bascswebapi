@@ -2089,32 +2089,20 @@
   const RUTA_REG_PROTOCOLO = "C:\\Agente\\webapi\\macro-conciliacion\\registrar_protocolo.reg";
   // Dispara el protocolo. Windows lanza el lanzador (conciliar_bas.bat) EN LA SESIÓN DEL
   // USUARIO (por eso ve BAS y maneja el mouse); el servicio del portal no podría hacerlo.
-  // No hay API para saber si el protocolo está registrado -> heurístico: si tras dispararlo
-  // la pestaña NO pierde el foco en ~1,5s, asumimos que falta el .reg en esta PC.
+  // NOTA: no se puede detectar de forma confiable si el protocolo está registrado (el lanzador
+  // es OCULTO, así que la pestaña no pierde el foco). Por eso NO alarmamos: disparamos y dejamos
+  // la ruta del .reg como referencia "por si no pasa nada". La macro da su propio cartel al terminar.
   function importarBasConfirmado() {
     if (!basEmpresaPend) { cerrarAvisoBas(); return; }
-    let salto = false;
-    const marcar = () => { salto = true; };
-    window.addEventListener("blur", marcar, { once: true });
-    document.addEventListener("visibilitychange", marcar, { once: true });
     const a = document.createElement("a");
     a.href = "conciliarbas://" + encodeURIComponent(basEmpresaPend);
     document.body.appendChild(a); a.click(); a.remove();
-    mostrar($("basAvisoMsg"), "Lanzando la conciliación en BAS…", "info");
-    setTimeout(() => {
-      window.removeEventListener("blur", marcar);
-      document.removeEventListener("visibilitychange", marcar);
-      if (salto) {
-        mostrar($("basAvisoMsg"), "Conciliación lanzada. Seguí en la ventana que se abrió.", "ok");
-        setTimeout(cerrarAvisoBas, 2500);
-      } else {
-        $("basAvisoMsg").className = "msg err";
-        $("basAvisoMsg").innerHTML =
-          "<b>Falta registrar el protocolo en esta PC — Avisá al Administrador.</b>"
-          + "<br>Debe ejecutarse una vez (doble clic):"
-          + "<br><code style=\"user-select:all\">" + RUTA_REG_PROTOCOLO + "</code>";
-      }
-    }, 1500);
+    $("basAvisoMsg").className = "msg info";
+    $("basAvisoMsg").innerHTML =
+      "Conciliación lanzada en BAS. Vas a ver un cartel cuando termine."
+      + "<br><small>Si <b>no pasa nada</b>, falta registrar el protocolo en esta PC (una vez, doble clic): "
+      + "<code style=\"user-select:all\">" + RUTA_REG_PROTOCOLO + "</code></small>";
+    setTimeout(cerrarAvisoBas, 6000);
   }
 
   function cerrarModalConc() { $("concOv").classList.add("hidden"); $("concModalBody").innerHTML = ""; }
