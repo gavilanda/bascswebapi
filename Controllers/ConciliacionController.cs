@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using PortalClientes.Auth;
 using PortalClientes.Bas;
 using PortalClientes.Data;
+using PortalClientes.Models;
 
 namespace PortalClientes.Controllers;
 
@@ -19,14 +20,16 @@ namespace PortalClientes.Controllers;
 public class ConciliacionController : ControllerBase
 {
     private readonly BancoBieCuentasService _cuentas;
+    private readonly IcbcConciliacionService _icbc;
     private readonly BancoBieOptions _bieOpt;
     private readonly PortalDbContext _db;
     private readonly AccesoFuncionesService _acceso;
 
-    public ConciliacionController(BancoBieCuentasService cuentas, IOptions<BancoBieOptions> bieOpt,
-        PortalDbContext db, AccesoFuncionesService acceso)
+    public ConciliacionController(BancoBieCuentasService cuentas, IcbcConciliacionService icbc,
+        IOptions<BancoBieOptions> bieOpt, PortalDbContext db, AccesoFuncionesService acceso)
     {
         _cuentas = cuentas;
+        _icbc = icbc;
         _bieOpt = bieOpt.Value;
         _db = db;
         _acceso = acceso;
@@ -156,17 +159,88 @@ public class ConciliacionController : ControllerBase
     }
 
     // Busca en el mapa por-empresa (líneas "nroCuentaBanco=codigoBAS") el código interno de
-    // BAS para la cuenta bancaria dada. Devuelve "" si no está mapeada (el macro avisa/usa fallback).
+    // BAS para la cuenta bancaria dada. Compara sólo por DÍGITOS (así "0513/02104031/13" del
+    // ICBC matchea con o sin barras). Devuelve "" si no está mapeada.
     private static string MapearCuentaBas(string? mapa, string cuentaBanco)
     {
+        static string Dig(string s) => new string((s ?? "").Where(char.IsDigit).ToArray());
+        var objetivo = Dig(cuentaBanco);
         foreach (var linea in (mapa ?? "").Split('\n'))
         {
             var l = linea.Trim();
             var i = l.IndexOf('=');
             if (i <= 0) continue;
-            if (string.Equals(l[..i].Trim(), cuentaBanco.Trim(), StringComparison.OrdinalIgnoreCase))
-                return l[(i + 1)..].Trim();
+            if (objetivo.Length > 0 && Dig(l[..i]) == objetivo) return l[(i + 1)..].Trim();
         }
         return "";
+    }
+
+    // Escribe CONC_<EMPRESA>.txt (posicional) + CONC_<EMPRESA>.info en la carpeta de conciliación.
+    // Compartido por Credicoop (API) e ICBC (CSV): misma estructura de archivos para el macro de BAS.
+    private async Task<string> GuardarTxtInfoAsync(ConfiguracionBase cb, string cuentaBanco,
+        IReadOnlyList<BancoBieCuentasService.Movimiento> movs, string desde, string hasta, CancellationToken ct)
+    {
+        var carpeta = (_bieOpt.CarpetaConciliacion ?? "").Trim();
+        if (carpeta.Length == 0)
+            throw new InvalidOperationException("No hay carpeta de conciliación configurada (BancoBie:CarpetaConciliacion).");
+        var empresa = new string(cb.Nombre.Where(ch => !Path.GetInvalidFileNameChars().Contains(ch)).ToArray());
+        Directory.CreateDirectory(carpeta);
+        var rutaArchivo = Path.Combine(carpeta, $"CONC_{empresa}.txt");
+        await System.IO.File.WriteAllBytesAsync(rutaArchivo, BancoBieCuentasService.ArmarTxt(movs), ct);
+        var info = string.Join("\r\n", new[]
+        {
+            $"empresa={cb.Nombre}",
+            $"cuenta={cuentaBanco}",
+            $"cuentaBas={MapearCuentaBas(cb.CuentasBas, cuentaBanco)}",
+            $"tituloBas={cb.TituloBas?.Trim() ?? ""}",
+            $"desde={desde}",
+            $"hasta={hasta}",
+            $"cantidad={movs.Count}",
+        }) + "\r\n";
+        await System.IO.File.WriteAllTextAsync(Path.Combine(carpeta, $"CONC_{empresa}.info"), info, new System.Text.UTF8Encoding(false), ct);
+        return rutaArchivo;
+    }
+
+    // ---- ICBC: conciliación por importación de CSV (el banco no tiene API) ----
+
+    // POST /api/conciliacion/icbc/movimientos  (multipart: archivo=CSV) -> movimientos parseados
+    // (misma estructura que Credicoop) para el modal.
+    [HttpPost("icbc/movimientos")]
+    public async Task<ActionResult> IcbcMovimientos([FromForm] IFormFile? archivo, CancellationToken ct = default)
+    {
+        var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
+        if (archivo is null || archivo.Length == 0) return BadRequest(new { mensaje = "Subí el archivo CSV del ICBC." });
+        try
+        {
+            IcbcConciliacionService.Resultado res;
+            await using (var s = archivo.OpenReadStream()) res = _icbc.Parsear(s);
+            return Ok(new { cantidad = res.Movimientos.Count, cuenta = res.Cuenta, movimientos = res.Movimientos });
+        }
+        catch (Exception ex) { return StatusCode(422, new { mensaje = "No se pudo leer el CSV del ICBC: " + ex.Message }); }
+    }
+
+    // POST /api/conciliacion/icbc/txt?base=  (multipart: archivo=CSV) -> genera CONC_<empresa>.txt + .info.
+    [HttpPost("icbc/txt")]
+    public async Task<ActionResult> IcbcTxt(
+        [FromQuery(Name = "base")] string? baseNombre, [FromForm] IFormFile? archivo, CancellationToken ct = default)
+    {
+        var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
+        var b = (baseNombre ?? "").Trim();
+        if (b.Length == 0) return BadRequest(new { mensaje = "Elegí una empresa." });
+        if (archivo is null || archivo.Length == 0) return BadRequest(new { mensaje = "Subí el archivo CSV del ICBC." });
+        var cb = await _db.ConfiguracionesBase.AsNoTracking().FirstOrDefaultAsync(c => c.Nombre == b, ct);
+        if (cb is null) return StatusCode(409, new { mensaje = $"Empresa '{b}' desconocida." });
+        try
+        {
+            IcbcConciliacionService.Resultado res;
+            await using (var s = archivo.OpenReadStream()) res = _icbc.Parsear(s);
+            if (res.Movimientos.Count == 0) return Ok(new { cantidad = 0 });
+            static string Fmt(string ymd) => ymd.Length == 8 ? $"{ymd[6..8]}/{ymd[4..6]}/{ymd[0..4]}" : "";
+            var fechas = res.Movimientos.Select(m => m.Fecha).Where(f => f.Length == 8).OrderBy(f => f).ToList();
+            var ruta = await GuardarTxtInfoAsync(cb, res.Cuenta, res.Movimientos,
+                fechas.Count > 0 ? Fmt(fechas[0]) : "", fechas.Count > 0 ? Fmt(fechas[^1]) : "", ct);
+            return Ok(new { cantidad = res.Movimientos.Count, ruta });
+        }
+        catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar el TXT: " + ex.Message }); }
     }
 }

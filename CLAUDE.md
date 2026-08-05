@@ -862,6 +862,20 @@ sesión del usuario, la que ve BAS):
   Administrador"* + la ruta del `.reg` (no hay API de navegador para chequear registro; es best-effort).
 
 ### 17.5 Front (`secConciliacion`)
-Encabezado estilo E-Cheques (empresa + cuenta + fechas + **Preparar**); el modal (estilos `ech-*`) lista
-los movimientos (scroll pasadas ~20 filas, ancho fijo, débitos en rojo) con el botón **"Generar e
-importar a BAS"**. Recuerda empresa/cuenta por navegador (`conc_base`, `conc_cuenta_<base>`).
+Selector **"Banco"** (Credicoop / ICBC) como primer filtro (`concBanco`), que cambia el resto de la barra
+(`onConcBancoChange`). **Credicoop**: empresa + cuenta (API) + fechas + **Preparar** (como siempre). **ICBC**:
+empresa + **Archivo CSV** (`concArchivo`, se ocultan cuenta/fechas). El modal (estilos `ech-*`) y el botón
+**"Generar e importar a BAS"** son **los mismos** para los dos. Recuerda empresa/cuenta por navegador.
+
+### 17.6 ICBC — conciliación por importación de CSV (banco SIN API)
+ICBC no tiene API: se **baja el extracto en CSV** del homebanking y se **sube al portal**. `IcbcConciliacionService.Parsear`
+lo convierte a la MISMA estructura `BancoBieCuentasService.Movimiento`, así el modal, el TXT posicional
+(`ArmarTxt`) y todo el flujo posterior (macro, etc.) se reutilizan igual que Credicoop.
+- **Formato CSV** (verificado): UTF-8 con BOM, separador `;`. Línea 0 = título con la cuenta; línea 1 =
+  encabezado (17 cols); resto = movimientos, **del más nuevo al más viejo**. Signo: **crédito positivo** en
+  "Credito en $", **débito negativo** en "Debito en $" → importe con signo = Débito+Crédito. Fecha `dd/MM/yyyy`,
+  importe con **coma decimal**.
+- **Endpoints**: `POST /api/conciliacion/icbc/movimientos` (multipart `archivo`) → movimientos para el modal;
+  `POST /api/conciliacion/icbc/txt?base=` (multipart `archivo`) → genera `CONC_<empresa>.txt` + `.info`
+  (comparte `GuardarTxtInfoAsync` con Credicoop). La cuenta sale del propio CSV; se mapea a código BAS con
+  `CuentasBas` (comparación por **dígitos**, tolera barras). El front re-manda el archivo para el TXT.

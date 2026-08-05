@@ -120,6 +120,7 @@ builder.Services.AddHttpClient("bancobie", c => c.Timeout = TimeSpan.FromSeconds
 builder.Services.AddSingleton<BancoBieAuthService>();        // singleton: cachea token por client_id
 builder.Services.AddScoped<BancoBieEcheqService>();
 builder.Services.AddScoped<BancoBieCuentasService>();        // cuentas + movimientos (conciliación)
+builder.Services.AddScoped<IcbcConciliacionService>();       // conciliación ICBC (import CSV)
 
 // ---- Destinos BAS (BARK, PRUEBAB) para ingresos ----
 // Timeout amplio para la carga del padrón (la carga es secuencial y en segundo
