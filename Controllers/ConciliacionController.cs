@@ -144,6 +144,7 @@ public class ConciliacionController : ControllerBase
             var info = string.Join("\r\n", new[]
             {
                 $"empresa={b}",
+                $"banco=CREDICOOP",
                 $"cuenta={cta}",
                 $"cuentaBas={cuentaBas}",
                 $"tituloBas={cb.TituloBas?.Trim() ?? ""}",   // marca que la macro exige en el título de BAS
@@ -177,7 +178,7 @@ public class ConciliacionController : ControllerBase
 
     // Escribe CONC_<EMPRESA>.txt (posicional) + CONC_<EMPRESA>.info en la carpeta de conciliación.
     // Compartido por Credicoop (API) e ICBC (CSV): misma estructura de archivos para el macro de BAS.
-    private async Task<string> GuardarTxtInfoAsync(ConfiguracionBase cb, string cuentaBanco,
+    private async Task<string> GuardarTxtInfoAsync(ConfiguracionBase cb, string banco, string cuentaBanco,
         IReadOnlyList<BancoBieCuentasService.Movimiento> movs, string desde, string hasta, CancellationToken ct)
     {
         var carpeta = (_bieOpt.CarpetaConciliacion ?? "").Trim();
@@ -190,6 +191,7 @@ public class ConciliacionController : ControllerBase
         var info = string.Join("\r\n", new[]
         {
             $"empresa={cb.Nombre}",
+            $"banco={banco}",
             $"cuenta={cuentaBanco}",
             $"cuentaBas={MapearCuentaBas(cb.CuentasBas, cuentaBanco)}",
             $"tituloBas={cb.TituloBas?.Trim() ?? ""}",
@@ -237,7 +239,7 @@ public class ConciliacionController : ControllerBase
             if (res.Movimientos.Count == 0) return Ok(new { cantidad = 0 });
             static string Fmt(string ymd) => ymd.Length == 8 ? $"{ymd[6..8]}/{ymd[4..6]}/{ymd[0..4]}" : "";
             var fechas = res.Movimientos.Select(m => m.Fecha).Where(f => f.Length == 8).OrderBy(f => f).ToList();
-            var ruta = await GuardarTxtInfoAsync(cb, res.Cuenta, res.Movimientos,
+            var ruta = await GuardarTxtInfoAsync(cb, "ICBC", res.Cuenta, res.Movimientos,
                 fechas.Count > 0 ? Fmt(fechas[0]) : "", fechas.Count > 0 ? Fmt(fechas[^1]) : "", ct);
             return Ok(new { cantidad = res.Movimientos.Count, ruta });
         }

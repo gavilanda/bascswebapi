@@ -81,7 +81,8 @@ CUENTA_BANCO = _info.get("cuenta", "")          # Nº de cuenta bancaria (del .i
 # Código interno de BAS: primero lo que ya trae el portal en el .info; si no, la tabla local.
 CUENTA = _info.get("cuentaBas", "") or CUENTAS_BAS.get(CUENTA_BANCO, "")
 ARCHIVO = INFO[:-5] + ".txt"      # CONC_<EMPRESA>.txt  (mismo nombre que el .info)
-DESCRIPCION = "CREDICOOP - " + FECHA
+BANCO = _info.get("banco", "") or "CREDICOOP"   # nombre del banco (para la descripción)
+DESCRIPCION = BANCO + " - " + FECHA
 if not CUENTA_BANCO:
     print("El %s no trae 'cuenta='. Re-exportá desde el portal (versión nueva)." % os.path.basename(INFO))
     sys.exit(1)
