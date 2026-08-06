@@ -467,14 +467,10 @@
             <label>Precios con vigencia desde
               <input id="dscDesde" type="date">
             </label>
-            <label style="flex:1 1 320px">Carpeta donde guardar
-              <input id="dscCarpeta" type="text" placeholder="Ej: C:\Discovery\Precios" autocomplete="off">
-            </label>
-            <label>Archivo
-              <input id="dscArchivo" type="text" style="width:230px" autocomplete="off">
-            </label>
             <button id="btnDscVer">Ver qué se exporta</button>
-            <button id="btnDscGenerar" class="sec">Generar archivo</button>
+            <button id="btnDscTodos" class="sec">Todos</button>
+            <button id="btnDscNinguno" class="sec">Ninguno</button>
+            <button id="btnDscGenerar">Elegir carpeta y grabar</button>
           </div>
           <div id="dscMsg" class="msg"></div>
           <div id="dscCargando" class="cargando hidden"><span>Consultando precios en BAS…</span></div>
@@ -683,25 +679,14 @@
   // ---------------------------------------------------------------------------
   let dscIniciado = false;
 
-  function dscNombreSugerido() {
-    const v = ($("dscDesde").value || "").replaceAll("-", "");
-    return "PRECIOS_DISCOVERY_" + (v || "") + ".txt";
-  }
-
   async function iniciarDiscovery() {
-    if (!dscIniciado) {
-      dscIniciado = true;
-      $("dscDesde").value = new Date().toISOString().slice(0, 10);
-      $("dscArchivo").value = dscNombreSugerido();
-      $("dscDesde").addEventListener("change", () => { $("dscArchivo").value = dscNombreSugerido(); });
-      $("btnDscVer").addEventListener("click", dscPrevisualizar);
-      $("btnDscGenerar").addEventListener("click", dscGenerar);
-      // Propone la última carpeta usada.
-      try {
-        const r = await fetch("/api/discovery/carpeta", { headers: { "Authorization": "Bearer " + token } });
-        if (r.ok) { const d = await r.json(); if (d.carpeta) $("dscCarpeta").value = d.carpeta; }
-      } catch (e) { /* sin conexión: queda vacía */ }
-    }
+    if (dscIniciado) return;
+    dscIniciado = true;
+    $("dscDesde").value = new Date().toISOString().slice(0, 10);
+    $("btnDscVer").addEventListener("click", dscPrevisualizar);
+    $("btnDscGenerar").addEventListener("click", dscDescargar);
+    $("btnDscTodos").addEventListener("click", () => dscMarcarTodos(true));
+    $("btnDscNinguno").addEventListener("click", () => dscMarcarTodos(false));
   }
 
   function dscLimpiar() {
@@ -714,6 +699,23 @@
     return "$ " + Number(v).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  function dscCasillas() {
+    return Array.from(document.querySelectorAll("#dscTabla input.dsc-chk"));
+  }
+
+  function dscMarcarTodos(valor) {
+    dscCasillas().forEach(c => { c.checked = valor; });
+    dscActualizarConteo();
+  }
+
+  function dscActualizarConteo() {
+    const c = dscCasillas();
+    const marcados = c.filter(x => x.checked).length;
+    const lbl = $("dscConteo");
+    if (lbl) lbl.textContent = marcados + " de " + c.length + " seleccionados";
+    $("btnDscGenerar").disabled = marcados === 0;
+  }
+
   async function dscPrevisualizar() {
     dscLimpiar();
     $("dscCargando").classList.remove("hidden");
@@ -723,35 +725,38 @@
       const r = await fetch("/api/discovery/previsualizar?" + qs, { headers: { "Authorization": "Bearer " + token } });
       const d = await r.json();
       if (!r.ok) { $("dscMsg").textContent = d.mensaje || "No se pudo consultar."; return; }
+      if (!d.total) { $("dscMsg").textContent = "No hay precios con vigencia desde el " + d.desde + "."; return; }
 
-      if (!d.total) {
-        $("dscMsg").textContent = "No hay precios con vigencia desde el " + d.desde + ".";
-        return;
-      }
       let aviso = "";
       if (d.codigosLargos && d.codigosLargos.length)
-        aviso = '<div class="aviso">Estos códigos no entran en el archivo (más de 10 caracteres) y quedarían afuera: '
+        aviso = '<div class="aviso">Estos códigos no entran en el archivo (más de 10 caracteres) y quedan afuera: '
               + d.codigosLargos.join(", ") + "</div>";
       $("dscResumen").innerHTML =
-        "<b>" + d.total + "</b> precios desde el " + d.desde +
-        " &nbsp;·&nbsp; lista 1 (mostrador): <b>" + d.lista1 + "</b>" +
-        " &nbsp;·&nbsp; lista 2 (distribuidores +IVA): <b>" + d.lista2 + "</b>" + aviso;
+        "<b>" + d.total + "</b> precios desde el " + d.desde
+        + " &nbsp;·&nbsp; lista 1 (mostrador): <b>" + d.lista1 + "</b>"
+        + " &nbsp;·&nbsp; lista 2 (distribuidores +IVA): <b>" + d.lista2 + "</b>"
+        + ' &nbsp;·&nbsp; <span id="dscConteo"></span>' + aviso;
       $("dscResumen").classList.remove("hidden");
 
       const filas = d.filas || [];
       $("dscTabla").innerHTML =
-        '<table><tr><th>Lista</th><th>Código</th><th>Producto</th>'
+        "<table><tr><th style=\"width:34px\"></th><th>Lista</th><th>Código</th><th>Producto</th>"
         + '<th style="text-align:right">Precio BAS</th><th style="text-align:right">Va a Discovery</th>'
         + "<th>Vigencia</th></tr>"
         + filas.map(f =>
-            "<tr><td>" + f.lista + "</td><td><b>" + esc(f.codigo) + "</b></td><td>" + esc(f.descripcion) + "</td>"
+            '<tr><td><input type="checkbox" class="dsc-chk" checked value="'
+            + esc(f.lista + "|" + f.codigo) + '"></td>'
+            + "<td>" + f.lista + "</td><td><b>" + esc(f.codigo) + "</b></td><td>" + esc(f.descripcion) + "</td>"
             + '<td style="text-align:right">' + dscPrecio(f.precioBas) + "</td>"
             + '<td style="text-align:right"><b>' + dscPrecio(f.precio) + "</b></td>"
             + "<td>" + f.vigencia + "</td></tr>").join("")
         + "</table>"
         + (d.total > filas.length
-            ? '<div class="msg">Se muestran los primeros ' + filas.length + " de " + d.total + ".</div>"
+            ? '<div class="msg">Se muestran los primeros ' + filas.length + " de " + d.total
+              + ". Para exportar el resto, acotá la fecha.</div>"
             : "");
+      dscCasillas().forEach(c => c.addEventListener("change", dscActualizarConteo));
+      dscActualizarConteo();
     } catch (e) {
       $("dscMsg").textContent = "No se pudo consultar: " + e;
     } finally {
@@ -760,40 +765,68 @@
     }
   }
 
-  async function dscGenerar() {
-    const carpeta = ($("dscCarpeta").value || "").trim();
-    if (!carpeta) { $("dscMsg").textContent = "Indicá la carpeta donde guardar el archivo."; return; }
-    dscLimpiar();
-    $("dscCargando").classList.remove("hidden");
+  // Graba los TXT: uno por lista (LIS1_ddmmaaaa.txt / LIS2_ddmmaaaa.txt).
+  //
+  // Se pide la carpeta con showDirectoryPicker (Chrome/Edge) y ahí van los dos
+  // archivos juntos. El id hace que el navegador recuerde la última carpeta, así
+  // la próxima vez el diálogo abre ahí solo (sirve igual si es una carpeta de red).
+  // El selector se abre ANTES de consultar a BAS: el navegador sólo lo permite
+  // mientras dura el clic, y la consulta puede tardar unos segundos.
+  // Si el navegador no lo soporta (Firefox), cae en descargas comunes.
+  async function dscDescargar() {
+    const sel = dscCasillas().filter(c => c.checked).map(c => c.value);
+    if (!sel.length) { $("dscMsg").textContent = "No hay ningún ítem tildado."; return; }
+
+    $("dscMsg").textContent = "";
+
+    let carpeta = null;
+    if (window.showDirectoryPicker) {
+      try {
+        carpeta = await window.showDirectoryPicker({ id: "discoveryPrecios", mode: "readwrite" });
+      } catch (e) {
+        if (e && e.name === "AbortError") { $("dscMsg").textContent = "Cancelado."; return; }
+        carpeta = null;   // falló el diálogo: se descargan sueltos
+      }
+    }
+
     $("btnDscGenerar").disabled = true;
     try {
       const r = await fetch("/api/discovery/generar", {
         method: "POST",
         headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          desde: $("dscDesde").value || "",
-          carpeta: carpeta,
-          archivo: ($("dscArchivo").value || "").trim()
-        })
+        body: JSON.stringify({ desde: $("dscDesde").value || "", seleccion: sel })
       });
       const d = await r.json();
       if (!r.ok) { $("dscMsg").textContent = d.mensaje || "No se pudo generar el archivo."; return; }
-      if (!d.cantidad) { $("dscMsg").textContent = d.mensaje || "No había precios para exportar."; return; }
 
-      let extra = "";
-      if (d.descartados && d.descartados.length)
-        extra = '<div class="aviso">Quedaron afuera por código demasiado largo: ' + d.descartados.join(", ") + "</div>";
+      const archivos = d.archivos || [];
+      for (const a of archivos) {
+        if (carpeta) {
+          const h = await carpeta.getFileHandle(a.nombre, { create: true });
+          const w = await h.createWritable();
+          await w.write(a.contenido); await w.close();
+        } else {
+          const url = URL.createObjectURL(new Blob([a.contenido], { type: "text/plain" }));
+          const el = document.createElement("a");
+          el.href = url; el.download = a.nombre; el.click();
+          URL.revokeObjectURL(url);
+        }
+      }
+
+      const detalle = archivos.map(a =>
+        "<b>" + esc(a.nombre) + "</b> (lista " + a.lista + ", " + a.cantidad + " precios)").join(" &nbsp;·&nbsp; ");
       $("dscResumen").innerHTML =
-        "Archivo generado con <b>" + d.cantidad + "</b> precios (lista 1: " + d.lista1
-        + " · lista 2: " + d.lista2 + ").<br><b>" + esc(d.ruta) + "</b>"
-        + '<div class="msg">Ahora importalo en Discovery: Archivos → Listas de precios → Carga manual → '
-        + "Importación de lotes. Después aplicalo desde Actualización de precios.</div>" + extra;
+        (carpeta ? "Grabado en <b>" + esc(carpeta.name) + "</b>: " : "Descargado: ") + detalle
+        + '<div class="msg">Ahora importalos en Discovery: Archivos → Listas de precios → Carga manual → '
+        + "Importación de lotes (uno por vez). Después aplicalos desde Actualización de precios.</div>"
+        + ((d.descartados && d.descartados.length)
+            ? '<div class="aviso">Quedaron afuera por código largo: ' + esc(d.descartados.join(", ")) + "</div>"
+            : "");
       $("dscResumen").classList.remove("hidden");
     } catch (e) {
-      $("dscMsg").textContent = "No se pudo generar: " + e;
+      $("dscMsg").textContent = "No se pudo grabar: " + e;
     } finally {
-      $("dscCargando").classList.add("hidden");
-      $("btnDscGenerar").disabled = false;
+      dscActualizarConteo();
     }
   }
 

@@ -2,11 +2,8 @@ using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using PortalClientes.Auth;
 using PortalClientes.Bas;
-using PortalClientes.Data;
-using PortalClientes.Models;
 
 namespace PortalClientes.Controllers;
 
@@ -21,24 +18,25 @@ namespace PortalClientes.Controllers;
 //
 // Sólo bienes: los servicios (fletes, etc.) no van a Discovery.
 //
-// El archivo se guarda en una carpeta que elige el usuario; la última usada se
-// recuerda y se ofrece la próxima vez. Después hay que importarlo en Discovery
-// (Archivos > Listas de precios > Carga manual > Importación de lotes) y aplicarlo
-// desde "Actualización de precios".
+// El archivo se DESCARGA (no se guarda en el servidor): así cada uno lo deja donde
+// quiera —incluida una carpeta de red— con sus propios permisos. El servicio corre
+// como LocalSystem y no suele ver los recursos de red, así que guardarlo del lado
+// del servidor sería un problema. Del lado del navegador se usa showSaveFilePicker,
+// que recuerda la última carpeta usada.
+//
+// Después hay que importarlo en Discovery (Archivos > Listas de precios > Carga
+// manual > Importación de lotes) y aplicarlo desde "Actualización de precios".
 [ApiController]
 [Route("api/discovery")]
 [Authorize]
 public class DiscoveryController : ControllerBase
 {
     private readonly BasListasPreciosService _precios;
-    private readonly PortalDbContext _db;
     private readonly AccesoFuncionesService _acceso;
 
-    public DiscoveryController(BasListasPreciosService precios, PortalDbContext db,
-                               AccesoFuncionesService acceso)
+    public DiscoveryController(BasListasPreciosService precios, AccesoFuncionesService acceso)
     {
         _precios = precios;
-        _db = db;
         _acceso = acceso;
     }
 
@@ -47,7 +45,6 @@ public class DiscoveryController : ControllerBase
     private const string ListaBasMostrador = "004";   // ya viene con IVA
     private const string ListaBasDistrib = "029";     // sin IVA -> se le suma
     private const decimal Iva = 1.21m;
-    private const string ClavePrefCarpeta = "discovery.carpeta";
 
     private bool EsInterno() => User.FindFirstValue("tipo") == "Interno";
 
@@ -86,16 +83,6 @@ public class DiscoveryController : ControllerBase
         return lineas.OrderBy(l => l.ListaDiscovery, StringComparer.Ordinal)
                      .ThenBy(l => l.Codigo, StringComparer.Ordinal)
                      .ToList();
-    }
-
-    /// <summary>Última carpeta usada, para proponerla.</summary>
-    [HttpGet("carpeta")]
-    public async Task<ActionResult> Carpeta(CancellationToken ct = default)
-    {
-        var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
-        var pref = await _db.Preferencias.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Clave == ClavePrefCarpeta, ct);
-        return Ok(new { carpeta = pref?.Valor ?? "" });
     }
 
     /// <summary>
@@ -137,58 +124,65 @@ public class DiscoveryController : ControllerBase
     public sealed class GenerarRequest
     {
         public string? Desde { get; set; }
-        public string? Carpeta { get; set; }
-        public string? Archivo { get; set; }
+        /// <summary>Qué exportar, como "lista|código" (ej. "1|5568"). Vacío = todo.</summary>
+        public List<string>? Seleccion { get; set; }
     }
 
-    /// <summary>Genera el TXT y lo guarda en la carpeta indicada.</summary>
+    /// <summary>
+    /// Devuelve el contenido de los TXT, UNO POR LISTA (LIS1_ddmmaaaa.txt y
+    /// LIS2_ddmmaaaa.txt). Si una lista no tiene nada marcado, su archivo no viene.
+    /// Si viene `Seleccion`, exporta sólo esos ítems (sirve para probar con dos o
+    /// tres antes de mandar la lista entera).
+    ///
+    /// No devuelve el archivo como descarga: manda el texto y el front lo escribe
+    /// en la carpeta que el usuario elige, así los dos van al mismo lado de una.
+    /// </summary>
     [HttpPost("generar")]
-    public async Task<ActionResult> Generar([FromBody] GenerarRequest req, CancellationToken ct = default)
+    public async Task<IActionResult> Generar([FromBody] GenerarRequest req, CancellationToken ct = default)
     {
         var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
         var d = ParsearFecha(req?.Desde) ?? DateOnly.FromDateTime(DateTime.Today);
-
-        var carpeta = (req?.Carpeta ?? "").Trim();
-        if (carpeta.Length == 0)
-            return BadRequest(new { mensaje = "Indicá la carpeta donde guardar el archivo." });
-
-        var nombre = (req?.Archivo ?? "").Trim();
-        if (nombre.Length == 0) nombre = $"PRECIOS_DISCOVERY_{d:yyyyMMdd}.txt";
-        if (nombre.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-            return BadRequest(new { mensaje = "El nombre del archivo tiene caracteres no válidos." });
-
         try
         {
             var lineas = await ArmarLineasAsync(d, ct);
-            if (lineas.Count == 0)
-                return Ok(new { cantidad = 0, mensaje = "No hay precios con vigencia desde esa fecha." });
 
-            var bytes = DiscoveryTxtBuilder.Armar(lineas, out var descartados);
-
-            Directory.CreateDirectory(carpeta);
-            var ruta = Path.Combine(carpeta, nombre);
-            await System.IO.File.WriteAllBytesAsync(ruta, bytes, ct);
-
-            // Se recuerda la carpeta para proponerla la próxima vez.
-            var pref = await _db.Preferencias.FirstOrDefaultAsync(p => p.Clave == ClavePrefCarpeta, ct);
-            if (pref is null)
-                _db.Preferencias.Add(new PreferenciaPortal { Clave = ClavePrefCarpeta, Valor = carpeta });
-            else { pref.Valor = carpeta; pref.Actualizado = DateTime.Now; }
-            await _db.SaveChangesAsync(ct);
-
-            return Ok(new
+            var sel = req?.Seleccion;
+            if (sel is { Count: > 0 })
             {
-                cantidad = lineas.Count - descartados.Count,
-                lista1 = lineas.Count(l => l.ListaDiscovery == "1" && !descartados.Contains(l.Codigo)),
-                lista2 = lineas.Count(l => l.ListaDiscovery == "2" && !descartados.Contains(l.Codigo)),
-                descartados,
-                ruta,
-                desde = d.ToString("dd/MM/yyyy")
-            });
+                var claves = new HashSet<string>(sel, StringComparer.OrdinalIgnoreCase);
+                lineas = lineas.Where(l => claves.Contains(l.ListaDiscovery + "|" + l.Codigo)).ToList();
+            }
+            if (lineas.Count == 0)
+                return StatusCode(409, new { mensaje = "No hay nada para exportar con esos filtros." });
+
+            var archivos = new List<object>();
+            var descartados = new List<string>();
+            var total = 0;
+
+            foreach (var g in lineas.GroupBy(l => l.ListaDiscovery)
+                                    .OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                var bytes = DiscoveryTxtBuilder.Armar(g, out var desc);
+                descartados.AddRange(desc);
+                if (bytes.Length == 0) continue;   // toda la lista quedó afuera
+
+                var cant = g.Count() - desc.Count;
+                total += cant;
+                archivos.Add(new
+                {
+                    lista = g.Key,
+                    nombre = $"LIS{g.Key}_{d:ddMMyyyy}.txt",
+                    cantidad = cant,
+                    contenido = System.Text.Encoding.UTF8.GetString(bytes)
+                });
+            }
+
+            if (archivos.Count == 0)
+                return StatusCode(409, new { mensaje = "Ningún ítem pudo escribirse (códigos demasiado largos)." });
+
+            return Ok(new { archivos, cantidad = total, descartados });
         }
         catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Generación cancelada." }); }
-        catch (UnauthorizedAccessException) { return StatusCode(409, new { mensaje = "No hay permiso para escribir en esa carpeta." }); }
-        catch (DirectoryNotFoundException) { return StatusCode(409, new { mensaje = "La carpeta indicada no existe y no se pudo crear." }); }
         catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar el archivo: " + ex.Message }); }
     }
 }

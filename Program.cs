@@ -336,16 +336,6 @@ using (var scope = app.Services.CreateScope())
         );");
     db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_FuncionesPortal_Clave"" ON ""FuncionesPortal"" (""Clave"");");
 
-    // Preferencias sueltas (clave/valor). Hoy: la última carpeta donde se guardó
-    // el TXT de precios para Discovery.
-    db.Database.ExecuteSqlRaw(@"
-        CREATE TABLE IF NOT EXISTS ""Preferencias"" (
-            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_Preferencias"" PRIMARY KEY AUTOINCREMENT,
-            ""Clave"" TEXT NOT NULL,
-            ""Valor"" TEXT NOT NULL DEFAULT '',
-            ""Actualizado"" TEXT NOT NULL
-        );");
-    db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Preferencias_Clave"" ON ""Preferencias"" (""Clave"");");
     // Acceso por función para internos. TodosLosInternos default 1: las funciones que YA
     // existen quedan abiertas a todos los internos (no rompe nada). Luego el admin restringe
     // las que quiera (ej. e-cheques) desde "Programas para el Portal".

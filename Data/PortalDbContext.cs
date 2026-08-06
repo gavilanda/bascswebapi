@@ -20,7 +20,6 @@ public class PortalDbContext : DbContext
     public DbSet<OrdenCompra> OrdenesCompra => Set<OrdenCompra>();
     public DbSet<OrdenCompraLinea> OrdenCompraLineas => Set<OrdenCompraLinea>();
     public DbSet<EmisionEcheq> EmisionesEcheq => Set<EmisionEcheq>();
-    public DbSet<PreferenciaPortal> Preferencias => Set<PreferenciaPortal>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
