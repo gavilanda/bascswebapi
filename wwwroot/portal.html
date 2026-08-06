@@ -462,6 +462,26 @@
           <div id="concCargando" class="cargando hidden"><span>Consultando movimientos…</span></div>
         </div>
 
+        <div id="secDiscovery" class="card seccion hidden">
+          <div class="vtafiltros">
+            <label>Precios con vigencia desde
+              <input id="dscDesde" type="date">
+            </label>
+            <label style="flex:1 1 320px">Carpeta donde guardar
+              <input id="dscCarpeta" type="text" placeholder="Ej: C:\Discovery\Precios" autocomplete="off">
+            </label>
+            <label>Archivo
+              <input id="dscArchivo" type="text" style="width:230px" autocomplete="off">
+            </label>
+            <button id="btnDscVer">Ver qué se exporta</button>
+            <button id="btnDscGenerar" class="sec">Generar archivo</button>
+          </div>
+          <div id="dscMsg" class="msg"></div>
+          <div id="dscCargando" class="cargando hidden"><span>Consultando precios en BAS…</span></div>
+          <div id="dscResumen" class="hidden" style="margin:6px 0 10px"></div>
+          <div id="dscTabla"></div>
+        </div>
+
         <!-- Modal de conciliación: movimientos del banco + generar TXT para BAS -->
         <div id="concOv" class="ech-ov hidden">
           <div class="ech-modal">
@@ -648,7 +668,134 @@
     ventas: { sec: "secVentas", init: iniciarVentas, requiereCliente: false },
     echeques: { sec: "secEcheques", init: iniciarEcheques, requiereCliente: false },
     conciliacion: { sec: "secConciliacion", init: iniciarConciliacion, requiereCliente: false },
+    discovery: { sec: "secDiscovery", init: iniciarDiscovery, requiereCliente: false },
   };
+
+
+  // ---------------------------------------------------------------------------
+  // Precios a Discovery
+  //
+  // Arma el TXT que Discovery importa para actualizar sus listas de precios.
+  // Toma de BAS los precios que pasaron a regir desde una fecha:
+  //   lista 1 de Discovery <- lista 004 de BAS (tal cual, ya tiene IVA)
+  //   lista 2 de Discovery <- lista 029 de BAS + IVA, redondeado a la unidad
+  // El archivo se guarda en el servidor; después se importa a mano en Discovery.
+  // ---------------------------------------------------------------------------
+  let dscIniciado = false;
+
+  function dscNombreSugerido() {
+    const v = ($("dscDesde").value || "").replaceAll("-", "");
+    return "PRECIOS_DISCOVERY_" + (v || "") + ".txt";
+  }
+
+  async function iniciarDiscovery() {
+    if (!dscIniciado) {
+      dscIniciado = true;
+      $("dscDesde").value = new Date().toISOString().slice(0, 10);
+      $("dscArchivo").value = dscNombreSugerido();
+      $("dscDesde").addEventListener("change", () => { $("dscArchivo").value = dscNombreSugerido(); });
+      $("btnDscVer").addEventListener("click", dscPrevisualizar);
+      $("btnDscGenerar").addEventListener("click", dscGenerar);
+      // Propone la última carpeta usada.
+      try {
+        const r = await fetch("/api/discovery/carpeta", { headers: { "Authorization": "Bearer " + token } });
+        if (r.ok) { const d = await r.json(); if (d.carpeta) $("dscCarpeta").value = d.carpeta; }
+      } catch (e) { /* sin conexión: queda vacía */ }
+    }
+  }
+
+  function dscLimpiar() {
+    $("dscMsg").textContent = "";
+    $("dscResumen").classList.add("hidden");
+    $("dscTabla").innerHTML = "";
+  }
+
+  function dscPrecio(v) {
+    return "$ " + Number(v).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  async function dscPrevisualizar() {
+    dscLimpiar();
+    $("dscCargando").classList.remove("hidden");
+    $("btnDscVer").disabled = true;
+    try {
+      const qs = "desde=" + encodeURIComponent($("dscDesde").value || "");
+      const r = await fetch("/api/discovery/previsualizar?" + qs, { headers: { "Authorization": "Bearer " + token } });
+      const d = await r.json();
+      if (!r.ok) { $("dscMsg").textContent = d.mensaje || "No se pudo consultar."; return; }
+
+      if (!d.total) {
+        $("dscMsg").textContent = "No hay precios con vigencia desde el " + d.desde + ".";
+        return;
+      }
+      let aviso = "";
+      if (d.codigosLargos && d.codigosLargos.length)
+        aviso = '<div class="aviso">Estos códigos no entran en el archivo (más de 10 caracteres) y quedarían afuera: '
+              + d.codigosLargos.join(", ") + "</div>";
+      $("dscResumen").innerHTML =
+        "<b>" + d.total + "</b> precios desde el " + d.desde +
+        " &nbsp;·&nbsp; lista 1 (mostrador): <b>" + d.lista1 + "</b>" +
+        " &nbsp;·&nbsp; lista 2 (distribuidores +IVA): <b>" + d.lista2 + "</b>" + aviso;
+      $("dscResumen").classList.remove("hidden");
+
+      const filas = d.filas || [];
+      $("dscTabla").innerHTML =
+        '<table><tr><th>Lista</th><th>Código</th><th>Producto</th>'
+        + '<th style="text-align:right">Precio BAS</th><th style="text-align:right">Va a Discovery</th>'
+        + "<th>Vigencia</th></tr>"
+        + filas.map(f =>
+            "<tr><td>" + f.lista + "</td><td><b>" + esc(f.codigo) + "</b></td><td>" + esc(f.descripcion) + "</td>"
+            + '<td style="text-align:right">' + dscPrecio(f.precioBas) + "</td>"
+            + '<td style="text-align:right"><b>' + dscPrecio(f.precio) + "</b></td>"
+            + "<td>" + f.vigencia + "</td></tr>").join("")
+        + "</table>"
+        + (d.total > filas.length
+            ? '<div class="msg">Se muestran los primeros ' + filas.length + " de " + d.total + ".</div>"
+            : "");
+    } catch (e) {
+      $("dscMsg").textContent = "No se pudo consultar: " + e;
+    } finally {
+      $("dscCargando").classList.add("hidden");
+      $("btnDscVer").disabled = false;
+    }
+  }
+
+  async function dscGenerar() {
+    const carpeta = ($("dscCarpeta").value || "").trim();
+    if (!carpeta) { $("dscMsg").textContent = "Indicá la carpeta donde guardar el archivo."; return; }
+    dscLimpiar();
+    $("dscCargando").classList.remove("hidden");
+    $("btnDscGenerar").disabled = true;
+    try {
+      const r = await fetch("/api/discovery/generar", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          desde: $("dscDesde").value || "",
+          carpeta: carpeta,
+          archivo: ($("dscArchivo").value || "").trim()
+        })
+      });
+      const d = await r.json();
+      if (!r.ok) { $("dscMsg").textContent = d.mensaje || "No se pudo generar el archivo."; return; }
+      if (!d.cantidad) { $("dscMsg").textContent = d.mensaje || "No había precios para exportar."; return; }
+
+      let extra = "";
+      if (d.descartados && d.descartados.length)
+        extra = '<div class="aviso">Quedaron afuera por código demasiado largo: ' + d.descartados.join(", ") + "</div>";
+      $("dscResumen").innerHTML =
+        "Archivo generado con <b>" + d.cantidad + "</b> precios (lista 1: " + d.lista1
+        + " · lista 2: " + d.lista2 + ").<br><b>" + esc(d.ruta) + "</b>"
+        + '<div class="msg">Ahora importalo en Discovery: Archivos → Listas de precios → Carga manual → '
+        + "Importación de lotes. Después aplicalo desde Actualización de precios.</div>" + extra;
+      $("dscResumen").classList.remove("hidden");
+    } catch (e) {
+      $("dscMsg").textContent = "No se pudo generar: " + e;
+    } finally {
+      $("dscCargando").classList.add("hidden");
+      $("btnDscGenerar").disabled = false;
+    }
+  }
 
   // Funciones del menú del usuario, como las devolvió el backend: [{clave, etiqueta}].
   // Se filtran a las que además tengan implementación local (por las dudas).
