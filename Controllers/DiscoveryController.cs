@@ -18,14 +18,17 @@ namespace PortalClientes.Controllers;
 //
 // Sólo bienes: los servicios (fletes, etc.) no van a Discovery.
 //
-// El archivo se DESCARGA (no se guarda en el servidor): así cada uno lo deja donde
-// quiera —incluida una carpeta de red— con sus propios permisos. El servicio corre
-// como LocalSystem y no suele ver los recursos de red, así que guardarlo del lado
-// del servidor sería un problema. Del lado del navegador se usa showSaveFilePicker,
-// que recuerda la última carpeta usada.
+// Por defecto salen SÓLO los precios que cambiaron: una lista nueva de BAS se arma
+// copiando la anterior y después se retocan unos pocos, así que sin ese filtro se
+// exportan cientos de renglones repetidos (en la práctica, 250 contra 6).
 //
-// Después hay que importarlo en Discovery (Archivos > Listas de precios > Carga
-// manual > Importación de lotes) y aplicarlo desde "Actualización de precios".
+// Sale un archivo POR LISTA y no se guarda en el servidor: el front pide la carpeta
+// y escribe ahí. El servicio corre como LocalSystem y no suele ver los recursos de
+// red, así que grabar del lado del servidor no serviría para una carpeta compartida.
+//
+// Después hay que importarlos en Discovery (Archivos > Listas de precios > Carga
+// manual > Importación de lotes, uno por vez) y aplicarlos desde "Actualización de
+// precios".
 [ApiController]
 [Route("api/discovery")]
 [Authorize]
@@ -69,16 +72,19 @@ public class DiscoveryController : ControllerBase
             ? ("1", precio)                                                   // ya es final
             : ("2", DiscoveryTxtBuilder.RedondearComercial(precio * Iva));    // + IVA, redondeado
 
-    private async Task<List<DiscoveryTxtBuilder.Linea>> ArmarLineasAsync(DateOnly desde, CancellationToken ct)
+    private async Task<List<DiscoveryTxtBuilder.Linea>> ArmarLineasAsync(
+        DateOnly desde, bool soloCambios, CancellationToken ct)
     {
         var listas = new[] { ListaBasMostrador, ListaBasDistrib };
-        var precios = await _precios.PreciosDesdeAsync(BaseBas, listas, desde, ct);
+        var precios = await _precios.PreciosDesdeAsync(BaseBas, listas, desde, soloCambios, ct);
         var lineas = new List<DiscoveryTxtBuilder.Linea>(precios.Count);
         foreach (var p in precios)
         {
             var (listaDisc, final) = Convertir(p.Lista, p.Precio);
+            // El anterior pasa por la misma conversión, así se comparan peras con peras.
+            decimal? anterior = p.Anterior is null ? null : Convertir(p.Lista, p.Anterior.Value).precioFinal;
             lineas.Add(new DiscoveryTxtBuilder.Linea(
-                listaDisc, p.Codigo, p.Descripcion, p.Precio, final, p.Vigencia));
+                listaDisc, p.Codigo, p.Descripcion, p.Precio, final, p.Vigencia, anterior));
         }
         return lineas.OrderBy(l => l.ListaDiscovery, StringComparer.Ordinal)
                      .ThenBy(l => l.Codigo, StringComparer.Ordinal)
@@ -86,22 +92,52 @@ public class DiscoveryController : ControllerBase
     }
 
     /// <summary>
+    /// Fecha del último cambio de precios en BAS. La pantalla arranca ahí: los
+    /// precios se cargan el día antes con vigencia futura, así que si arrancara
+    /// en "hoy" casi siempre daría vacío.
+    /// </summary>
+    [HttpGet("ultima-vigencia")]
+    public async Task<ActionResult> UltimaVigencia(CancellationToken ct = default)
+    {
+        var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
+        try
+        {
+            var v = await _precios.UltimaVigenciaAsync(
+                BaseBas, new[] { ListaBasMostrador, ListaBasDistrib }, ct);
+            return Ok(new { vigencia = v?.ToString("yyyy-MM-dd") });
+        }
+        catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
+        catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo consultar BAS: " + ex.Message }); }
+    }
+
+    /// <summary>
     /// Qué se exportaría con esa fecha, sin escribir nada. Sirve para mostrar
     /// el detalle antes de generar.
     /// </summary>
     [HttpGet("previsualizar")]
-    public async Task<ActionResult> Previsualizar([FromQuery] string? desde, CancellationToken ct = default)
+    public async Task<ActionResult> Previsualizar([FromQuery] string? desde,
+                                                  [FromQuery] bool soloCambios = true,
+                                                  CancellationToken ct = default)
     {
         var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
         var d = ParsearFecha(desde) ?? DateOnly.FromDateTime(DateTime.Today);
         try
         {
-            var lineas = await ArmarLineasAsync(d, ct);
+            var lineas = await ArmarLineasAsync(d, soloCambios, ct);
             var largos = lineas.Where(l => l.Codigo.Length > DiscoveryTxtBuilder.AnchoCodigo)
                                .Select(l => l.Codigo).ToList();
+
+            // Si no hubo nada, decimos cuál fue el último cambio: casi siempre el
+            // problema es que la fecha pedida quedó por delante de la vigencia.
+            DateOnly? ultima = null;
+            if (lineas.Count == 0)
+                ultima = await _precios.UltimaVigenciaAsync(
+                    BaseBas, new[] { ListaBasMostrador, ListaBasDistrib }, ct);
+
             return Ok(new
             {
                 desde = d.ToString("dd/MM/yyyy"),
+                ultimaVigencia = ultima?.ToString("yyyy-MM-dd"),
                 total = lineas.Count,
                 lista1 = lineas.Count(l => l.ListaDiscovery == "1"),
                 lista2 = lineas.Count(l => l.ListaDiscovery == "2"),
@@ -113,6 +149,7 @@ public class DiscoveryController : ControllerBase
                     descripcion = l.Descripcion,
                     precioBas = l.PrecioOriginal,
                     precio = l.PrecioFinal,
+                    anterior = l.PrecioAnterior,
                     vigencia = l.Vigencia.ToString("dd/MM/yyyy")
                 })
             });
@@ -124,6 +161,8 @@ public class DiscoveryController : ControllerBase
     public sealed class GenerarRequest
     {
         public string? Desde { get; set; }
+        /// <summary>Sólo los que quedaron con precio distinto al anterior.</summary>
+        public bool SoloCambios { get; set; } = true;
         /// <summary>Qué exportar, como "lista|código" (ej. "1|5568"). Vacío = todo.</summary>
         public List<string>? Seleccion { get; set; }
     }
@@ -144,7 +183,7 @@ public class DiscoveryController : ControllerBase
         var d = ParsearFecha(req?.Desde) ?? DateOnly.FromDateTime(DateTime.Today);
         try
         {
-            var lineas = await ArmarLineasAsync(d, ct);
+            var lineas = await ArmarLineasAsync(d, req?.SoloCambios ?? true, ct);
 
             var sel = req?.Seleccion;
             if (sel is { Count: > 0 })

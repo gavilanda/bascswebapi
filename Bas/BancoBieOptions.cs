@@ -25,6 +25,12 @@ public class BancoBieOptions
     // Excel subido/firmado un día antes o después. 0 = exactamente el rango.
     public int MargenChequeoBancoDias { get; set; } = 5;
 
+    // Captura de payloads para la planilla de homologación. LogPayloads=true graba el
+    // request+response REAL de cada llamada al banco en LogCarpeta (un .txt por llamada +
+    // un bie-payloads.log acumulado). Dejar en false salvo cuando se estén capturando.
+    public bool LogPayloads { get; set; } = false;
+    public string LogCarpeta { get; set; } = @"C:\conciliacion\bie-payloads";
+
     public EntornoUrls Homologacion { get; set; } = new();
     public EntornoUrls Produccion { get; set; } = new();
 

@@ -18,11 +18,22 @@ public class BancoBieEcheqService
 {
     private readonly IHttpClientFactory _factory;
     private readonly BancoBieAuthService _auth;
+    private readonly BiePayloadLogger _log;
 
-    public BancoBieEcheqService(IHttpClientFactory factory, BancoBieAuthService auth)
+    public BancoBieEcheqService(IHttpClientFactory factory, BancoBieAuthService auth, BiePayloadLogger log)
     {
         _factory = factory;
         _auth = auth;
+        _log = log;
+    }
+
+    // Etiqueta corta de operación para el nombre del archivo de captura, según la ruta.
+    private static string OpDe(string ruta)
+    {
+        if (ruta.Contains("beneficiario", StringComparison.OrdinalIgnoreCase)) return "echeq-beneficiario";
+        if (ruta.Contains("emision", StringComparison.OrdinalIgnoreCase)) return "echeq-emision";
+        if (ruta.Contains("lista-cheques", StringComparison.OrdinalIgnoreCase)) return "echeq-lista-cheques";
+        return "echeq";
     }
 
     // Resultado de emitir UN echeq. Ok=true => el banco lo aceptó (Estado + idOperacion).
@@ -144,7 +155,9 @@ public class BancoBieEcheqService
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var resp = await http.SendAsync(req, ct);
-        return await resp.Content.ReadAsStringAsync(ct);
+        var texto = await resp.Content.ReadAsStringAsync(ct);
+        _log.Registrar(cred.BaseNombre, "echeq-consulta-emision", "GET", url, null, (int)resp.StatusCode, texto);
+        return texto;
     }
 
     // Números de cheque YA GENERADOS en el banco por este adherente (gestion=GENERADOS), en una
@@ -333,6 +346,7 @@ public class BancoBieEcheqService
             if ((int)resp.StatusCode == 401 && intento == 0) { _auth.InvalidarToken(cred.ClientId); continue; }
 
             var texto = await resp.Content.ReadAsStringAsync(ct);
+            _log.Registrar(cred.BaseNombre, OpDe(ruta), "POST", cred.BaseUrl + ruta, json, (int)resp.StatusCode, texto);
             JsonDocument? doc = null;
             if (!string.IsNullOrWhiteSpace(texto))
             {

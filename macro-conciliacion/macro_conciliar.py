@@ -62,13 +62,63 @@ def _elegir_info(carpeta, empresa_arg):
     return max(infos, key=os.path.getmtime) if infos else None
 
 
-# La empresa llega por argumento. Puede venir "pelada" (BARK) o como URL del protocolo
-# (conciliarbas://BARK  /  conciliarbas:BARK/). Normalizamos ambos casos.
-_arg = (sys.argv[1].strip() if len(sys.argv) > 1 else "")
-if _arg.lower().startswith("conciliarbas:"):
-    _arg = _arg.split(":", 1)[1]        # saca "conciliarbas:"
-_arg = _arg.strip("/").strip()          # saca "//" y "/" sobrantes
-_empresa_arg = _arg.upper()
+def _descargar_conc(server, empresa, token, carpeta):
+    """Baja CONC_<empresa>.txt y .info del Portal a `carpeta`. Esta PC NO es el servidor: el
+    archivo se generó en el DISCO DEL SERVIDOR, así que lo traemos por HTTP (token corto que
+    viajó en la URL del protocolo). Best-effort y SIN dependencias externas (urllib stdlib):
+    si algo falla, seguimos y el flujo normal avisará si no encuentra el .info."""
+    import urllib.request, urllib.parse, ssl
+    try:
+        os.makedirs(carpeta, exist_ok=True)
+    except Exception:
+        pass
+    for tipo in ("txt", "info"):
+        url = "%s/api/conciliacion/archivo?base=%s&token=%s&tipo=%s" % (
+            server.rstrip("/"), urllib.parse.quote(empresa), urllib.parse.quote(token), tipo)
+        data = None; err = None
+        for verificar in (True, False):   # 1º con TLS verificado; si el cert no valida (LAN), sin verificar
+            try:
+                ctx = ssl.create_default_context() if verificar else ssl._create_unverified_context()
+                with urllib.request.urlopen(url, timeout=20, context=ctx) as resp:
+                    data = resp.read()
+                break
+            except Exception as e:
+                err = e
+        if data is None:
+            print("   (no pude bajar CONC_%s.%s: %s)" % (empresa, tipo, err))
+            continue
+        try:
+            with open(os.path.join(carpeta, "CONC_%s.%s" % (empresa, tipo)), "wb") as f:
+                f.write(data)
+            print("   bajado CONC_%s.%s (%d bytes)" % (empresa, tipo, len(data)))
+        except Exception as e:
+            print("   (no pude guardar CONC_%s.%s: %s)" % (empresa, tipo, e))
+
+
+# La empresa (y opcionalmente server+token) llegan por argumento. Puede venir "pelada" (BARK),
+# como URL simple (conciliarbas://BARK) o con datos de descarga
+# (conciliarbas://BARK?server=<url>&token=<tok>). Normalizamos todos los casos.
+_raw = (sys.argv[1].strip() if len(sys.argv) > 1 else "")
+_s = _raw
+if _s.lower().startswith("conciliarbas:"):
+    _s = _s.split(":", 1)[1]            # saca "conciliarbas:"
+_s = _s.lstrip("/")                      # saca "//"
+_server = ""; _token = ""
+if "?" in _s:
+    _s, _qs = _s.split("?", 1)
+    from urllib.parse import parse_qs, unquote
+    _q = parse_qs(_qs)
+    _server = unquote(_q.get("server", [""])[0])
+    _token = _q.get("token", [""])[0]
+_empresa_arg = _s.strip("/").strip().upper()
+
+# Si vino server+token, bajamos el CONC_<empresa>.txt/.info del Portal a la carpeta LOCAL antes
+# de seguir (esta PC no es el servidor). Si no vino (corrida manual / en el propio servidor),
+# se usa lo que ya haya en la carpeta, como antes.
+if _server and _empresa_arg and _token:
+    print(">> Bajando CONC del servidor %s (empresa %s)..." % (_server, _empresa_arg))
+    _descargar_conc(_server, _empresa_arg, _token, CARPETA)
+
 INFO = _elegir_info(CARPETA, _empresa_arg)
 if INFO is None:
     _q = ("CONC_%s.info" % _empresa_arg) if _empresa_arg else "ningún CONC_*.info"

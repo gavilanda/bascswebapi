@@ -118,6 +118,7 @@ builder.Services.Configure<BancoBieOptions>(
     builder.Configuration.GetSection(BancoBieOptions.Seccion));
 builder.Services.AddHttpClient("bancobie", c => c.Timeout = TimeSpan.FromSeconds(30))
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(10) });
+builder.Services.AddSingleton<BiePayloadLogger>();           // captura request/response para homologación (config)
 builder.Services.AddSingleton<BancoBieAuthService>();        // singleton: cachea token por client_id
 builder.Services.AddScoped<BancoBieEcheqService>();
 builder.Services.AddScoped<BancoBieCuentasService>();        // cuentas + movimientos (conciliación)

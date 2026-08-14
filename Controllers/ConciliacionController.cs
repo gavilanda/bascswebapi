@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using PortalClientes.Auth;
 using PortalClientes.Bas;
@@ -24,15 +25,29 @@ public class ConciliacionController : ControllerBase
     private readonly BancoBieOptions _bieOpt;
     private readonly PortalDbContext _db;
     private readonly AccesoFuncionesService _acceso;
+    private readonly IMemoryCache _cache;
 
     public ConciliacionController(BancoBieCuentasService cuentas, IcbcConciliacionService icbc,
-        IOptions<BancoBieOptions> bieOpt, PortalDbContext db, AccesoFuncionesService acceso)
+        IOptions<BancoBieOptions> bieOpt, PortalDbContext db, AccesoFuncionesService acceso,
+        IMemoryCache cache)
     {
         _cuentas = cuentas;
         _icbc = icbc;
         _bieOpt = bieOpt.Value;
         _db = db;
         _acceso = acceso;
+        _cache = cache;
+    }
+
+    // Token corto (3 min) atado a una empresa, para que la MACRO de la PC cliente baje el
+    // CONC_<empresa>.txt/.info que se generó EN EL SERVIDOR (la PC cliente no es el servidor,
+    // así que el archivo quedó en el disco del servidor). Se emite al generar el TXT y viaja
+    // en la URL del protocolo conciliarbas://.
+    private string GenerarTokenDescarga(string baseNombre)
+    {
+        var token = Guid.NewGuid().ToString("N");
+        _cache.Set($"concToken:{token}", baseNombre, TimeSpan.FromMinutes(3));
+        return token;
     }
 
     private bool EsInterno() => User.FindFirstValue("tipo") == "Interno";
@@ -153,10 +168,36 @@ public class ConciliacionController : ControllerBase
                 $"cantidad={movimientos.Count}",
             }) + "\r\n";
             await System.IO.File.WriteAllTextAsync(rutaInfo, info, new System.Text.UTF8Encoding(false), ct);
-            return Ok(new { cantidad = movimientos.Count, ruta = rutaArchivo, info = rutaInfo });
+            return Ok(new { cantidad = movimientos.Count, ruta = rutaArchivo, info = rutaInfo, token = GenerarTokenDescarga(b) });
         }
         catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Consulta cancelada." }); }
         catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar/guardar el TXT: " + ex.Message }); }
+    }
+
+    // GET /api/conciliacion/archivo?base=&token=&tipo=txt|info
+    // Sirve el CONC_<empresa>.txt/.info ya generado en el servidor. Validado por el token corto
+    // (no requiere login: lo consume la MACRO en la PC cliente, que no tiene sesión). El token
+    // se emitió al generar el TXT y está atado a esa empresa. Sirve para que la macro baje el
+    // archivo a su C:\conciliacion local antes de importarlo a BAS.
+    [AllowAnonymous]
+    [HttpGet("archivo")]
+    public ActionResult Archivo([FromQuery(Name = "base")] string? baseNombre,
+        [FromQuery] string? token, [FromQuery] string? tipo)
+    {
+        var b = (baseNombre ?? "").Trim();
+        var tk = (token ?? "").Trim();
+        var t = (tipo ?? "txt").Trim().ToLowerInvariant();
+        if (b.Length == 0 || tk.Length == 0) return BadRequest(new { mensaje = "Faltan base o token." });
+        if (t != "txt" && t != "info") return BadRequest(new { mensaje = "tipo debe ser txt o info." });
+        if (!_cache.TryGetValue($"concToken:{tk}", out string? bTok)
+            || !string.Equals(bTok, b, StringComparison.OrdinalIgnoreCase))
+            return StatusCode(403, new { mensaje = "Token inválido, vencido o no corresponde a la empresa." });
+
+        var carpeta = (_bieOpt.CarpetaConciliacion ?? "").Trim();
+        var empresa = new string(b.Where(ch => !Path.GetInvalidFileNameChars().Contains(ch)).ToArray());
+        var ruta = Path.Combine(carpeta, $"CONC_{empresa}.{t}");
+        if (!System.IO.File.Exists(ruta)) return NotFound(new { mensaje = $"No existe {Path.GetFileName(ruta)} en el servidor." });
+        return File(System.IO.File.ReadAllBytes(ruta), "application/octet-stream", $"CONC_{empresa}.{t}");
     }
 
     // Busca en el mapa por-empresa (líneas "nroCuentaBanco=codigoBAS") el código interno de
@@ -241,7 +282,7 @@ public class ConciliacionController : ControllerBase
             var fechas = res.Movimientos.Select(m => m.Fecha).Where(f => f.Length == 8).OrderBy(f => f).ToList();
             var ruta = await GuardarTxtInfoAsync(cb, "ICBC", res.Cuenta, res.Movimientos,
                 fechas.Count > 0 ? Fmt(fechas[0]) : "", fechas.Count > 0 ? Fmt(fechas[^1]) : "", ct);
-            return Ok(new { cantidad = res.Movimientos.Count, ruta });
+            return Ok(new { cantidad = res.Movimientos.Count, ruta, token = GenerarTokenDescarga(b) });
         }
         catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar el TXT: " + ex.Message }); }
     }

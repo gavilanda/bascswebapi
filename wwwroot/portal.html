@@ -154,6 +154,7 @@
   .base-check.arrastrando { opacity:.4; }
   .base-check:hover { border-color:var(--borde); background:var(--bg); }
   .leyenda-bases input[type="checkbox"] { width:auto; padding:0; margin:0; cursor:pointer; accent-color:var(--azul); }
+  .tenue { color:#94a3b8; }
   .aviso { background:#fef9c3; color:#854d0e; font-size:13px; padding:9px 12px; border-radius:7px; margin-top:12px; }
   /* Usuario externo: no se le muestra la estructura interna de bases
      (ni el filtro "Ver bases:" ni la columna Base de la tabla). */
@@ -330,6 +331,7 @@
               </div>
             </label>
             <button id="btnVtaConsultar">Consultar</button>
+            <label class="vta-unificar" title="Excluye las cuentas del grupo (Xardo y Bark) de la estadística, en todas las bases."><input type="checkbox" id="vtaModoGrupo"> Modo Grupo</label>
             <div class="vta-totales">
               <div class="vt-stat"><span class="vt-lbl">Total vendido</span><span class="vt-val" id="kpiTotal">—</span></div>
               <div class="vt-stat"><span class="vt-lbl">Comprobantes</span><span class="vt-val" id="kpiCant">—</span></div>
@@ -467,10 +469,20 @@
             <label>Precios con vigencia desde
               <input id="dscDesde" type="date">
             </label>
+            <label style="display:flex;align-items:center;gap:4px">
+              <input id="dscSoloCambios" type="checkbox" checked>
+              Solo Precios Nuevos
+            </label>
             <button id="btnDscVer">Ver qué se exporta</button>
             <button id="btnDscTodos" class="sec">Todos</button>
             <button id="btnDscNinguno" class="sec">Ninguno</button>
             <button id="btnDscGenerar">Elegir carpeta y grabar</button>
+          </div>
+          <div id="dscAvisoCarpeta" class="aviso hidden">
+            Entrando por dirección IP el navegador no permite elegir carpeta: los archivos
+            van a parar a <b>Descargas</b> con el nombre correcto. Para que pida la carpeta
+            hay que entrar por <b>localhost</b> o habilitar este sitio en
+            <b>chrome://flags/#unsafely-treat-insecure-origin-as-secure</b>.
           </div>
           <div id="dscMsg" class="msg"></div>
           <div id="dscCargando" class="cargando hidden"><span>Consultando precios en BAS…</span></div>
@@ -683,10 +695,31 @@
     if (dscIniciado) return;
     dscIniciado = true;
     $("dscDesde").value = new Date().toISOString().slice(0, 10);
+    dscUltimaVigencia();
     $("btnDscVer").addEventListener("click", dscPrevisualizar);
+    $("dscSoloCambios").addEventListener("change", dscPrevisualizar);
     $("btnDscGenerar").addEventListener("click", dscDescargar);
     $("btnDscTodos").addEventListener("click", () => dscMarcarTodos(true));
     $("btnDscNinguno").addEventListener("click", () => dscMarcarTodos(false));
+
+    // El selector de carpeta sólo existe en contexto seguro (HTTPS o localhost).
+    // Entrando por http://<ip>:5080 el navegador no lo expone y los archivos caen
+    // en Descargas. Lo decimos de entrada así nadie lo busca.
+    if (!window.showDirectoryPicker) {
+      $("btnDscGenerar").textContent = "Descargar archivos";
+      $("dscAvisoCarpeta").classList.remove("hidden");
+    }
+  }
+
+  // Los precios se cargan el día antes con vigencia futura, así que arrancar en
+  // "hoy" casi siempre da vacío. Preferimos abrir en el último cambio cargado.
+  async function dscUltimaVigencia() {
+    try {
+      const r = await fetch("/api/discovery/ultima-vigencia", { headers: { "Authorization": "Bearer " + token } });
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d.vigencia) $("dscDesde").value = d.vigencia;
+    } catch (e) { }
   }
 
   function dscLimpiar() {
@@ -721,11 +754,22 @@
     $("dscCargando").classList.remove("hidden");
     $("btnDscVer").disabled = true;
     try {
-      const qs = "desde=" + encodeURIComponent($("dscDesde").value || "");
+      const qs = "desde=" + encodeURIComponent($("dscDesde").value || "")
+               + "&soloCambios=" + ($("dscSoloCambios").checked ? "true" : "false");
       const r = await fetch("/api/discovery/previsualizar?" + qs, { headers: { "Authorization": "Bearer " + token } });
       const d = await r.json();
       if (!r.ok) { $("dscMsg").textContent = d.mensaje || "No se pudo consultar."; return; }
-      if (!d.total) { $("dscMsg").textContent = "No hay precios con vigencia desde el " + d.desde + "."; return; }
+      if (!d.total) {
+        let m = $("dscSoloCambios").checked
+          ? "Ningún precio cambió respecto de la lista anterior, con vigencia desde el " + d.desde + "."
+          : "No hay precios con vigencia desde el " + d.desde + ".";
+        if (d.ultimaVigencia) {
+          const u = d.ultimaVigencia.split("-");
+          m += " El último cambio de precios es del " + u[2] + "/" + u[1] + "/" + u[0]
+             + " — probá con esa fecha.";
+        }
+        $("dscMsg").textContent = m; return;
+      }
 
       let aviso = "";
       if (d.codigosLargos && d.codigosLargos.length)
@@ -741,12 +785,15 @@
       const filas = d.filas || [];
       $("dscTabla").innerHTML =
         "<table><tr><th style=\"width:34px\"></th><th>Lista</th><th>Código</th><th>Producto</th>"
+        + '<th style="text-align:right">Anterior</th>'
         + '<th style="text-align:right">Precio BAS</th><th style="text-align:right">Va a Discovery</th>'
         + "<th>Vigencia</th></tr>"
         + filas.map(f =>
             '<tr><td><input type="checkbox" class="dsc-chk" checked value="'
             + esc(f.lista + "|" + f.codigo) + '"></td>'
             + "<td>" + f.lista + "</td><td><b>" + esc(f.codigo) + "</b></td><td>" + esc(f.descripcion) + "</td>"
+            + '<td style="text-align:right" class="tenue">'
+            + (f.anterior == null ? "sin precio anterior" : dscPrecio(f.anterior)) + "</td>"
             + '<td style="text-align:right">' + dscPrecio(f.precioBas) + "</td>"
             + '<td style="text-align:right"><b>' + dscPrecio(f.precio) + "</b></td>"
             + "<td>" + f.vigencia + "</td></tr>").join("")
@@ -794,7 +841,11 @@
       const r = await fetch("/api/discovery/generar", {
         method: "POST",
         headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ desde: $("dscDesde").value || "", seleccion: sel })
+        body: JSON.stringify({
+          desde: $("dscDesde").value || "",
+          soloCambios: $("dscSoloCambios").checked,
+          seleccion: sel
+        })
       });
       const d = await r.json();
       if (!r.ok) { $("dscMsg").textContent = d.mensaje || "No se pudo generar el archivo."; return; }
@@ -1487,6 +1538,7 @@
       const url = "/api/estadisticas/ventas?desde=" + encodeURIComponent(desde) + "&hasta=" + encodeURIComponent(hasta)
         + (vtaCuit ? "&cuit=" + encodeURIComponent(vtaCuit) : "")
         + (bb.length ? "&bases=" + encodeURIComponent(bb.join(",")) : "")
+        + ($("vtaModoGrupo").checked ? "&excluirGrupo=true" : "")
         + (forzar ? "&refrescar=true" : "");
       r = await fetch(url, { headers: { "Authorization": "Bearer " + token }, signal: vtaAbort.signal });
     } catch (e) {
@@ -1672,6 +1724,9 @@
   $("btnCcCancelar").addEventListener("click", () => { if (ccAbort) ccAbort.abort(); });
   $("vtaBuscarCli").addEventListener("input", () => { clearTimeout(vtaBuscarTimer); vtaBuscarTimer = setTimeout(buscarClientesVta, 250); });
   $("vtaUnificar").addEventListener("change", renderVentas);
+  // "Modo Grupo" cambia la agregación del server (excluye Xardo/Bark del total, meses y
+  // ranking), así que reconsulta. Los meses cerrados salen del caché: no repega a BAS.
+  $("vtaModoGrupo").addEventListener("change", () => { if (ventasData) cargarVentas(false); });
 
   // ---------- E-Cheques (interno) ----------
   async function iniciarEcheques() {
@@ -2234,7 +2289,7 @@
     mostrar($("concModalMsg"), "TXT generado (" + d.cantidad + " movimiento" + (d.cantidad === 1 ? "" : "s")
       + "). Guardado en " + (d.ruta || "la carpeta de conciliación") + ".", "ok");
     // TXT + .info listos -> pedir confirmación y disparar la macro (protocolo conciliarbas://).
-    pedirImportarBas($("concBase").value);
+    pedirImportarBas($("concBase").value, d.token);
   }
 
   // ICBC: re-manda el CSV al server, que genera CONC_<empresa>.txt + .info; luego dispara la macro.
@@ -2254,13 +2309,15 @@
     if (!d.cantidad) { mostrar($("concModalMsg"), "No hay movimientos para exportar.", "info"); return; }
     mostrar($("concModalMsg"), "TXT generado (" + d.cantidad + " movimiento" + (d.cantidad === 1 ? "" : "s")
       + "). Guardado en " + (d.ruta || "la carpeta de conciliación") + ".", "ok");
-    pedirImportarBas(base);
+    pedirImportarBas(base, d.token);
   }
 
   // Muestra el aviso "Tené BAScs abierto" antes de lanzar la macro en la sesión del usuario.
   let basEmpresaPend = "";
-  function pedirImportarBas(base) {
+  let basTokenPend = "";
+  function pedirImportarBas(base, tokenDescarga) {
     basEmpresaPend = base || "";
+    basTokenPend = tokenDescarga || "";
     limpiar($("basAvisoMsg"));
     $("basAvisoOv").classList.remove("hidden");
   }
@@ -2274,8 +2331,14 @@
   // la ruta del .reg como referencia "por si no pasa nada". La macro da su propio cartel al terminar.
   function importarBasConfirmado() {
     if (!basEmpresaPend) { cerrarAvisoBas(); return; }
+    // Pasamos el origen del Portal + un token corto: así la macro (que corre en la PC cliente,
+    // que NO es el servidor) baja el CONC_<empresa>.txt/.info a su C:\conciliacion local antes
+    // de importar. Sin esto, en otra PC el archivo no está (se generó en el disco del servidor).
+    let url = "conciliarbas://" + encodeURIComponent(basEmpresaPend)
+      + "?server=" + encodeURIComponent(window.location.origin);
+    if (basTokenPend) url += "&token=" + encodeURIComponent(basTokenPend);
     const a = document.createElement("a");
-    a.href = "conciliarbas://" + encodeURIComponent(basEmpresaPend);
+    a.href = url;
     document.body.appendChild(a); a.click(); a.remove();
     $("basAvisoMsg").className = "msg info";
     $("basAvisoMsg").innerHTML =

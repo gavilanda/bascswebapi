@@ -32,6 +32,18 @@ public class EstadisticasController : ControllerBase
     // Sólo personal interno: la venta del negocio no es un dato de un cliente externo.
     private bool EsInterno() => User.FindFirstValue("tipo") == "Interno";
 
+    // CUITs del grupo (Xardo y Bark). En "Modo Grupo" se excluyen de la estadística en
+    // CUALQUIER base (son ventas entre empresas del grupo, no venta real al mercado).
+    // Se comparan sólo por dígitos, así no importa cómo venga formateado el CUIT en el padrón.
+    private static readonly HashSet<string> CuitsGrupo = new(StringComparer.Ordinal)
+    {
+        "30661372946",   // XARDO S.A.
+        "30629689865",   // BARK S.A.
+    };
+
+    private static string SoloDigitos(string? s)
+        => string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
+
     // Bases del portal que ve el usuario (activas + IncluirEnPortal, intersectadas con
     // las que tiene tildadas). Mismo criterio que la cuenta corriente.
     private IReadOnlyList<string> PortalBases()
@@ -65,7 +77,7 @@ public class EstadisticasController : ControllerBase
     [HttpGet("ventas")]
     public async Task<ActionResult> Ventas([FromQuery] string? desde, [FromQuery] string? hasta,
         [FromQuery] string? cuit, [FromQuery] string? bases, [FromQuery] bool refrescar = false,
-        CancellationToken ct = default)
+        [FromQuery] bool excluirGrupo = false, CancellationToken ct = default)
     {
         if (!EsInterno())
             return StatusCode(403, new { mensaje = "Sólo el personal interno puede ver estadísticas de venta." });
@@ -96,7 +108,7 @@ public class EstadisticasController : ControllerBase
                     return new BaseResultado(b, true, null, 0m, 0,
                         new Dictionary<string, decimal>(), new Dictionary<string, ClienteImp>());
             }
-            return await PorBaseAsync(b, d, h, codigos, refrescar, ct);
+            return await PorBaseAsync(b, d, h, codigos, refrescar, excluirGrupo, ct);
         }));
 
         // Desglose POR BASE; el front consolida, tilda/destilda bases y unifica por CUIT.
@@ -121,7 +133,7 @@ public class EstadisticasController : ControllerBase
         });
     }
 
-    private async Task<BaseResultado> PorBaseAsync(string baseNombre, DateOnly desde, DateOnly hasta, IReadOnlyList<string>? codigos, bool forzar, CancellationToken ct)
+    private async Task<BaseResultado> PorBaseAsync(string baseNombre, DateOnly desde, DateOnly hasta, IReadOnlyList<string>? codigos, bool forzar, bool excluirGrupo, CancellationToken ct)
     {
         try
         {
@@ -138,6 +150,15 @@ public class EstadisticasController : ControllerBase
             {
                 var signo = signos.TryGetValue(c.Tipo, out var s) ? s : 0;
                 if (signo == 0) continue;   // recibos u otros que no cuentan como venta
+
+                padron.TryGetValue(c.CodCliente, out var cli);
+                var razon = !string.IsNullOrWhiteSpace(cli?.RazonSocial) ? cli!.RazonSocial : c.CodCliente;
+                var cuit = cli?.Cuit ?? "";
+
+                // Modo Grupo: se saltean por completo las cuentas del grupo (Xardo/Bark),
+                // así no cuentan en total, cantidad, evolución por mes ni ranking.
+                if (excluirGrupo && CuitsGrupo.Contains(SoloDigitos(cuit))) continue;
+
                 var neto = c.Total * signo;
                 total += neto;
                 cantidad++;
@@ -145,9 +166,6 @@ public class EstadisticasController : ControllerBase
                 var mes = c.Fecha.ToString("yyyy-MM", CultureInfo.InvariantCulture);
                 porMes[mes] = (porMes.TryGetValue(mes, out var x) ? x : 0m) + neto;
 
-                padron.TryGetValue(c.CodCliente, out var cli);
-                var razon = !string.IsNullOrWhiteSpace(cli?.RazonSocial) ? cli!.RazonSocial : c.CodCliente;
-                var cuit = cli?.Cuit ?? "";
                 // Agrupamos por CÓDIGO (con su CUIT adjunto). El front decide si unifica
                 // por CUIT según el checkbox "Unificar por CUIT".
                 porCliente[c.CodCliente] = porCliente.TryGetValue(c.CodCliente, out var e)

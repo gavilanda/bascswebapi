@@ -12,11 +12,13 @@ public class BancoBieCuentasService
 {
     private readonly IHttpClientFactory _factory;
     private readonly BancoBieAuthService _auth;
+    private readonly BiePayloadLogger _log;
 
-    public BancoBieCuentasService(IHttpClientFactory factory, BancoBieAuthService auth)
+    public BancoBieCuentasService(IHttpClientFactory factory, BancoBieAuthService auth, BiePayloadLogger log)
     {
         _factory = factory;
         _auth = auth;
+        _log = log;
     }
 
     public sealed record CuentaInfo(string NroCuenta, string Denominacion, string Moneda,
@@ -147,6 +149,9 @@ public class BancoBieCuentasService
             using var resp = await http.SendAsync(req, ct);
             if ((int)resp.StatusCode == 401 && intento == 0) { _auth.InvalidarToken(cred.ClientId); continue; }
             var texto = await resp.Content.ReadAsStringAsync(ct);
+            var op = ruta.Contains("movimientos", StringComparison.OrdinalIgnoreCase) ? "concil-movimientos"
+                : ruta.Contains("listaCuentas", StringComparison.OrdinalIgnoreCase) ? "concil-lista-cuentas" : "concil";
+            _log.Registrar(cred.BaseNombre, op, "GET", cred.BaseUrl + ruta, null, (int)resp.StatusCode, texto);
             JsonDocument? doc = null;
             if (!string.IsNullOrWhiteSpace(texto)) { try { doc = JsonDocument.Parse(texto); } catch { } }
             return ((int)resp.StatusCode, doc);

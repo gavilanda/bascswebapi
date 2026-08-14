@@ -30,7 +30,8 @@ public static class DiscoveryTxtBuilder
 
     // Una línea lista para el archivo.
     public sealed record Linea(string ListaDiscovery, string Codigo, string Descripcion,
-                               decimal PrecioOriginal, decimal PrecioFinal, DateOnly Vigencia);
+                               decimal PrecioOriginal, decimal PrecioFinal, DateOnly Vigencia,
+                               decimal? PrecioAnterior);
 
     /// <summary>
     /// Redondeo comercial: el 0,5 va SIEMPRE para arriba.

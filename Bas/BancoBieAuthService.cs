@@ -18,15 +18,17 @@ namespace PortalClientes.Bas;
 public class BancoBieAuthService
 {
     private readonly IHttpClientFactory _factory;
+    private readonly BiePayloadLogger _log;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     // token cacheado por client_id, y clave RSA cacheada por ruta de PEM.
     private readonly ConcurrentDictionary<string, (string token, DateTimeOffset expira)> _tokens = new();
     private readonly ConcurrentDictionary<string, RsaSecurityKey> _claves = new();
 
-    public BancoBieAuthService(IHttpClientFactory factory)
+    public BancoBieAuthService(IHttpClientFactory factory, BiePayloadLogger log)
     {
         _factory = factory;
+        _log = log;
     }
 
     public async Task<string> GetTokenAsync(BieCredenciales cred, CancellationToken ct = default)
@@ -53,6 +55,11 @@ public class BancoBieAuthService
 
             using var resp = await http.PostAsync(cred.TokenUrl, form, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
+            if (_log.Habilitado)
+            {
+                var reqForm = await form.ReadAsStringAsync(ct);
+                _log.Registrar(cred.BaseNombre, "00-token", "POST", cred.TokenUrl, reqForm, (int)resp.StatusCode, body);
+            }
             if (!resp.IsSuccessStatusCode)
                 throw new InvalidOperationException(
                     $"No se pudo obtener el token del banco para '{cred.BaseNombre}' ({(int)resp.StatusCode}). {body}");
