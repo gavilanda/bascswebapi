@@ -42,7 +42,15 @@ public class BasEchequesService
           AND CAST(c.FECHA AS DATE) <= @hasta
           AND LTRIM(RTRIM(CAST(c.CODCTABCO AS VARCHAR))) = @banco
           AND LTRIM(RTRIM(CAST(c.CHEQUERA AS VARCHAR))) = @chequera
-          AND cc.COBPAG = 1";
+          AND cc.COBPAG = 1
+          -- Excluir cheques de una orden de pago ANULADA/ELIMINADA: la OP (egreso) vive en TRANSAC
+          -- apuntada por CHEQUES.NROTRANSEGR; al anularla queda ELIMINACION<>'N' ('S'=elim, 'A'=anul).
+          -- El cheque sigue en CHEQUES, por eso hay que filtrarlo acá. NROTRANSEGR sin transacción
+          -- (cheque sin egreso) NO matchea el NOT EXISTS -> se mantiene, igual que antes.
+          AND NOT EXISTS (
+              SELECT 1 FROM dbo.TRANSAC te
+              WHERE te.NROTRANS = c.NROTRANSEGR AND te.ELIMINACION <> 'N'
+          )";
 
     public async Task<IReadOnlyList<ChequeRow>> ConsultarAsync(
         string baseNombre, DateOnly desde, DateOnly hasta, string banco, string chequera,
