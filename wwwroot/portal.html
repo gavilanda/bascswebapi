@@ -1042,6 +1042,20 @@
 
   // El alta escribe en BAS, así que va con confirmación explícita: se avisa
   // cuántos precios y sobre qué base, porque de acá se puede pegar en producción.
+  // Toast flotante (aviso breve, autodismiss). tipo: "ok" (verde) | "err" (rojo) | "info".
+  function mostrarToast(mensaje, tipo) {
+    const colores = { ok: "#1b8f3a", err: "#c0392b", info: "#334155" };
+    const t = document.createElement("div");
+    t.textContent = mensaje;
+    t.style.cssText = "position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:"
+      + (colores[tipo] || colores.info) + ";color:#fff;padding:12px 20px;border-radius:8px;"
+      + "box-shadow:0 4px 16px rgba(0,0,0,.25);font-size:14px;font-weight:600;z-index:9999;"
+      + "opacity:0;transition:opacity .25s;max-width:80vw;text-align:center;";
+    document.body.appendChild(t);
+    requestAnimationFrame(() => { t.style.opacity = "1"; });
+    setTimeout(() => { t.style.opacity = "0"; setTimeout(() => t.remove(), 300); }, 3200);
+  }
+
   async function lpAlta() {
     const sel = lpCasillas().filter(c => c.checked).map(c => c.value);
     if (!sel.length) { $("lpMsg").textContent = "No hay nada tildado."; return; }
@@ -1077,7 +1091,11 @@
               : "Terminó con errores. ") + det
         + (d.ok ? '<div class="msg">Verificá en BAS antes de dar por cerrado.</div>' : "");
       $("lpResumen").classList.remove("hidden");
-      if (d.ok) $("lpTabla").innerHTML = "";
+      if (d.ok) {
+        $("lpTabla").innerHTML = "";
+        const totalPrecios = (d.resultados || []).filter(x => x.ok).reduce((a, x) => a + (x.items || 0), 0);
+        mostrarToast("Alta realizada en " + d.destino + ": " + totalPrecios + " precios.", "ok");
+      }
     } catch (e) {
       $("lpMsg").textContent = "No se pudo dar de alta: " + e;
     } finally {
