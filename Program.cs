@@ -352,8 +352,8 @@ using (var scope = app.Services.CreateScope())
     SembrarFuncionSiFalta("ventas", "Estadísticas de venta", 30, "interno");
     SembrarFuncionSiFalta("echeques", "E-Cheques", 40, "interno");
     SembrarFuncionSiFalta("conciliacion", "Bco/Conciliación", 50, "interno");
-    SembrarFuncionSiFalta("discovery", "Precios a Discovery", 60, "interno");
-    SembrarFuncionSiFalta("listasprecios", "Alta de listas de precios", 61, "interno");
+    SembrarFuncionSiFalta("listasprecios", "Alta de listas de precios", 60, "interno");
+    SembrarFuncionSiFalta("discovery", "Precios a Discovery", 61, "interno");
     // "Mis datos" dejó de ser un programa del menú: los datos del cliente ahora se
     // muestran integrados en la card de consulta del portal (junto al buscador),
     // para internos y externos. Quitamos su fila si venía sembrada de antes.
