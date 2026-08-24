@@ -106,7 +106,8 @@ builder.Services.AddScoped<BasComprobantesService>();
 builder.Services.AddScoped<BasEstadisticasVentaService>();   // estadísticas de venta (multi-base)
 builder.Services.AddScoped<BasEchequesService>();            // e-cheques (SQL directo a la base)
 builder.Services.AddScoped<BasOrdenCompraService>();         // órdenes de compra (grabado a BAS)
-builder.Services.AddScoped<BasListasPreciosService>();       // listas de precios (export a Discovery)
+builder.Services.AddScoped<BasListasPreciosService>();
+builder.Services.AddScoped<PlanillaPreciosService>();       // listas de precios (export a Discovery)
 builder.Services.AddScoped<PortalClientes.Auth.AccesoFuncionesService>();  // acceso por función (menú + endpoints)
 
 // ---- Banco Credicoop (BIE): emisión de echeqs por API (multi-empresa) ----
@@ -352,6 +353,7 @@ using (var scope = app.Services.CreateScope())
     SembrarFuncionSiFalta("echeques", "E-Cheques", 40, "interno");
     SembrarFuncionSiFalta("conciliacion", "Bco/Conciliación", 50, "interno");
     SembrarFuncionSiFalta("discovery", "Precios a Discovery", 60, "interno");
+    SembrarFuncionSiFalta("listasprecios", "Alta de listas de precios", 61, "interno");
     // "Mis datos" dejó de ser un programa del menú: los datos del cliente ahora se
     // muestran integrados en la card de consulta del portal (junto al buscador),
     // para internos y externos. Quitamos su fila si venía sembrada de antes.

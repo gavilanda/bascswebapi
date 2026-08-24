@@ -490,6 +490,32 @@
           <div id="dscTabla"></div>
         </div>
 
+        <div id="secListasPrecios" class="card seccion hidden">
+          <div class="vtafiltros">
+            <label>Planilla <input id="lpArchivo" type="file" accept=".xlsx"></label>
+            <label>Destino
+              <select id="lpDestino">
+                <option value="BARKTEST">BARKTEST (prueba)</option>
+                <option value="BARK">BARK (producción)</option>
+              </select>
+            </label>
+            <button id="btnLpVer">Ver qué cambia</button>
+            <button id="btnLpTodos" class="sec">Todos</button>
+            <button id="btnLpNinguno" class="sec">Ninguno</button>
+          </div>
+          <div class="vtafiltros">
+            <label>Fecha de vigencia <input id="lpVigencia" type="date"></label>
+            <label style="flex:1">Observaciones
+              <input id="lpObs" type="text" style="width:100%" placeholder="opcional">
+            </label>
+            <button id="btnLpAlta">Dar de alta en BAS</button>
+          </div>
+          <div id="lpMsg" class="msg"></div>
+          <div id="lpCargando" class="cargando hidden"><span>Leyendo la planilla y consultando BAS…</span></div>
+          <div id="lpResumen" class="hidden" style="margin:6px 0 10px"></div>
+          <div id="lpTabla"></div>
+        </div>
+
         <!-- Modal de conciliación: movimientos del banco + generar TXT para BAS -->
         <div id="concOv" class="ech-ov hidden">
           <div class="ech-modal">
@@ -508,6 +534,17 @@
         </div>
 
         <!-- Aviso previo antes de disparar la macro (que corre en la sesión del usuario) -->
+        <div id="lpConfOv" class="ech-ov hidden">
+          <div class="ech-modal" style="max-width:460px">
+            <div class="ech-mhead"><h3 id="lpConfTit">Confirmar</h3></div>
+            <div id="lpConfTexto" class="ech-minfo"></div>
+            <div class="ech-mfoot">
+              <button id="lpConfOk">Confirmar</button>
+              <button id="lpConfCancel" class="sec">Cancelar</button>
+            </div>
+          </div>
+        </div>
+
         <div id="basAvisoOv" class="ech-ov hidden">
           <div class="ech-modal" style="max-width:460px">
             <div class="ech-mhead"><h3>Importar a BAS</h3></div>
@@ -677,6 +714,7 @@
     echeques: { sec: "secEcheques", init: iniciarEcheques, requiereCliente: false },
     conciliacion: { sec: "secConciliacion", init: iniciarConciliacion, requiereCliente: false },
     discovery: { sec: "secDiscovery", init: iniciarDiscovery, requiereCliente: false },
+    listasprecios: { sec: "secListasPrecios", init: iniciarListas, requiereCliente: false },
   };
 
 
@@ -878,6 +916,172 @@
       $("dscMsg").textContent = "No se pudo grabar: " + e;
     } finally {
       dscActualizarConteo();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Alta de listas de precios en BAS desde la planilla madre
+  // ---------------------------------------------------------------------------
+  let lpIniciado = false;
+
+  async function iniciarListas() {
+    if (lpIniciado) return;
+    lpIniciado = true;
+    $("btnLpVer").addEventListener("click", lpPrevisualizar);
+    $("btnLpAlta").addEventListener("click", lpAlta);
+    $("btnLpTodos").addEventListener("click", () => lpMarcarTodos(true));
+    $("btnLpNinguno").addEventListener("click", () => lpMarcarTodos(false));
+    $("btnLpAlta").disabled = true;
+  }
+
+  function lpCasillas() {
+    return Array.from(document.querySelectorAll("#lpTabla input.lp-chk"));
+  }
+
+  function lpMarcarTodos(v) {
+    lpCasillas().forEach(c => { c.checked = v; });
+    lpConteo();
+  }
+
+  function lpConteo() {
+    const c = lpCasillas(), n = c.filter(x => x.checked).length;
+    const lbl = $("lpConteo");
+    if (lbl) lbl.textContent = n + " de " + c.length + " seleccionados";
+    $("btnLpAlta").disabled = n === 0;
+  }
+
+  function lpPrecio(v) {
+    return v === null || v === undefined ? "—"
+      : "$ " + Number(v).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  async function lpPrevisualizar() {
+    const f = $("lpArchivo").files[0];
+    if (!f) { $("lpMsg").textContent = "Elegí la planilla primero."; return; }
+    $("lpMsg").textContent = "";
+    $("lpResumen").classList.add("hidden");
+    $("lpTabla").innerHTML = "";
+    $("lpCargando").classList.remove("hidden");
+    $("btnLpVer").disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append("archivo", f);
+      fd.append("destino", $("lpDestino").value);
+      const r = await fetch("/api/listas-precios/previsualizar", {
+        method: "POST", headers: { "Authorization": "Bearer " + token }, body: fd
+      });
+      const d = await r.json();
+      if (!r.ok) { $("lpMsg").textContent = d.mensaje || "No se pudo leer la planilla."; return; }
+
+      if (d.vigenciaSugerida && !$("lpVigencia").value) $("lpVigencia").value = d.vigenciaSugerida;
+
+      const cambios = d.cambios || [];
+      let aviso = "";
+      if (d.avisos && d.avisos.length)
+        aviso = '<div class="aviso">' + d.avisos.map(esc).join("<br>") + "</div>";
+
+      $("lpResumen").innerHTML =
+        "Solapa <b>" + esc(d.hoja) + "</b> &nbsp;·&nbsp; " + d.renglones + " renglones leídos"
+        + " &nbsp;·&nbsp; destino <b>" + esc(d.destino) + "</b>"
+        + " &nbsp;·&nbsp; <b>" + cambios.length + "</b> precios distintos de BAS"
+        + ' &nbsp;·&nbsp; <span id="lpConteo"></span>' + aviso;
+      $("lpResumen").classList.remove("hidden");
+
+      if (!cambios.length) {
+        $("lpTabla").innerHTML = '<div class="vacio">Los precios de la planilla ya son los vigentes en BAS.</div>';
+        $("btnLpAlta").disabled = true;
+        return;
+      }
+
+      $("lpTabla").innerHTML =
+        '<table><tr><th style="width:34px"></th><th>Lista</th><th>Código</th><th>Producto</th>'
+        + '<th style="text-align:right">Hoy en BAS</th><th style="text-align:right">Nuevo</th>'
+        + '<th style="text-align:right">Var.</th><th>Fila</th></tr>'
+        + cambios.map(c => {
+            const v = (c.actual === null || c.actual === undefined || !c.actual) ? null
+                    : ((c.nuevo - c.actual) / c.actual) * 100;
+            const varTxt = v === null ? '<span class="est e-nada">alta</span>'
+                         : (v > 0 ? "+" : "") + v.toFixed(1) + "%";
+            return '<tr><td><input type="checkbox" class="lp-chk" checked value="'
+              + esc(c.lista + "|" + c.codigo + "|" + c.nuevo) + '"></td>'
+              + "<td>" + esc(c.lista) + "</td><td><b>" + esc(c.codigo) + "</b></td>"
+              + "<td>" + esc(c.descripcion || "") + "</td>"
+              + '<td style="text-align:right" class="tenue">' + lpPrecio(c.actual) + "</td>"
+              + '<td style="text-align:right"><b>' + lpPrecio(c.nuevo) + "</b></td>"
+              + '<td style="text-align:right">' + varTxt + "</td>"
+              + "<td>" + c.fila + "</td></tr>";
+          }).join("")
+        + "</table>";
+      lpCasillas().forEach(c => c.addEventListener("change", lpConteo));
+      lpConteo();
+    } catch (e) {
+      $("lpMsg").textContent = "No se pudo leer la planilla: " + e;
+    } finally {
+      $("lpCargando").classList.add("hidden");
+      $("btnLpVer").disabled = false;
+    }
+  }
+
+  // El portal no tiene un confirmar() generico: cada pantalla arma su modal.
+  // Este es el de esta funcion; devuelve una promesa con true/false.
+  function lpConfirmar(titulo, html) {
+    return new Promise(resolve => {
+      $("lpConfTit").textContent = titulo;
+      $("lpConfTexto").innerHTML = html;
+      $("lpConfOv").classList.remove("hidden");
+      const cerrar = (v) => {
+        $("lpConfOv").classList.add("hidden");
+        $("lpConfOk").onclick = null;
+        $("lpConfCancel").onclick = null;
+        resolve(v);
+      };
+      $("lpConfOk").onclick = () => cerrar(true);
+      $("lpConfCancel").onclick = () => cerrar(false);
+    });
+  }
+
+  // El alta escribe en BAS, así que va con confirmación explícita: se avisa
+  // cuántos precios y sobre qué base, porque de acá se puede pegar en producción.
+  async function lpAlta() {
+    const sel = lpCasillas().filter(c => c.checked).map(c => c.value);
+    if (!sel.length) { $("lpMsg").textContent = "No hay nada tildado."; return; }
+    const destino = $("lpDestino").value;
+    const vig = $("lpVigencia").value;
+    if (!vig) { $("lpMsg").textContent = "Falta la fecha de vigencia."; return; }
+
+    const p = vig.split("-");
+    const ok = await lpConfirmar(
+      "Dar de alta en BAS",
+      "Se van a cargar <b>" + sel.length + "</b> precios en <b>" + esc(destino) + "</b>"
+      + " con vigencia <b>" + p[2] + "/" + p[1] + "/" + p[0] + "</b>."
+      + (destino === "BARK" ? "<br><br><b>Es la base de PRODUCCIÓN.</b>" : ""));
+    if (!ok) return;
+
+    $("lpMsg").textContent = "";
+    $("btnLpAlta").disabled = true;
+    try {
+      const r = await fetch("/api/listas-precios/alta", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ destino, vigencia: vig, seleccion: sel,
+                               observaciones: $("lpObs").value || "" })
+      });
+      const d = await r.json();
+      if (!r.ok) { $("lpMsg").textContent = d.mensaje || "No se pudo dar de alta."; return; }
+
+      const det = (d.resultados || []).map(x =>
+        (x.ok ? "lista <b>" + esc(x.lista) + "</b>: " + x.items + " precios"
+              : "lista " + esc(x.lista) + ": <b>" + esc(x.mensaje) + "</b>")).join(" &nbsp;·&nbsp; ");
+      $("lpResumen").innerHTML =
+        (d.ok ? "Alta realizada en <b>" + esc(d.destino) + "</b>, vigencia " + esc(d.vigencia) + ". "
+              : "Terminó con errores. ") + det
+        + (d.ok ? '<div class="msg">Verificá en BAS antes de dar por cerrado.</div>' : "");
+      $("lpResumen").classList.remove("hidden");
+      if (d.ok) $("lpTabla").innerHTML = "";
+    } catch (e) {
+      $("lpMsg").textContent = "No se pudo dar de alta: " + e;
+    } finally {
+      lpConteo();
     }
   }
 

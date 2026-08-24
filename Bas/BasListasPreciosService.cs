@@ -137,6 +137,81 @@ SELECT * FROM (
         return null;
     }
 
+    /// <summary>
+    /// Precio VIGENTE hoy de cada código en cada lista pedida.
+    /// Sin filtrar por tipo de ítem ni por suspendidos: acá se compara contra lo
+    /// que trae una planilla, que puede incluir cualquier cosa.
+    /// </summary>
+    public async Task<Dictionary<string, Dictionary<string, decimal>>> VigentesAsync(
+        string baseNombre, IReadOnlyList<string> listas, IReadOnlyList<string> codigos,
+        CancellationToken ct = default)
+    {
+        var salida = new Dictionary<string, Dictionary<string, decimal>>();
+        if (listas.Count == 0 || codigos.Count == 0) return salida;
+        var enListas = string.Join(",", listas.Select(l => "'" + l.Replace("'", "''") + "'"));
+        var enCodigos = string.Join(",", codigos.Select(c => "'" + c.Replace("'", "''") + "'"));
+
+        var sql = $@"
+SELECT * FROM (
+  SELECT TOP 100000
+         RTRIM(lp.CODLIS) AS LISTA,
+         RTRIM(lp.CODITM) AS COD,
+         lp.PRECIO AS PRECIO
+  FROM dbo.LISTASPRECIOS lp WITH (NOLOCK)
+  JOIN (SELECT CODLIS, CODITM, MAX(VIGENCIA) AS MaxVig
+        FROM dbo.LISTASPRECIOS WITH (NOLOCK)
+        WHERE CODLIS IN ({enListas}) AND VIGENCIA <= GETDATE()
+        GROUP BY CODLIS, CODITM) m
+    ON m.CODLIS = lp.CODLIS AND m.CODITM = lp.CODITM AND m.MaxVig = lp.VIGENCIA
+  WHERE lp.CODLIS IN ({enListas})
+    AND lp.PRECIO <> 0
+    AND RTRIM(lp.CODITM) IN ({enCodigos})
+) x";
+
+        var cuerpo = await ConsultarAsync(baseNombre, sql, ct);
+        if (string.IsNullOrWhiteSpace(cuerpo)) return salida;
+        foreach (var fila in LeerFilas(cuerpo))
+        {
+            var lis = fila.GetValueOrDefault("LISTA") ?? "";
+            var cod = fila.GetValueOrDefault("COD") ?? "";
+            if (lis.Length == 0 || cod.Length == 0) continue;
+            if (!decimal.TryParse(fila.GetValueOrDefault("PRECIO"), NumberStyles.Any,
+                                  CultureInfo.InvariantCulture, out var precio)) continue;
+            if (!salida.TryGetValue(lis, out var d))
+                salida[lis] = d = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            d[cod] = precio;
+        }
+        return salida;
+    }
+
+    public sealed record ItemAlta(string CodigoItem, decimal Precio);
+
+    /// <summary>
+    /// Da de alta una vigencia nueva en una lista de precios de BAS.
+    ///
+    /// No hace falta mandar la lista entera: BAS resuelve el precio vigente por
+    /// ítem (MAX(VIGENCIA) por CODITM), así que los productos que no van en el
+    /// alta siguen tomando su vigencia anterior. Probado contra BARKTEST.
+    /// </summary>
+    public async Task<string> CrearListaAsync(
+        string baseNombre, string codigoLista, DateOnly vigencia,
+        IReadOnlyList<ItemAlta> items, string observaciones, CancellationToken ct = default)
+    {
+        var cfg = _destinos.Config(baseNombre)
+            ?? throw new InvalidOperationException($"Destino BAS desconocido: {baseNombre}");
+
+        var body = JsonSerializer.Serialize(new
+        {
+            Codigo = codigoLista,
+            EmpresaAlta = cfg.Empresa,
+            FechaVigencia = vigencia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Observaciones = observaciones,
+            Items = items.Select(i => new { i.CodigoItem, i.Precio }).ToArray(),
+        });
+
+        return await _destinos.PostAsync(baseNombre, "/api/ListasPrecios", body, ct) ?? "";
+    }
+
     // POST a CONSULTAGRAL/SQL. Devuelve el contenido de "Cuerpo" (XML) o "" si no hubo filas.
     private async Task<string> ConsultarAsync(string baseNombre, string sql, CancellationToken ct)
     {
