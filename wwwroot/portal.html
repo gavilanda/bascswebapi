@@ -2334,9 +2334,13 @@
     // Pasamos el origen del Portal + un token corto: así la macro (que corre en la PC cliente,
     // que NO es el servidor) baja el CONC_<empresa>.txt/.info a su C:\conciliacion local antes
     // de importar. Sin esto, en otra PC el archivo no está (se generó en el disco del servidor).
-    let url = "conciliarbas://" + encodeURIComponent(basEmpresaPend)
-      + "?server=" + encodeURIComponent(window.location.origin);
-    if (basTokenPend) url += "&token=" + encodeURIComponent(basTokenPend);
+    // OJO: el handler del protocolo (Windows/cmd/wscript) TRUNCA la URL en '=' y '&'. Por eso
+    // NO usamos query string: empaquetamos "server|token" en base64url (solo A-Za-z0-9-_),
+    // que pasa intacto, y lo mandamos como parte de la ruta: conciliarbas://EMPRESA/<b64>.
+    var payload = window.location.origin + "|" + (basTokenPend || "");
+    var b64 = btoa(unescape(encodeURIComponent(payload)))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    var url = "conciliarbas://" + encodeURIComponent(basEmpresaPend) + "/" + b64;
     const a = document.createElement("a");
     a.href = url;
     document.body.appendChild(a); a.click(); a.remove();

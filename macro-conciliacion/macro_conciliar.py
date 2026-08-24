@@ -104,13 +104,27 @@ if _s.lower().startswith("conciliarbas:"):
     _s = _s.split(":", 1)[1]            # saca "conciliarbas:"
 _s = _s.lstrip("/")                      # saca "//"
 _server = ""; _token = ""
-if "?" in _s:
-    _s, _qs = _s.split("?", 1)
-    from urllib.parse import parse_qs, unquote
-    _q = parse_qs(_qs)
-    _server = unquote(_q.get("server", [""])[0])
-    _token = _q.get("token", [""])[0]
-_empresa_arg = _s.strip("/").strip().upper()
+# Formato NUEVO: conciliarbas://EMPRESA/<b64url(server|token)>. Usamos base64url (solo
+# A-Za-z0-9-_) porque el handler del protocolo (Windows/cmd/wscript) TRUNCA la URL en '='
+# y '&' — por eso no se puede mandar server=...&token=... como query string.
+_parts = _s.split("/", 1)
+_empresa_arg = _parts[0].strip().upper()
+_payload_b64 = (_parts[1] if len(_parts) > 1 else "").strip().lstrip("?").strip()
+if _payload_b64:
+    import base64
+    try:
+        _pad = "=" * (-len(_payload_b64) % 4)
+        _dec = base64.urlsafe_b64decode(_payload_b64 + _pad).decode("utf-8")
+        if "|" in _dec:
+            _server, _token = _dec.split("|", 1)
+    except Exception as _e:
+        print("   (no pude decodificar el payload del protocolo: %s)" % _e)
+
+# Diagnóstico: dejamos EN EL LOG la URL cruda que recibió el macro y lo que se parseó.
+# Así se ve si el navegador está mandando server+token o una URL vieja "pelada".
+print("ARG CRUDO :", _raw)
+print("PARSEADO  : empresa=%s  server=%s  token=%s" % (
+    _empresa_arg, (_server or "(vacio)"), ("SI" if _token else "NO")))
 
 # Si vino server+token, bajamos el CONC_<empresa>.txt/.info del Portal a la carpeta LOCAL antes
 # de seguir (esta PC no es el servidor). Si no vino (corrida manual / en el propio servidor),
@@ -332,11 +346,54 @@ def main():
     try:
         try: winframe.set_focus(); time.sleep(0.2)    # re-asegurar BAS adelante
         except Exception: pass
-        cta = frame.child_window(auto_id="4100", control_type="Edit")
-        cta.wait("exists", timeout=10)
+
+        # El Edit de la cuenta tiene auto_id 4100, pero puede haber MÁS DE UNO (BAS 4.6.0 / form
+        # previo oculto). Estrategia: preferir los que están DENTRO del form 'Conciliación
+        # bancaria'; si no, buscar en todo el marco. Volcamos el detalle de cada candidato al log
+        # (posición/visible/valor) para poder identificar el correcto si eligiéramos mal.
+        def _cands_4100(cont):
+            try:
+                return [e for e in cont.descendants(control_type="Edit")
+                        if ((getattr(e.element_info, "automation_id", "") or "") == "4100")]
+            except Exception:
+                return []
+
+        def _dump(cands):
+            for i, e in enumerate(cands):
+                try: r = e.rectangle()
+                except Exception: r = "?"
+                try: vis = e.is_visible()
+                except Exception: vis = "?"
+                try: en = e.is_enabled()
+                except Exception: en = "?"
+                try: val = e.get_value()
+                except Exception:
+                    try: val = e.window_text()
+                    except Exception: val = "?"
+                print("   [cuenta 4100 #%d] visible=%s enabled=%s val='%s' rect=%s" % (i, vis, en, val, r))
+
+        cta = None
+        t0 = time.time()
+        while time.time() - t0 < 12:
+            cands = _cands_4100(form) or _cands_4100(frame)
+            if cands:
+                _dump(cands)
+                visibles = []
+                for e in cands:
+                    try:
+                        if e.is_visible() and e.is_enabled():
+                            visibles.append(e)
+                    except Exception:
+                        pass
+                cta = (visibles[0] if visibles else cands[0])   # 1º visible dentro del form
+                paso("Campo cuenta: %d candidato(s), %d visible(s) -> uso el 1º." % (len(cands), len(visibles)))
+                break
+            time.sleep(0.4)
+        if cta is None:
+            print("  No encontré ningún campo de cuenta (auto_id 4100)."); return
         cta.click_input()                 # foco real
         time.sleep(0.3)
-        cta.type_keys(CUENTA + "{ENTER}", set_foreground=True)   # teclea 011 y confirma
+        cta.type_keys(CUENTA + "{ENTER}", set_foreground=True)   # teclea la cuenta y confirma
         paso("Cuenta tecleada: " + CUENTA + " + ENTER  (MIRÁ BAS: ¿carga movimientos / habilita Archivo?)")
     except Exception as e:
         print("  ERROR cargando la cuenta:", e); return
