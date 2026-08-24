@@ -206,7 +206,15 @@ SELECT * FROM (
             EmpresaAlta = cfg.Empresa,
             FechaVigencia = vigencia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             Observaciones = observaciones,
-            Items = items.Select(i => new { i.CodigoItem, i.Precio }).ToArray(),
+            // Redondeo a 2 decimales: la planilla MUESTRA 2 decimales, pero columnas como la 029
+            // ("MAYORISTA sin IVA") son FÓRMULAS (ej. mostrador/1.21) cuyo valor real guardado tiene
+            // decimales infinitos (82.6446280…). Se lee el valor crudo, así que sin redondear BAS
+            // responde 400 (guarda decimal(18,5)). Redondeamos a 2 = lo que se ve en el Excel.
+            Items = items.Select(i => new
+            {
+                i.CodigoItem,
+                Precio = Math.Round(i.Precio, 2, MidpointRounding.AwayFromZero),
+            }).ToArray(),
         });
 
         return await _destinos.PostAsync(baseNombre, "/api/ListasPrecios", body, ct) ?? "";
