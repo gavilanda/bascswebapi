@@ -59,7 +59,9 @@ public class PlanillaPreciosService
                 // Fila de TÍTULO de grupo (o encabezado): marca dónde empieza/termina cada bloque.
                 var t = cod.ToUpperInvariant();
                 if (t.Contains("PROMOS")) { empezo = true; omitir = false; }
-                else if (t.Contains("FETEAD")) omitir = true;   // "PRECIOS Feteados (008)"
+                // OJO: hay DOS grupos con "Feteados"; sólo se omite el de la lista 008
+                // ("PRECIOS Feteados (008)"). El otro grupo de feteados se procesa normal.
+                else if (t.Contains("FETEAD") && t.Contains("008")) omitir = true;
                 else omitir = false;                            // otro rubro: se vuelve a procesar
                 continue;
             }
