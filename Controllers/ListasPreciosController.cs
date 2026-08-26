@@ -91,30 +91,51 @@ public class ListasPreciosController : ControllerBase
             var vigentes = await _precios.VigentesAsync(
                 baseBas, new[] { ListaMostrador, ListaMayorista }, codigos, ct);
 
-            var cambios = new List<object>();
+            // Lista COMPLETA a generar (una entrada por ítem y lista), con el precio resuelto:
+            //   celda con valor (incl. 0) -> ese precio            (origen "nuevo" / "cero")
+            //   celda vacía + hay anterior -> el precio anterior   (origen "anterior")
+            //   celda vacía + sin anterior -> no se genera
+            var items = new List<object>();
+            int cambian = 0;
             foreach (var r in lectura.Renglones)
             {
                 var pares = new[] { (ListaMostrador, r.Mostrador), (ListaMayorista, r.Mayorista) };
-                foreach (var (lista, nuevo) in pares)
+                foreach (var (lista, celda) in pares)
                 {
-                    // Un cero no es un precio: son productos que sólo se venden
-                    // por la otra lista.
-                    if (nuevo is null || nuevo.Value == 0m) continue;
-
                     decimal? actual = null;
                     if (vigentes.TryGetValue(lista, out var d)
                         && d.TryGetValue(r.Codigo, out var p)) actual = p;
 
-                    if (actual is not null && Math.Abs(actual.Value - nuevo.Value) < 0.005m) continue;
+                    decimal precio;
+                    string origen;
+                    if (celda is not null)
+                    {
+                        precio = celda.Value;
+                        origen = celda.Value == 0m ? "cero" : "nuevo";
+                    }
+                    else if (actual is not null)
+                    {
+                        precio = actual.Value;
+                        origen = "anterior";
+                    }
+                    else
+                    {
+                        continue;   // vacía y sin precio anterior: no se genera
+                    }
 
-                    cambios.Add(new
+                    bool cambia = actual is null || Math.Abs(actual.Value - precio) >= 0.005m;
+                    if (cambia) cambian++;
+
+                    items.Add(new
                     {
                         lista,
                         codigo = r.Codigo,
                         descripcion = r.Descripcion,
                         fila = r.Fila,
                         actual,
-                        nuevo = nuevo.Value,
+                        precio,
+                        origen,
+                        cambia,
                         esAlta = actual is null,
                     });
                 }
@@ -127,7 +148,8 @@ public class ListasPreciosController : ControllerBase
                 vigenciaSugerida = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd"),
                 renglones = lectura.Renglones.Count,
                 avisos = lectura.Avisos,
-                cambios,
+                cambian,
+                items,
             });
         }
         catch (OperationCanceledException) { return StatusCode(499, new { mensaje = "Cancelado." }); }
@@ -166,7 +188,7 @@ public class ListasPreciosController : ControllerBase
             if (p.Length != 3) continue;
             if (!decimal.TryParse(p[2], NumberStyles.Any, CultureInfo.InvariantCulture, out var precio))
                 continue;
-            if (precio <= 0) continue;
+            if (precio < 0) continue;   // se permite 0 (celda en 0 = precio 0); no negativos
             if (!porLista.TryGetValue(p[0], out var l))
                 porLista[p[0]] = l = new List<BasListasPreciosService.ItemAlta>();
             l.Add(new BasListasPreciosService.ItemAlta(p[1], precio));

@@ -502,6 +502,7 @@
             <button id="btnLpVer">Ver qué cambia</button>
             <button id="btnLpTodos" class="sec">Todos</button>
             <button id="btnLpNinguno" class="sec">Ninguno</button>
+            <label class="vta-unificar" style="align-self:center" title="Además de lo que cambia, muestra los ítems que se generan con el precio anterior (la lista sale completa igual)."><input type="checkbox" id="lpVerTodo"> Ver todo</label>
           </div>
           <div class="vtafiltros">
             <label>Fecha de vigencia <input id="lpVigencia" type="date"></label>
@@ -931,7 +932,16 @@
     $("btnLpAlta").addEventListener("click", lpAlta);
     $("btnLpTodos").addEventListener("click", () => lpMarcarTodos(true));
     $("btnLpNinguno").addEventListener("click", () => lpMarcarTodos(false));
+    $("lpVerTodo").addEventListener("change", lpAplicarFiltro);
     $("btnLpAlta").disabled = true;
+  }
+
+  // Muestra/oculta las filas SIN cambio (precio anterior) según el tilde "Ver todo".
+  // Ojo: aunque estén ocultas siguen tildadas -> la lista se manda COMPLETA igual.
+  function lpAplicarFiltro() {
+    const verTodo = $("lpVerTodo") && $("lpVerTodo").checked;
+    document.querySelectorAll("#lpTabla tr.lp-sincambio")
+      .forEach(tr => { tr.style.display = verTodo ? "" : "none"; });
   }
 
   function lpCasillas() {
@@ -975,7 +985,7 @@
 
       if (d.vigenciaSugerida && !$("lpVigencia").value) $("lpVigencia").value = d.vigenciaSugerida;
 
-      const cambios = d.cambios || [];
+      const items = d.items || [];
       let aviso = "";
       if (d.avisos && d.avisos.length)
         aviso = '<div class="aviso">' + d.avisos.map(esc).join("<br>") + "</div>";
@@ -983,36 +993,40 @@
       $("lpResumen").innerHTML =
         "Solapa <b>" + esc(d.hoja) + "</b> &nbsp;·&nbsp; " + d.renglones + " renglones leídos"
         + " &nbsp;·&nbsp; destino <b>" + esc(d.destino) + "</b>"
-        + " &nbsp;·&nbsp; <b>" + cambios.length + "</b> precios distintos de BAS"
+        + " &nbsp;·&nbsp; se generan <b>" + items.length + "</b> precios (<b>" + (d.cambian || 0) + "</b> cambian)"
         + ' &nbsp;·&nbsp; <span id="lpConteo"></span>' + aviso;
       $("lpResumen").classList.remove("hidden");
 
-      if (!cambios.length) {
-        $("lpTabla").innerHTML = '<div class="vacio">Los precios de la planilla ya son los vigentes en BAS.</div>';
+      if (!items.length) {
+        $("lpTabla").innerHTML = '<div class="vacio">No hay ítems para generar.</div>';
         $("btnLpAlta").disabled = true;
         return;
       }
 
+      const origenTxt = { nuevo: "nuevo", cero: "0", anterior: "= anterior" };
       $("lpTabla").innerHTML =
         '<table><tr><th style="width:34px"></th><th>Lista</th><th>Código</th><th>Producto</th>'
-        + '<th style="text-align:right">Hoy en BAS</th><th style="text-align:right">Nuevo</th>'
-        + '<th style="text-align:right">Var.</th><th>Fila</th></tr>'
-        + cambios.map(c => {
+        + '<th style="text-align:right">Hoy en BAS</th><th style="text-align:right">Se genera</th>'
+        + '<th>Origen</th><th style="text-align:right">Var.</th><th>Fila</th></tr>'
+        + items.map(c => {
             const v = (c.actual === null || c.actual === undefined || !c.actual) ? null
-                    : ((c.nuevo - c.actual) / c.actual) * 100;
-            const varTxt = v === null ? '<span class="est e-nada">alta</span>'
-                         : (v > 0 ? "+" : "") + v.toFixed(1) + "%";
-            return '<tr><td><input type="checkbox" class="lp-chk" checked value="'
-              + esc(c.lista + "|" + c.codigo + "|" + c.nuevo) + '"></td>'
+                    : ((c.precio - c.actual) / c.actual) * 100;
+            const varTxt = c.esAlta ? '<span class="est e-nada">alta</span>'
+                         : (v === null ? "—" : (v > 0 ? "+" : "") + v.toFixed(1) + "%");
+            return '<tr class="' + (c.cambia ? "" : "lp-sincambio") + '">'
+              + '<td><input type="checkbox" class="lp-chk" checked value="'
+              + esc(c.lista + "|" + c.codigo + "|" + c.precio) + '"></td>'
               + "<td>" + esc(c.lista) + "</td><td><b>" + esc(c.codigo) + "</b></td>"
               + "<td>" + esc(c.descripcion || "") + "</td>"
               + '<td style="text-align:right" class="tenue">' + lpPrecio(c.actual) + "</td>"
-              + '<td style="text-align:right"><b>' + lpPrecio(c.nuevo) + "</b></td>"
+              + '<td style="text-align:right"><b>' + lpPrecio(c.precio) + "</b></td>"
+              + '<td class="tenue">' + esc(origenTxt[c.origen] || c.origen) + "</td>"
               + '<td style="text-align:right">' + varTxt + "</td>"
               + "<td>" + c.fila + "</td></tr>";
           }).join("")
         + "</table>";
       lpCasillas().forEach(c => c.addEventListener("change", lpConteo));
+      lpAplicarFiltro();   // arranca en "solo cambios" (oculta las filas sin cambio)
       lpConteo();
     } catch (e) {
       $("lpMsg").textContent = "No se pudo leer la planilla: " + e;

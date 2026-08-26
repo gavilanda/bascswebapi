@@ -76,17 +76,19 @@ public class PlanillaPreciosService
             }
 
             // MOSTRADOR (G) -> lista 004, final con IVA, tal cual. Redondeo a 2 (como guarda BAS).
-            var most = ConValor(fila.GetCell(ColMostrador));
+            // 0 = precio 0 (se manda 0); VACÍO = null (el controller le pone el precio anterior).
+            var most = Numero(fila.GetCell(ColMostrador));
             if (most is not null) most = Math.Round(most.Value, 2, MidpointRounding.AwayFromZero);
 
             // MAYORISTA (J) -> viene final (con IVA); la 029 se guarda SIN IVA -> le sacamos el 21%.
-            var mayoFinal = ConValor(fila.GetCell(ColMayorista));
+            // 0 se mantiene 0; vacío queda null (el anterior lo resuelve el controller).
+            var mayoFinal = Numero(fila.GetCell(ColMayorista));
             var mayo = mayoFinal is null
                 ? (decimal?)null
                 : Math.Round(mayoFinal.Value / Iva, 2, MidpointRounding.AwayFromZero);
 
-            if (most is null && mayo is null) continue;   // sin ningún precio a cambiar
-
+            // Se incluyen TODOS los ítems del rango (aunque las dos celdas estén vacías): la lista
+            // sale completa y los vacíos van con el precio anterior (los resuelve el controller).
             renglones.Add(new Renglon(cod, Texto(fila.GetCell(ColDescripcion)),
                                       most, mayo, i + 1));
         }
@@ -155,13 +157,5 @@ public class PlanillaPreciosService
         }
         catch { }
         return null;
-    }
-
-    // Valor numérico de la celda tratando VACÍO y CERO como "sin precio" (null): un cero
-    // no es un precio (ese precio no cambia), igual que una celda en blanco.
-    private static decimal? ConValor(ICell? c)
-    {
-        var v = Numero(c);
-        return (v is null || v.Value == 0m) ? null : v;
     }
 }
