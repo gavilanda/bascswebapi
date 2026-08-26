@@ -1964,6 +1964,7 @@
     const sel = $("echBase");
     const previa = sel.value || localStorage.getItem("ech_base") || "";
     let bases = [];
+    let avisosVenc = [];
     echBasesApi = [];
     echDefaults = {};
     try {
@@ -1973,6 +1974,7 @@
         bases = Array.isArray(d.bases) ? d.bases : [];
         echBasesApi = Array.isArray(d.basesApi) ? d.basesApi : [];
         echDefaults = d.defaults || {};
+        avisosVenc = Array.isArray(d.avisos) ? d.avisos : [];
       }
     } catch (e) {}
     if (bases.length) {
@@ -1980,6 +1982,12 @@
       if (previa && bases.includes(previa)) sel.value = previa;
       $("btnEchPreparar").disabled = false;
       echAplicarDefaults();   // precarga banco/chequera/prefijo de la empresa elegida
+      // Aviso de vencimiento de credenciales del banco (<=30 días o vencidas): que no se corte
+      // la emisión por no renovar a tiempo. Persistente (no toast) para que quede a la vista.
+      if (avisosVenc.length) {
+        $("echMsg").className = "msg err";
+        $("echMsg").innerHTML = avisosVenc.map(a => "⚠️ " + esc(a)).join("<br>");
+      }
     } else {
       sel.innerHTML = '<option value="">(sin bases configuradas)</option>';
       $("btnEchPreparar").disabled = true;

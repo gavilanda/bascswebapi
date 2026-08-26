@@ -60,6 +60,7 @@ public class ConfigBasesController : ControllerBase
             bieCbuDebito = f.BieCbuDebito,
             biePemPath = f.BiePemPath,
             bieFirmantes = f.BieFirmantes,
+            bieVencimiento = f.BieVencimiento,
             cuentasBas = f.CuentasBas,
             tituloBas = f.TituloBas,
             echApiDesde = f.EchApiDesde,

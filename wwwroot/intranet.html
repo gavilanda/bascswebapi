@@ -610,6 +610,7 @@
               <div style="flex:0 0 175px"><label>CBU de débito</label><input id="cfgBieCbu" type="text" placeholder="22 dígitos" maxlength="22" /></div>
               <div style="flex:0 0 150px"><label>Firmantes</label><input id="cfgBieFirmantes" type="text" placeholder="DNI (coma p/ varios)" title="Documentos de operadores firmantes para emitir e-cheques FIRMADOS por API (ConFirma). Ej: 12345678 o 12345678:DNI, 20...:CUIT. Vacío = queda pendiente de firma." /></div>
               <div style="flex:0 0 140px"><label>Corte API (desde)</label><input id="cfgBieCorte" type="date" /></div>
+              <div style="flex:0 0 140px"><label>Vencimiento cred.</label><input id="cfgBieVencimiento" type="date" title="Fecha de vencimiento de las credenciales/certificado de producción del banco. Al usar E-Cheques se avisa si faltan 30 días o menos (o ya venció). Vacío = sin aviso." /></div>
               <div style="flex:0 0 130px; align-self:flex-end; display:flex; justify-content:center; padding-bottom:5px">
                 <label style="display:inline-flex; align-items:center; gap:6px; margin:0"><input id="cfgBieHabilitado" type="checkbox" style="width:auto" /> Emitir por API</label>
               </div>
@@ -2816,6 +2817,7 @@
     $("cfgBieAdherente").value = "";
     $("cfgBieCbu").value = "";
     $("cfgBieCorte").value = "";
+    $("cfgBieVencimiento").value = "";
     $("cfgBiePem").value = "";
     $("cfgBieFirmantes").value = "";
     $("cfgCuentasBas").value = "";
@@ -2860,6 +2862,7 @@
     $("cfgBieAdherente").value = b.bieNumeroAdherente || "";
     $("cfgBieCbu").value = b.bieCbuDebito || "";
     $("cfgBieCorte").value = b.echApiDesde || "";
+    $("cfgBieVencimiento").value = b.bieVencimiento || "";
     $("cfgBiePem").value = b.biePemPath || "";
     $("cfgBieFirmantes").value = b.bieFirmantes || "";
     $("cfgCuentasBas").value = b.cuentasBas || "";
@@ -2980,7 +2983,8 @@
       bieFirmantes: $("cfgBieFirmantes").value.trim(),
       cuentasBas: $("cfgCuentasBas").value.trim(),
       tituloBas: $("cfgTituloBas").value.trim(),
-      echApiDesde: $("cfgBieCorte").value
+      echApiDesde: $("cfgBieCorte").value,
+      bieVencimiento: $("cfgBieVencimiento").value
     };
     let r;
     try {

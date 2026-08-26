@@ -125,6 +125,7 @@ public class ConfigBasesService
             BieCbuDebito = (req.BieCbuDebito ?? "").Trim(),
             BiePemPath = (req.BiePemPath ?? "").Trim(),
             BieFirmantes = (req.BieFirmantes ?? "").Trim(),
+            BieVencimiento = (req.BieVencimiento ?? "").Trim(),
             CuentasBas = (req.CuentasBas ?? "").Trim(),
             TituloBas = (req.TituloBas ?? "").Trim(),
             EchApiDesde = (req.EchApiDesde ?? "").Trim()
@@ -180,6 +181,7 @@ public class ConfigBasesService
         f.BieCbuDebito = (req.BieCbuDebito ?? "").Trim();
         f.BiePemPath = (req.BiePemPath ?? "").Trim();
         f.BieFirmantes = (req.BieFirmantes ?? "").Trim();
+        f.BieVencimiento = (req.BieVencimiento ?? "").Trim();
         f.CuentasBas = (req.CuentasBas ?? "").Trim();
         f.TituloBas = (req.TituloBas ?? "").Trim();
         f.EchApiDesde = (req.EchApiDesde ?? "").Trim();
@@ -337,7 +339,9 @@ public record CrearConfigBaseRequest(
     // Marca que debe figurar en el título de BAS para confirmar la empresa antes de importar.
     string? TituloBas = null,
     // Fecha de corte de la emisión por API (yyyy-MM-dd), por empresa.
-    string? EchApiDesde = null);
+    string? EchApiDesde = null,
+    // Fecha de vencimiento de las credenciales de producción del banco (yyyy-MM-dd), por empresa.
+    string? BieVencimiento = null);
 
 // Request de edición de la config de una base (todos los campos editables, incl. conexión).
 public record ActualizarConfigBaseRequest(
@@ -376,4 +380,6 @@ public record ActualizarConfigBaseRequest(
     // Marca que debe figurar en el título de BAS para confirmar la empresa antes de importar.
     string? TituloBas = null,
     // Fecha de corte de la emisión por API (yyyy-MM-dd), por empresa.
-    string? EchApiDesde = null);
+    string? EchApiDesde = null,
+    // Fecha de vencimiento de las credenciales de producción del banco (yyyy-MM-dd), por empresa.
+    string? BieVencimiento = null);

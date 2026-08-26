@@ -103,6 +103,11 @@ public class ConfiguracionBase
     // (se firma a mano en Banca Internet Empresa). Con firmantes -> se manda operadoresFirmantes.
     public string BieFirmantes { get; set; } = "";
 
+    // Fecha de vencimiento de las credenciales/certificado de producción de esta empresa
+    // (yyyy-MM-dd). El banco las emite con expiración; al usar e-cheques se avisa si faltan
+    // <=30 días o ya venció, para renovar a tiempo. Vacío = sin control/aviso.
+    public string BieVencimiento { get; set; } = "";
+
     // Mapa Nº de cuenta bancaria (el que el portal usa contra Credicoop) -> código INTERNO
     // de esa cuenta en BAS (el que espera la pantalla de conciliación, ej. "011"). BAS no
     // conoce el Nº del banco, así que la traducción se configura acá, POR EMPRESA. Texto

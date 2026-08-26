@@ -304,6 +304,7 @@ using (var scope = app.Services.CreateScope())
     AgregarColumnaSiFalta("ConfiguracionesBase", "BieCbuDebito", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "BiePemPath", "TEXT NOT NULL DEFAULT ''");
     AgregarColumnaSiFalta("ConfiguracionesBase", "BieFirmantes", "TEXT NOT NULL DEFAULT ''");
+    AgregarColumnaSiFalta("ConfiguracionesBase", "BieVencimiento", "TEXT NOT NULL DEFAULT ''");
     // Mapa Nº cuenta banco -> código de cuenta en BAS (para conciliación), por empresa.
     AgregarColumnaSiFalta("ConfiguracionesBase", "CuentasBas", "TEXT NOT NULL DEFAULT ''");
     // Marca que debe figurar en el título de BAS para confirmar la empresa antes de importar.

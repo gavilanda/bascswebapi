@@ -71,7 +71,22 @@ public class EchequesController : ControllerBase
         {
             banco = c.EchBanco, chequera = c.EchChequera, prefijo = c.EchPrefijo, usaPrefijo = c.EchUsaPrefijo
         });
-        return Ok(new { bases, basesApi, defaults });
+        // Aviso de vencimiento de credenciales del banco: para cada empresa con API, si su
+        // BieVencimiento está a <=30 días o ya venció, se manda un aviso (el front lo muestra
+        // al entrar a E-Cheques). Así se renueva a tiempo y no se corta la emisión.
+        var hoy = DateOnly.FromDateTime(DateTime.Today);
+        var avisos = new List<string>();
+        foreach (var c in cfgs.Where(c => _bieOpt.Credenciales(c) is not null))
+        {
+            if (!DateOnly.TryParse(c.BieVencimiento, CultureInfo.InvariantCulture, DateTimeStyles.None, out var venc))
+                continue;
+            var dias = venc.DayNumber - hoy.DayNumber;
+            if (dias < 0)
+                avisos.Add($"{c.Nombre}: las credenciales del banco VENCIERON el {venc:dd/MM/yyyy}. La emisión por API va a fallar hasta que las renueves.");
+            else if (dias <= 30)
+                avisos.Add($"{c.Nombre}: las credenciales del banco vencen el {venc:dd/MM/yyyy} (faltan {dias} día{(dias == 1 ? "" : "s")}). Renovalas para no cortar la emisión.");
+        }
+        return Ok(new { bases, basesApi, defaults, avisos });
     }
 
     private sealed record Params(string Base, DateOnly D, DateOnly H, string Banco, string Chequera, string ChqD, string ChqH);
