@@ -7,26 +7,25 @@ namespace PortalClientes.Bas;
 // alta listas nuevas en BAS.
 //
 // Cómo está armada la planilla (verificado sobre el archivo real):
-//   * Tiene 16 solapas, la mayoría ocultas. La que sirve es la SÉPTIMA VISIBLE
-//     ("Revisión Bas 15-08-26"): se busca por posición y no por nombre, porque
-//     el nombre lleva la fecha de la revisión y cambia cada vez.
-//   * Fila 1 título, fila 2 encabezados, datos desde la fila 3.
-//   * Columna A = código de ítem, C = "FINAL MOST (04)" (lista 004, ya con IVA),
-//     F = "MAYORISTA (29)" (lista 029, sin IVA).
-//   * Está agrupada por rubro, con filas de título ("PROMOS", "PRECIOS Snacks")
-//     y encabezados repetidos. Se saltean solas: el código no es numérico.
-//   * Hay precios en CERO (productos que sólo se venden por una de las dos
-//     listas). Un cero no es un precio: no se manda.
-//   * Al final hay un bloque de otra lista (la 008) que repite códigos ya
-//     listados arriba. Como sólo interesan la 004 y la 029, de cada código vale
-//     la PRIMERA aparición y las repeticiones posteriores se descartan.
+//   * La solapa que sirve es "Principal" (primera visible); se busca por NOMBRE.
+//   * Está agrupada por rubro, con filas de título ("PROMOS", "PRECIOS Snacks",
+//     "PRECIOS Feteados (008)"…). Los datos empiezan EN EL GRUPO "PROMOS": todo lo
+//     de arriba se ignora. El grupo "PRECIOS Feteados (008)" se OMITE.
+//   * Columna A = código de ítem (numérico; si no es numérico, es título de grupo
+//     o encabezado y se saltea). Columna B = descripción.
+//   * Columna G = MOSTRADOR (lista 004, precio FINAL con IVA -> va tal cual).
+//   * Columna J = MAYORISTA (lista 029, precio FINAL con IVA). BAS guarda la 029
+//     SIN IVA (Discovery le re-suma el 21%), así que acá le SACAMOS el IVA (/1,21).
+//   * Celda de precio VACÍA o en CERO = ese precio NO cambia (no se manda).
+//   * Por las dudas, si un código aparece repetido, vale la PRIMERA aparición.
 public class PlanillaPreciosService
 {
-    public const int HojaVisible = 7;      // séptima solapa visible
-    public const int FilaPrimerDato = 3;   // 1 = título, 2 = encabezados
+    public const string HojaNombre = "Principal";   // primera solapa visible (por nombre)
     public const int ColCodigo = 0;        // A
-    public const int ColMostrador = 2;     // C
-    public const int ColMayorista = 5;     // F
+    public const int ColDescripcion = 1;   // B
+    public const int ColMostrador = 6;     // G  -> lista 004 (final, con IVA; tal cual)
+    public const int ColMayorista = 9;     // J  -> lista 029 (final; se le SACA el IVA)
+    public const decimal Iva = 1.21m;      // 21% — mismo criterio con que Discovery lo re-suma
 
     public sealed record Renglon(string Codigo, string Descripcion,
                                  decimal? Mostrador, decimal? Mayorista, int Fila);
@@ -38,12 +37,15 @@ public class PlanillaPreciosService
     public Lectura Leer(Stream archivo)
     {
         using var wb = new XSSFWorkbook(archivo);
-        var hoja = VisibleNro(wb, HojaVisible);
+        var hoja = HojaPorNombre(wb, HojaNombre);
         var avisos = new List<string>();
         var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var renglones = new List<Renglon>();
 
-        for (int i = FilaPrimerDato - 1; i <= hoja.LastRowNum; i++)
+        bool empezo = false;   // los datos arrancan en el grupo "PROMOS"
+        bool omitir = false;   // el grupo "PRECIOS Feteados (008)" se saltea
+
+        for (int i = 0; i <= hoja.LastRowNum; i++)
         {
             var fila = hoja.GetRow(i);
             if (fila is null) continue;
@@ -51,25 +53,45 @@ public class PlanillaPreciosService
             var cod = Texto(fila.GetCell(ColCodigo));
             if (cod.Length == 0) continue;
             if (cod.EndsWith(".0", StringComparison.Ordinal)) cod = cod[..^2];
-            if (!cod.All(char.IsDigit)) continue;      // título de rubro o encabezado
+
+            if (!cod.All(char.IsDigit))
+            {
+                // Fila de TÍTULO de grupo (o encabezado): marca dónde empieza/termina cada bloque.
+                var t = cod.ToUpperInvariant();
+                if (t.Contains("PROMOS")) { empezo = true; omitir = false; }
+                else if (t.Contains("FETEAD")) omitir = true;   // "PRECIOS Feteados (008)"
+                else omitir = false;                            // otro rubro: se vuelve a procesar
+                continue;
+            }
+
+            if (!empezo || omitir) continue;   // antes de "PROMOS", o dentro de "Feteados"
 
             if (!vistos.Add(cod))
             {
-                // Repetido: es el bloque de la lista 008 del final, que no nos toca.
                 avisos.Add($"Fila {i + 1}: el código {cod} ya figuraba más arriba, "
                            + "se usa la primera aparición.");
                 continue;
             }
 
-            var most = Numero(fila.GetCell(ColMostrador));
-            var mayo = Numero(fila.GetCell(ColMayorista));
-            if (most is null && mayo is null) continue;
+            // MOSTRADOR (G) -> lista 004, final con IVA, tal cual. Redondeo a 2 (como guarda BAS).
+            var most = ConValor(fila.GetCell(ColMostrador));
+            if (most is not null) most = Math.Round(most.Value, 2, MidpointRounding.AwayFromZero);
 
-            renglones.Add(new Renglon(cod, Texto(fila.GetCell(ColCodigo + 1)),
+            // MAYORISTA (J) -> viene final (con IVA); la 029 se guarda SIN IVA -> le sacamos el 21%.
+            var mayoFinal = ConValor(fila.GetCell(ColMayorista));
+            var mayo = mayoFinal is null
+                ? (decimal?)null
+                : Math.Round(mayoFinal.Value / Iva, 2, MidpointRounding.AwayFromZero);
+
+            if (most is null && mayo is null) continue;   // sin ningún precio a cambiar
+
+            renglones.Add(new Renglon(cod, Texto(fila.GetCell(ColDescripcion)),
                                       most, mayo, i + 1));
         }
 
-        return new Lectura(hoja.SheetName, FechaDelNombre(hoja.SheetName), renglones, avisos);
+        // La vigencia sugerida ya no sale del nombre de la solapa ("Principal" no la trae):
+        // el controller propone la fecha del día.
+        return new Lectura(hoja.SheetName, null, renglones, avisos);
     }
 
     /// <summary>
@@ -87,16 +109,20 @@ public class PlanillaPreciosService
         try { return new DateOnly(a, mes, d); } catch { return null; }
     }
 
-    private static ISheet VisibleNro(IWorkbook wb, int n)
+    // Busca la solapa por NOMBRE (case-insensitive) entre las VISIBLES. Si no está por
+    // nombre, cae en la primera visible (la "Principal" es la primera visible).
+    private static ISheet HojaPorNombre(IWorkbook wb, string nombre)
     {
-        int vistas = 0;
+        ISheet? primeraVisible = null;
         for (int i = 0; i < wb.NumberOfSheets; i++)
         {
             if (wb.IsSheetHidden(i) || wb.IsSheetVeryHidden(i)) continue;
-            if (++vistas == n) return wb.GetSheetAt(i);
+            primeraVisible ??= wb.GetSheetAt(i);
+            if (string.Equals((wb.GetSheetName(i) ?? "").Trim(), nombre, StringComparison.OrdinalIgnoreCase))
+                return wb.GetSheetAt(i);
         }
-        throw new InvalidOperationException(
-            $"La planilla no tiene {n} solapas visibles (tiene {vistas}).");
+        return primeraVisible
+            ?? throw new InvalidOperationException("La planilla no tiene ninguna solapa visible.");
     }
 
     private static string Texto(ICell? c)
@@ -127,5 +153,13 @@ public class PlanillaPreciosService
         }
         catch { }
         return null;
+    }
+
+    // Valor numérico de la celda tratando VACÍO y CERO como "sin precio" (null): un cero
+    // no es un precio (ese precio no cambia), igual que una celda en blanco.
+    private static decimal? ConValor(ICell? c)
+    {
+        var v = Numero(c);
+        return (v is null || v.Value == 0m) ? null : v;
     }
 }

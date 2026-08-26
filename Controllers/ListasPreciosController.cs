@@ -124,7 +124,7 @@ public class ListasPreciosController : ControllerBase
             {
                 hoja = lectura.Hoja,
                 destino = baseBas,
-                vigenciaSugerida = lectura.FechaDelNombre?.ToString("yyyy-MM-dd"),
+                vigenciaSugerida = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd"),
                 renglones = lectura.Renglones.Count,
                 avisos = lectura.Avisos,
                 cambios,
