@@ -37,8 +37,8 @@ public class EstadisticasController : ControllerBase
     // Se comparan sólo por dígitos, así no importa cómo venga formateado el CUIT en el padrón.
     private static readonly HashSet<string> CuitsGrupo = new(StringComparer.Ordinal)
     {
-        "30661372946",   // XARDO S.A.
-        "30629689865",   // BARK S.A.
+        "30661372946",   // BARK S.A.
+        "30629689865",   // XARDO S.A.
     };
 
     private static string SoloDigitos(string? s)
