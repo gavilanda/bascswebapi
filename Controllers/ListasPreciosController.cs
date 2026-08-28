@@ -141,7 +141,10 @@ public class ListasPreciosController : ControllerBase
                 if (m.gen)
                 {
                     Emitir(ListaMostrador, r, Vigente(ListaMostrador, r.Codigo), m.precio, m.origen);
-                    Emitir(Lista003, r, Vigente(Lista003, r.Codigo), m.precio, m.origen);
+                    // La 003 espeja SIEMPRE el precio de la 004: su origen es "= 004" (no importa
+                    // de dónde salió el precio de la 004). Así, si la 003 estaba desalineada, el
+                    // preview muestra claro que se pone igual a la 004.
+                    Emitir(Lista003, r, Vigente(Lista003, r.Codigo), m.precio, "espejo004");
                 }
 
                 // MAYORISTA -> 029
