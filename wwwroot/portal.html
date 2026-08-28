@@ -996,11 +996,22 @@
       if (d.avisos && d.avisos.length)
         aviso = '<div class="aviso">' + d.avisos.map(esc).join("<br>") + "</div>";
 
+      // Desglose por lista: cuántos cambian de cuántos se generan.
+      const porLista = {};
+      items.forEach(c => {
+        const g = porLista[c.lista] || (porLista[c.lista] = { total: 0, cambian: 0 });
+        g.total++; if (c.cambia) g.cambian++;
+      });
+      const detLista = Object.keys(porLista).sort()
+        .map(l => "Lista <b>" + esc(l) + "</b>: <b>" + porLista[l].cambian + "</b> cambian de " + porLista[l].total)
+        .join(" &nbsp;·&nbsp; ");
+
       $("lpResumen").innerHTML =
         "Solapa <b>" + esc(d.hoja) + "</b> &nbsp;·&nbsp; " + d.renglones + " renglones leídos"
         + " &nbsp;·&nbsp; destino <b>" + esc(d.destino) + "</b>"
         + " &nbsp;·&nbsp; se generan <b>" + items.length + "</b> precios (<b>" + (d.cambian || 0) + "</b> cambian)"
-        + ' &nbsp;·&nbsp; <span id="lpConteo"></span>' + aviso;
+        + ' &nbsp;·&nbsp; <span id="lpConteo"></span>'
+        + '<br>' + detLista + aviso;
       $("lpResumen").classList.remove("hidden");
 
       if (!items.length) {
