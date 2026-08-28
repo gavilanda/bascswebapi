@@ -141,10 +141,10 @@ public class ListasPreciosController : ControllerBase
                 if (m.gen)
                 {
                     Emitir(ListaMostrador, r, Vigente(ListaMostrador, r.Codigo), m.precio, m.origen);
-                    // La 003 espeja SIEMPRE el precio de la 004: su origen es "= 004" (no importa
-                    // de dónde salió el precio de la 004). Así, si la 003 estaba desalineada, el
-                    // preview muestra claro que se pone igual a la 004.
-                    Emitir(Lista003, r, Vigente(Lista003, r.Codigo), m.precio, "espejo004");
+                    // La 003 = la 004 SIN IVA (mostrador neto). Se genera dividiendo por el IVA
+                    // (21%). Su origen es "= 004 s/IVA".
+                    var precio003 = Math.Round(m.precio / PlanillaPreciosService.Iva, 2, MidpointRounding.AwayFromZero);
+                    Emitir(Lista003, r, Vigente(Lista003, r.Codigo), precio003, "espejo004");
                 }
 
                 // MAYORISTA -> 029
