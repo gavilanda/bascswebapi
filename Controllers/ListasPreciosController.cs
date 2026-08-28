@@ -42,8 +42,10 @@ public class ListasPreciosController : ControllerBase
         _acceso = acceso;
     }
 
-    // De la planilla sólo interesan estas dos: mostrador y mayorista.
+    // De la planilla salen: mostrador (004) y mayorista (029). Además, la 003 se genera
+    // IGUAL que la 004 (mismo precio ítem por ítem).
     private const string ListaMostrador = "004";
+    private const string Lista003 = "003";        // espejo de la 004 (mismo precio)
     private const string ListaMayorista = "029";
 
     private bool EsInterno() => User.FindFirstValue("tipo") == "Interno";
@@ -89,7 +91,7 @@ public class ListasPreciosController : ControllerBase
 
             var codigos = lectura.Renglones.Select(r => r.Codigo).ToList();
             var vigentes = await _precios.VigentesAsync(
-                baseBas, new[] { ListaMostrador, ListaMayorista }, codigos, ct);
+                baseBas, new[] { ListaMostrador, Lista003, ListaMayorista }, codigos, ct);
 
             // Lista COMPLETA a generar (una entrada por ítem y lista), con el precio resuelto:
             //   celda con valor (incl. 0) -> ese precio            (origen "nuevo" / "cero")
@@ -97,48 +99,51 @@ public class ListasPreciosController : ControllerBase
             //   celda vacía + sin anterior -> no se genera
             var items = new List<object>();
             int cambian = 0;
+
+            decimal? Vigente(string lista, string codigo)
+                => vigentes.TryGetValue(lista, out var d) && d.TryGetValue(codigo, out var p) ? p : null;
+
+            // Resuelve el precio a generar de una celda para una lista. gen=false = no se genera.
+            (bool gen, decimal precio, string origen) Resolver(decimal? celda, decimal? actual)
+            {
+                if (celda is not null) return (true, celda.Value, celda.Value == 0m ? "cero" : "nuevo");
+                if (actual is not null) return (true, actual.Value, "anterior");
+                return (false, 0m, "");
+            }
+
+            void Emitir(string lista, PlanillaPreciosService.Renglon r, decimal? actual, decimal precio, string origen)
+            {
+                bool cambia = actual is null || Math.Abs(actual.Value - precio) >= 0.005m;
+                if (cambia) cambian++;
+                items.Add(new
+                {
+                    lista,
+                    codigo = r.Codigo,
+                    descripcion = r.Descripcion,
+                    fila = r.Fila,
+                    actual,
+                    precio,
+                    origen,
+                    cambia,
+                    esAlta = actual is null,
+                });
+            }
+
             foreach (var r in lectura.Renglones)
             {
-                var pares = new[] { (ListaMostrador, r.Mostrador), (ListaMayorista, r.Mayorista) };
-                foreach (var (lista, celda) in pares)
+                // MOSTRADOR -> 004, y 003 = IGUAL que la 004 (mismo precio; comparada contra su
+                // propio vigente para saber si cambia).
+                var m = Resolver(r.Mostrador, Vigente(ListaMostrador, r.Codigo));
+                if (m.gen)
                 {
-                    decimal? actual = null;
-                    if (vigentes.TryGetValue(lista, out var d)
-                        && d.TryGetValue(r.Codigo, out var p)) actual = p;
-
-                    decimal precio;
-                    string origen;
-                    if (celda is not null)
-                    {
-                        precio = celda.Value;
-                        origen = celda.Value == 0m ? "cero" : "nuevo";
-                    }
-                    else if (actual is not null)
-                    {
-                        precio = actual.Value;
-                        origen = "anterior";
-                    }
-                    else
-                    {
-                        continue;   // vacía y sin precio anterior: no se genera
-                    }
-
-                    bool cambia = actual is null || Math.Abs(actual.Value - precio) >= 0.005m;
-                    if (cambia) cambian++;
-
-                    items.Add(new
-                    {
-                        lista,
-                        codigo = r.Codigo,
-                        descripcion = r.Descripcion,
-                        fila = r.Fila,
-                        actual,
-                        precio,
-                        origen,
-                        cambia,
-                        esAlta = actual is null,
-                    });
+                    Emitir(ListaMostrador, r, Vigente(ListaMostrador, r.Codigo), m.precio, m.origen);
+                    Emitir(Lista003, r, Vigente(Lista003, r.Codigo), m.precio, m.origen);
                 }
+
+                // MAYORISTA -> 029
+                var y = Resolver(r.Mayorista, Vigente(ListaMayorista, r.Codigo));
+                if (y.gen)
+                    Emitir(ListaMayorista, r, Vigente(ListaMayorista, r.Codigo), y.precio, y.origen);
             }
 
             return Ok(new
