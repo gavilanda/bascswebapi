@@ -73,6 +73,7 @@ public class ListasPreciosController : ControllerBase
     [RequestSizeLimit(30 * 1024 * 1024)]
     public async Task<ActionResult> Previsualizar([FromForm] IFormFile archivo,
                                                   [FromForm] string? destino,
+                                                  [FromForm] string? vigencia,
                                                   CancellationToken ct = default)
     {
         var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
@@ -90,8 +91,11 @@ public class ListasPreciosController : ControllerBase
                 return StatusCode(409, new { mensaje = "La planilla no tiene renglones con código y precio." });
 
             var codigos = lectura.Renglones.Select(r => r.Codigo).ToList();
+            // Se compara contra lo vigente A LA FECHA DE VIGENCIA elegida (no hoy): si la lista
+            // ya se cargó para esa fecha (ej. desde otra PC), no la vuelve a marcar como cambio.
+            var fechaComp = ParsearFecha(vigencia);   // null = hoy
             var vigentes = await _precios.VigentesAsync(
-                baseBas, new[] { ListaMostrador, Lista003, ListaMayorista }, codigos, ct);
+                baseBas, new[] { ListaMostrador, Lista003, ListaMayorista }, codigos, fechaComp, ct);
 
             // Lista COMPLETA a generar (una entrada por ítem y lista), con el precio resuelto:
             //   celda con valor (incl. 0) -> ese precio            (origen "nuevo" / "cero")

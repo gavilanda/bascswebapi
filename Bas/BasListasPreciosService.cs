@@ -144,12 +144,17 @@ SELECT * FROM (
     /// </summary>
     public async Task<Dictionary<string, Dictionary<string, decimal>>> VigentesAsync(
         string baseNombre, IReadOnlyList<string> listas, IReadOnlyList<string> codigos,
-        CancellationToken ct = default)
+        DateOnly? hasta = null, CancellationToken ct = default)
     {
         var salida = new Dictionary<string, Dictionary<string, decimal>>();
         if (listas.Count == 0 || codigos.Count == 0) return salida;
         var enListas = string.Join(",", listas.Select(l => "'" + l.Replace("'", "''") + "'"));
         var enCodigos = string.Join(",", codigos.Select(c => "'" + c.Replace("'", "''") + "'"));
+
+        // Precio vigente A LA FECHA `hasta` (por defecto hoy). Importa cuando se genera una
+        // lista con vigencia FUTURA: hay que comparar contra lo que va a regir ESE día (que
+        // puede incluir una carga previa para esa misma fecha), no contra el precio de hoy.
+        var hastaLit = hasta is null ? "GETDATE()" : $"'{hasta.Value:yyyyMMdd}'";
 
         var sql = $@"
 SELECT * FROM (
@@ -160,7 +165,7 @@ SELECT * FROM (
   FROM dbo.LISTASPRECIOS lp WITH (NOLOCK)
   JOIN (SELECT CODLIS, CODITM, MAX(VIGENCIA) AS MaxVig
         FROM dbo.LISTASPRECIOS WITH (NOLOCK)
-        WHERE CODLIS IN ({enListas}) AND VIGENCIA <= GETDATE()
+        WHERE CODLIS IN ({enListas}) AND VIGENCIA <= {hastaLit}
         GROUP BY CODLIS, CODITM) m
     ON m.CODLIS = lp.CODLIS AND m.CODITM = lp.CODITM AND m.MaxVig = lp.VIGENCIA
   WHERE lp.CODLIS IN ({enListas})

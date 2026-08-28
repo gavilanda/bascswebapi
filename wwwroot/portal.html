@@ -933,6 +933,11 @@
     $("btnLpTodos").addEventListener("click", () => lpMarcarTodos(true));
     $("btnLpNinguno").addEventListener("click", () => lpMarcarTodos(false));
     $("lpVerTodo").addEventListener("change", lpAplicarFiltro);
+    // Si cambian la fecha de vigencia con un preview ya cargado, recalcular la comparación
+    // (los vigentes se miran A ESA fecha, no a hoy).
+    $("lpVigencia").addEventListener("change", () => {
+      if ($("lpArchivo").files[0] && $("lpTabla").innerHTML.trim()) lpPrevisualizar();
+    });
     $("btnLpAlta").disabled = true;
   }
 
@@ -977,6 +982,7 @@
       const fd = new FormData();
       fd.append("archivo", f);
       fd.append("destino", $("lpDestino").value);
+      fd.append("vigencia", $("lpVigencia").value || "");   // compara contra lo vigente a ESA fecha
       const r = await fetch("/api/listas-precios/previsualizar", {
         method: "POST", headers: { "Authorization": "Bearer " + token }, body: fd
       });
