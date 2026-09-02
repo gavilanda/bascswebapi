@@ -136,40 +136,26 @@ public class EchequesController : ControllerBase
         if (creds is null) return StatusCode(409, new { mensaje = $"La empresa '{b}' no tiene la API del banco configurada." });
         try
         {
-            var cheques = await _bie.ListarGeneradosAsync(creds, d, h, ct);
-            // Beneficiario/CUIT desde BAS (best-effort): sólo si vinieron banco+chequera.
-            var bco = (banco ?? "").Trim(); var chq = (chequera ?? "").Trim();
-            if (cheques.Count > 0 && bco.Length > 0 && chq.Length > 0)
-            {
-                try
-                {
-                    var filas = await _echeques.ConsultarAsync(b, d, h, bco, chq, null, null, ct);
-                    var mapa = filas.GroupBy(f => f.NumEcheq).ToDictionary(g => g.Key, g => g.First());
-                    foreach (var e in cheques)
-                        if (mapa.TryGetValue(e.NumeroCheque, out var f)) { e.Beneficiario = f.Beneficiario; e.Cuit = f.NroCuiCdi; }
-                }
-                catch { /* si BAS no responde, el listado igual sale (sin beneficiario) */ }
-            }
-
-            // Fecha de emisión REAL (la nuestra) para los cheques del banco: sale de la tabla local
-            // por numeroCheque (independiente del rango — el banco los fecha por la FIRMA, que puede
-            // ser otro día). La FechaEmision del banco queda como fecha de FIRMA en el front.
-            if (cheques.Count > 0)
-            {
-                var nums = cheques.Select(c => c.NumeroCheque).ToList();
-                var emis = await _db.EmisionesEcheq.AsNoTracking()
-                    .Where(e => e.BaseNombre == b && nums.Contains(e.NumeroCheque))
-                    .Select(e => new { e.NumeroCheque, e.EmitidoEn }).ToListAsync(ct);
-                var mapEmi = emis.GroupBy(e => e.NumeroCheque).ToDictionary(g => g.Key, g => g.Max(x => x.EmitidoEn));
-                foreach (var c in cheques)
-                    if (mapEmi.TryGetValue(c.NumeroCheque, out var fe))
-                        c.FechaEmisionReal = fe.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
-            }
-
-            // Sumar lo EMITIDO por el portal (tabla local) que todavía NO figura en el banco
-            // (operaciones "Enviada a la firma": lista-cheques no las trae hasta firmarlas). Se
-            // marcan con estado "(local)" para distinguirlas de las generadas en el banco.
+            var cheques = await _bie.ListarGeneradosAsync(creds, d, h, ct);   // banco: FIRMA en el rango
             var enBanco = cheques.Select(c => c.NumeroCheque).ToHashSet();
+
+            // Estado REAL de lo emitido cuya FIRMA cae FUERA del rango: el banco fecha por la firma,
+            // así que en un rango que no la incluye no los devuelve y los marcábamos "Pendiente de
+            // firma" aunque ya estén firmados (inconsistencia según el rango). Consulta AMPLIA (hasta
+            // hoy, tope +60 días) para tomar el estado real. Best-effort.
+            var hoy = DateOnly.FromDateTime(DateTime.Today);
+            var hastaAmplio = h.AddDays(60);
+            if (hastaAmplio > hoy) hastaAmplio = hoy;
+            if (hastaAmplio < h) hastaAmplio = h;
+            var bancoAmplio = new Dictionary<long, BancoBieEcheqService.EcheqGenerado>();
+            if (hastaAmplio > h)
+            {
+                try { foreach (var x in await _bie.ListarGeneradosAsync(creds, d, hastaAmplio, ct)) bancoAmplio[x.NumeroCheque] = x; }
+                catch { /* si falla, cae al "Pendiente de firma" de siempre */ }
+            }
+
+            // Sumar lo EMITIDO por el portal (tabla local) en el rango que NO esté ya en el display del
+            // banco. Si la consulta amplia lo tiene firmado -> estado real del banco; si no, "Pendiente".
             var dStart = d.ToDateTime(TimeOnly.MinValue);
             var hEnd = h.AddDays(1).ToDateTime(TimeOnly.MinValue);
             var locales = await _db.EmisionesEcheq.AsNoTracking()
@@ -178,14 +164,47 @@ public class EchequesController : ControllerBase
             foreach (var e in locales)
             {
                 if (enBanco.Contains(e.NumeroCheque)) continue;
-                decimal.TryParse(e.Monto, NumberStyles.Any, CultureInfo.InvariantCulture, out var m);
-                var estado = "Pendiente de firma";   // ya enviado al banco; falta firmarlo en BIE
-                cheques.Add(new BancoBieEcheqService.EcheqGenerado(
-                    e.NumeroCheque, e.IdCheque ?? "", estado, "",
-                    "", e.FechaPago ?? "",   // FechaEmision (=Firma) vacía: aún no firmado en el banco
-                    m, "ARS", "", "", "")
-                { Beneficiario = e.Beneficiario ?? "", Cuit = e.Cuit ?? "",
-                  FechaEmisionReal = e.EmitidoEn.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) });
+                var emitReal = e.EmitidoEn.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+                if (bancoAmplio.TryGetValue(e.NumeroCheque, out var be))
+                {
+                    be.FechaEmisionReal = emitReal;   // firmado (fuera del rango): estado real del banco
+                    cheques.Add(be);
+                }
+                else
+                {
+                    decimal.TryParse(e.Monto, NumberStyles.Any, CultureInfo.InvariantCulture, out var m);
+                    cheques.Add(new BancoBieEcheqService.EcheqGenerado(
+                        e.NumeroCheque, e.IdCheque ?? "", "Pendiente de firma", "",
+                        "", e.FechaPago ?? "", m, "ARS", "", "", "")
+                    { Beneficiario = e.Beneficiario ?? "", Cuit = e.Cuit ?? "", FechaEmisionReal = emitReal });
+                }
+            }
+
+            // Fecha de emisión REAL (la nuestra) para el resto (los del banco): por numeroCheque.
+            var numsFin = cheques.Where(c => string.IsNullOrEmpty(c.FechaEmisionReal)).Select(c => c.NumeroCheque).ToList();
+            if (numsFin.Count > 0)
+            {
+                var emis = await _db.EmisionesEcheq.AsNoTracking()
+                    .Where(e => e.BaseNombre == b && numsFin.Contains(e.NumeroCheque))
+                    .Select(e => new { e.NumeroCheque, e.EmitidoEn }).ToListAsync(ct);
+                var mapEmi = emis.GroupBy(e => e.NumeroCheque).ToDictionary(g => g.Key, g => g.Max(x => x.EmitidoEn));
+                foreach (var c in cheques)
+                    if (string.IsNullOrEmpty(c.FechaEmisionReal) && mapEmi.TryGetValue(c.NumeroCheque, out var fe))
+                        c.FechaEmisionReal = fe.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+            }
+
+            // Beneficiario/CUIT desde BAS (best-effort) sobre TODA la lista, si vinieron banco+chequera.
+            var bco = (banco ?? "").Trim(); var chq = (chequera ?? "").Trim();
+            if (cheques.Count > 0 && bco.Length > 0 && chq.Length > 0)
+            {
+                try
+                {
+                    var filas = await _echeques.ConsultarAsync(b, d, h, bco, chq, null, null, ct);
+                    var mapa = filas.GroupBy(f => f.NumEcheq).ToDictionary(g => g.Key, g => g.First());
+                    foreach (var c in cheques)
+                        if (mapa.TryGetValue(c.NumeroCheque, out var f)) { c.Beneficiario = f.Beneficiario; c.Cuit = f.NroCuiCdi; }
+                }
+                catch { /* si BAS no responde, el listado igual sale (sin beneficiario) */ }
             }
             var orden = cheques.OrderBy(c => c.NumeroCheque).ToList();
             return Ok(new { cantidad = orden.Count, cheques = orden });
