@@ -2253,14 +2253,15 @@
   let echVerDatos = null, echVerMeta = null;
   const ECH_VER_COLS = [
     { k: "numeroCheque", t: "Número", pct: 8 },
-    { k: "estado", t: "Estado", pct: 15 },
-    { k: "fechaEmision", t: "Emisión", pct: 8 },
+    { k: "estado", t: "Estado", pct: 14 },
+    { k: "fechaEmisionReal", t: "Emisión", pct: 8 },
+    { k: "fechaEmision", t: "Firma", pct: 8 },
     { k: "fechaPago", t: "Pago", pct: 8 },
-    { k: "monto", t: "Monto", pct: 10, num: true },
-    { k: "beneficiario", t: "Beneficiario", pct: 22 },
-    { k: "cuit", t: "CUIT", pct: 10 },
+    { k: "monto", t: "Monto", pct: 9, num: true },
+    { k: "beneficiario", t: "Beneficiario", pct: 20 },
+    { k: "cuit", t: "CUIT", pct: 9 },
     { k: "motivoPago", t: "Motivo", pct: 8 },
-    { k: "caracter", t: "Carácter", pct: 11 },
+    { k: "caracter", t: "Carácter", pct: 8 },
   ];
   function fmtFechaISO(iso) {   // yyyy-mm-dd -> dd/MM/yyyy
     if (!iso) return "";
