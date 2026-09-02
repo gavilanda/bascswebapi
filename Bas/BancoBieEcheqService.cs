@@ -58,6 +58,9 @@ public class BancoBieEcheqService
     {
         public string Beneficiario { get; set; } = "";
         public string Cuit { get; set; } = "";
+        // Fecha de emisión REAL (la nuestra, de EmisionEcheq). La FechaEmision del banco es en
+        // realidad la fecha de FIRMA/generación (puede diferir si se firmó otro día).
+        public string FechaEmisionReal { get; set; } = "";
     }
 
     // Asegura que cada CUIT esté en la agenda de beneficiarios del adherente. Idempotente:

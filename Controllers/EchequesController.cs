@@ -151,6 +151,21 @@ public class EchequesController : ControllerBase
                 catch { /* si BAS no responde, el listado igual sale (sin beneficiario) */ }
             }
 
+            // Fecha de emisión REAL (la nuestra) para los cheques del banco: sale de la tabla local
+            // por numeroCheque (independiente del rango — el banco los fecha por la FIRMA, que puede
+            // ser otro día). La FechaEmision del banco queda como fecha de FIRMA en el front.
+            if (cheques.Count > 0)
+            {
+                var nums = cheques.Select(c => c.NumeroCheque).ToList();
+                var emis = await _db.EmisionesEcheq.AsNoTracking()
+                    .Where(e => e.BaseNombre == b && nums.Contains(e.NumeroCheque))
+                    .Select(e => new { e.NumeroCheque, e.EmitidoEn }).ToListAsync(ct);
+                var mapEmi = emis.GroupBy(e => e.NumeroCheque).ToDictionary(g => g.Key, g => g.Max(x => x.EmitidoEn));
+                foreach (var c in cheques)
+                    if (mapEmi.TryGetValue(c.NumeroCheque, out var fe))
+                        c.FechaEmisionReal = fe.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+            }
+
             // Sumar lo EMITIDO por el portal (tabla local) que todavía NO figura en el banco
             // (operaciones "Enviada a la firma": lista-cheques no las trae hasta firmarlas). Se
             // marcan con estado "(local)" para distinguirlas de las generadas en el banco.
@@ -167,9 +182,10 @@ public class EchequesController : ControllerBase
                 var estado = "Pendiente de firma";   // ya enviado al banco; falta firmarlo en BIE
                 cheques.Add(new BancoBieEcheqService.EcheqGenerado(
                     e.NumeroCheque, e.IdCheque ?? "", estado, "",
-                    e.EmitidoEn.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture), e.FechaPago ?? "",
+                    "", e.FechaPago ?? "",   // FechaEmision (=Firma) vacía: aún no firmado en el banco
                     m, "ARS", "", "", "")
-                { Beneficiario = e.Beneficiario ?? "", Cuit = e.Cuit ?? "" });
+                { Beneficiario = e.Beneficiario ?? "", Cuit = e.Cuit ?? "",
+                  FechaEmisionReal = e.EmitidoEn.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) });
             }
             var orden = cheques.OrderBy(c => c.NumeroCheque).ToList();
             return Ok(new { cantidad = orden.Count, cheques = orden });
