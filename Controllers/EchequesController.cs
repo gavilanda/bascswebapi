@@ -414,54 +414,60 @@ public class EchequesController : ControllerBase
             // 1) Asegurar los beneficiarios en la agenda (idempotente).
             var fallasBenef = await _bie.AsegurarBeneficiariosAsync(creds, aEmitir.Select(f => f.NroCuiCdi), ct);
 
-            // 2) Emitir uno por uno; persistir sólo los aceptados por el banco.
+            // Los que no se pudieron dar de alta como beneficiario NO entran al bloque (harían fallar todo).
             var resultados = new List<ResultadoFront>();
-            int okCount = 0;
+            var emitibles = new List<BasEchequesService.ChequeRow>();
             foreach (var f in aEmitir)
             {
-                // Si el beneficiario no se pudo dar de alta, no intentamos emitir (fallaría con APIE-1020).
                 if (fallasBenef.TryGetValue(f.NroCuiCdi, out var motivo))
-                {
                     resultados.Add(new ResultadoFront(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.Importe,
                         false, null, null, "Beneficiario: " + motivo));
-                    continue;
-                }
+                else
+                    emitibles.Add(f);
+            }
 
-                var res = await _bie.EmitirAsync(creds, f, ct);
-                if (res.Ok)
+            // 2) Emitir TODO el lote en UN BLOQUE (una sola operación = una sola firma en BIE). Todo o
+            //    nada: si el banco rechaza, no se emite ninguno (el error es de la operación, no dice
+            //    cuál cheque falló). Por eso NO reintentamos uno por uno.
+            int okCount = 0;
+            if (emitibles.Count > 0)
+            {
+                var bloque = await _bie.EmitirBloqueAsync(creds, emitibles, ct);
+                if (bloque.Ok)
                 {
-                    try
+                    foreach (var f in emitibles)
                     {
-                        _db.EmisionesEcheq.Add(new EmisionEcheq
+                        try
                         {
-                            BaseNombre = p.Base,
-                            NumeroCheque = f.NumEcheq,
-                            Cuit = f.NroCuiCdi,
-                            Beneficiario = f.Beneficiario,
-                            Monto = f.Importe.ToString("0.00", CultureInfo.InvariantCulture),
-                            FechaPago = f.FechaPago,   // dd/MM/yyyy (informativo para el listado)
-                            IdOrigen = res.IdOrigen,
-                            IdOperacion = res.IdOperacion,
-                            IdCheque = res.IdCheque,
-                            Estado = res.Estado ?? "Aceptada",
-                            EmitidoPor = quien,
-                            EmitidoEn = DateTime.Now,
-                        });
-                        await _db.SaveChangesAsync(ct);
+                            _db.EmisionesEcheq.Add(new EmisionEcheq
+                            {
+                                BaseNombre = p.Base,
+                                NumeroCheque = f.NumEcheq,
+                                Cuit = f.NroCuiCdi,
+                                Beneficiario = f.Beneficiario,
+                                Monto = f.Importe.ToString("0.00", CultureInfo.InvariantCulture),
+                                FechaPago = f.FechaPago,          // dd/MM/yyyy (informativo)
+                                IdOrigen = bloque.IdOrigen,       // el mismo para todo el bloque
+                                IdOperacion = bloque.IdOperacion, // idem: una sola operación
+                                IdCheque = null,                  // el bloque no devuelve idCheque por cheque
+                                Estado = bloque.Estado ?? "Enviada a la firma",
+                                EmitidoPor = quien,
+                                EmitidoEn = DateTime.Now,
+                            });
+                            await _db.SaveChangesAsync(ct);
+                        }
+                        catch (DbUpdateException) { _db.ChangeTracker.Clear(); }   // choque de índice único
+                        resultados.Add(new ResultadoFront(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.Importe,
+                            true, bloque.Estado, bloque.IdOperacion, null));
                     }
-                    catch (DbUpdateException)
-                    {
-                        // Choque con el índice único (alguien lo emitió en paralelo): lo damos por hecho.
-                        _db.ChangeTracker.Clear();
-                    }
-                    okCount++;
-                    resultados.Add(new ResultadoFront(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.Importe,
-                        true, res.Estado, res.IdOperacion, null));
+                    okCount = emitibles.Count;
                 }
                 else
                 {
-                    resultados.Add(new ResultadoFront(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.Importe,
-                        false, null, null, res.ErrorTexto));
+                    // Bloque rechazado: NO se emitió ninguno. Mismo error para todos (el banco no dice cuál).
+                    foreach (var f in emitibles)
+                        resultados.Add(new ResultadoFront(f.NumEcheq, f.CodProveedor, f.Beneficiario, f.Importe,
+                            false, null, null, bloque.ErrorTexto));
                 }
             }
 

@@ -100,28 +100,12 @@ public class BancoBieEcheqService
     {
         var idOrigen = Guid.NewGuid().ToString();
 
-        var echeq = new Dictionary<string, object?>
-        {
-            ["monto"] = r.Importe.ToString("0.00", CultureInfo.InvariantCulture),
-            ["fechaPago"] = FechaApi(r.FechaPago),                 // dd/MM/yyyy -> yyyyMMdd
-            ["motivoPago"] = string.IsNullOrWhiteSpace(r.MotivoPago) ? "PAGO" : r.MotivoPago,
-            ["caracter"] = r.Caracter.ToString(CultureInfo.InvariantCulture),
-            ["modo"] = r.Modo.ToString(CultureInfo.InvariantCulture),
-            ["beneficiarioNombre"] = LimpiarNombre(r.Beneficiario),
-            ["beneficiarioDocumentoTipo"] = string.IsNullOrWhiteSpace(r.TipoCuiCdi) ? "CUIT" : r.TipoCuiCdi,
-            ["beneficiarioDocumento"] = r.NroCuiCdi,
-            ["concepto"] = cred.Concepto,                          // código válido (VAR, FAC…)
-            ["tipoCheque"] = cred.TipoCheque,                      // ECHD / ECHC
-            ["mails"] = new[] { r.Mail },
-            ["numeroCheque"] = r.NumEcheq,                         // número de BAS (<=8 díg.)
-        };
-
         var body = new Dictionary<string, object?>
         {
             ["numeroAdherente"] = cred.NumeroAdherente,
             ["idOrigen"] = idOrigen,
             ["cbuCuentaDebito"] = cred.CbuDebito,
-            ["echeqs"] = new[] { echeq },
+            ["echeqs"] = new[] { ConstruirEcheq(cred, r) },
         };
         // Si la empresa tiene firmantes configurados, se emite FIRMADO (ConFirma): el banco
         // aplica la firma de esos operadores en vez de dejar la operación "Enviada a la firma".
@@ -145,6 +129,65 @@ public class BancoBieEcheqService
         if (string.IsNullOrEmpty(codigo) && string.IsNullOrEmpty(desc))
             desc = $"El banco respondió {status} sin detalle.";
         return new ResultadoEmision(r.NumEcheq, false, null, null, null, idOrigen, codigo, desc);
+    }
+
+    // Arma el objeto echeq del body (mismo formato para emisión individual o en bloque).
+    private static Dictionary<string, object?> ConstruirEcheq(BieCredenciales cred, BasEchequesService.ChequeRow r)
+        => new()
+        {
+            ["monto"] = r.Importe.ToString("0.00", CultureInfo.InvariantCulture),
+            ["fechaPago"] = FechaApi(r.FechaPago),                 // dd/MM/yyyy -> yyyyMMdd
+            ["motivoPago"] = string.IsNullOrWhiteSpace(r.MotivoPago) ? "PAGO" : r.MotivoPago,
+            ["caracter"] = r.Caracter.ToString(CultureInfo.InvariantCulture),
+            ["modo"] = r.Modo.ToString(CultureInfo.InvariantCulture),
+            ["beneficiarioNombre"] = LimpiarNombre(r.Beneficiario),
+            ["beneficiarioDocumentoTipo"] = string.IsNullOrWhiteSpace(r.TipoCuiCdi) ? "CUIT" : r.TipoCuiCdi,
+            ["beneficiarioDocumento"] = r.NroCuiCdi,
+            ["concepto"] = cred.Concepto,                          // código válido (VAR, FAC…)
+            ["tipoCheque"] = cred.TipoCheque,                      // ECHD / ECHC
+            ["mails"] = new[] { r.Mail },
+            ["numeroCheque"] = r.NumEcheq,                         // número de BAS (<=8 díg.)
+        };
+
+    // Resultado de emitir un BLOQUE (varios echeqs en UNA operación = una sola firma). El banco NO
+    // devuelve idCheque por cheque en el bloque: sólo el idOperación y el estado de la operación.
+    public sealed record ResultadoBloque(bool Ok, long? IdOperacion, string IdOrigen, string? Estado,
+        string? ErrorCodigo, string? ErrorDescripcion)
+    {
+        public string ErrorTexto => !string.IsNullOrWhiteSpace(ErrorDescripcion)
+            ? (string.IsNullOrWhiteSpace(ErrorCodigo) ? ErrorDescripcion! : $"{ErrorDescripcion} ({ErrorCodigo})")
+            : (!string.IsNullOrWhiteSpace(ErrorCodigo) ? ErrorCodigo! : "No se pudo emitir el bloque.");
+    }
+
+    // Emite VARIOS echeqs en UNA sola operación (un solo bloque a la firma). Todo o nada: si el banco
+    // rechaza, se cae el bloque completo. No lanza: el error vuelve en ResultadoBloque.
+    public async Task<ResultadoBloque> EmitirBloqueAsync(
+        BieCredenciales cred, IReadOnlyList<BasEchequesService.ChequeRow> filas, CancellationToken ct = default)
+    {
+        var idOrigen = Guid.NewGuid().ToString();
+        var body = new Dictionary<string, object?>
+        {
+            ["numeroAdherente"] = cred.NumeroAdherente,
+            ["idOrigen"] = idOrigen,
+            ["cbuCuentaDebito"] = cred.CbuDebito,
+            ["echeqs"] = filas.Select(f => ConstruirEcheq(cred, f)).ToArray(),
+        };
+        var firmantes = ParsearFirmantes(cred.Firmantes);
+        if (firmantes.Count > 0) body["operadoresFirmantes"] = firmantes;
+
+        var (status, doc) = await PostAsync(cred, "/api/echeq/v1/ConFirma/emision", body, ct);
+        if (status is >= 200 and < 300 && doc is not null
+            && doc.RootElement.TryGetProperty("data", out var data))
+        {
+            long? idOp = data.TryGetProperty("idOperacion", out var op) && op.TryGetInt64(out var v) ? v : null;
+            string? estado = data.TryGetProperty("estadoOperacion", out var eo)
+                && eo.TryGetProperty("descripcion", out var d) ? d.GetString() : null;
+            return new ResultadoBloque(true, idOp, idOrigen, estado, null, null);
+        }
+        var (codigo, desc) = LeerError(doc);
+        if (string.IsNullOrEmpty(codigo) && string.IsNullOrEmpty(desc))
+            desc = $"El banco respondió {status} sin detalle.";
+        return new ResultadoBloque(false, null, idOrigen, null, codigo, desc);
     }
 
     // Consulta el estado de una emisión ya enviada (para trazabilidad). Devuelve el JSON crudo.
