@@ -197,9 +197,17 @@ public class EchequesController : ControllerBase
             var bco = (banco ?? "").Trim(); var chq = (chequera ?? "").Trim();
             if (cheques.Count > 0 && bco.Length > 0 && chq.Length > 0)
             {
+                // BAS filtra por FECHA del cheque (su carga), no por la firma: un cheque firmado dentro
+                // del rango pero CREADO antes (ej. emitido 31/8, firmado 1/9) no aparecería en [d,h] y
+                // saldría sin beneficiario. Ampliamos el 'desde' a la emisión real más antigua de la lista.
+                var benDesde = d;
+                foreach (var c in cheques)
+                    if (!string.IsNullOrEmpty(c.FechaEmisionReal)
+                        && DateOnly.TryParseExact(c.FechaEmisionReal, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fe)
+                        && fe < benDesde) benDesde = fe;
                 try
                 {
-                    var filas = await _echeques.ConsultarAsync(b, d, h, bco, chq, null, null, ct);
+                    var filas = await _echeques.ConsultarAsync(b, benDesde, h, bco, chq, null, null, ct);
                     var mapa = filas.GroupBy(f => f.NumEcheq).ToDictionary(g => g.Key, g => g.First());
                     foreach (var c in cheques)
                         if (mapa.TryGetValue(c.NumeroCheque, out var f)) { c.Beneficiario = f.Beneficiario; c.Cuit = f.NroCuiCdi; }
