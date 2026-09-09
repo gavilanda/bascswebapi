@@ -124,6 +124,7 @@ builder.Services.AddSingleton<BancoBieAuthService>();        // singleton: cache
 builder.Services.AddScoped<BancoBieEcheqService>();
 builder.Services.AddScoped<BancoBieCuentasService>();        // cuentas + movimientos (conciliación)
 builder.Services.AddScoped<IcbcConciliacionService>();       // conciliación ICBC (import CSV)
+builder.Services.AddScoped<BancoProvinciaConciliacionService>();  // conciliación Banco Provincia (import .xls)
 
 // ---- Destinos BAS (BARK, PRUEBAB) para ingresos ----
 // Timeout amplio para la carga del padrón (la carga es secuencial y en segundo

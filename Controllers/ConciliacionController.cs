@@ -22,17 +22,20 @@ public class ConciliacionController : ControllerBase
 {
     private readonly BancoBieCuentasService _cuentas;
     private readonly IcbcConciliacionService _icbc;
+    private readonly BancoProvinciaConciliacionService _provincia;
     private readonly BancoBieOptions _bieOpt;
     private readonly PortalDbContext _db;
     private readonly AccesoFuncionesService _acceso;
     private readonly IMemoryCache _cache;
 
     public ConciliacionController(BancoBieCuentasService cuentas, IcbcConciliacionService icbc,
+        BancoProvinciaConciliacionService provincia,
         IOptions<BancoBieOptions> bieOpt, PortalDbContext db, AccesoFuncionesService acceso,
         IMemoryCache cache)
     {
         _cuentas = cuentas;
         _icbc = icbc;
+        _provincia = provincia;
         _bieOpt = bieOpt.Value;
         _db = db;
         _acceso = acceso;
@@ -281,6 +284,49 @@ public class ConciliacionController : ControllerBase
             static string Fmt(string ymd) => ymd.Length == 8 ? $"{ymd[6..8]}/{ymd[4..6]}/{ymd[0..4]}" : "";
             var fechas = res.Movimientos.Select(m => m.Fecha).Where(f => f.Length == 8).OrderBy(f => f).ToList();
             var ruta = await GuardarTxtInfoAsync(cb, "ICBC", res.Cuenta, res.Movimientos,
+                fechas.Count > 0 ? Fmt(fechas[0]) : "", fechas.Count > 0 ? Fmt(fechas[^1]) : "", ct);
+            return Ok(new { cantidad = res.Movimientos.Count, ruta, token = GenerarTokenDescarga(b) });
+        }
+        catch (Exception ex) { return StatusCode(502, new { mensaje = "No se pudo generar el TXT: " + ex.Message }); }
+    }
+
+    // ---- Banco Provincia: conciliación por importación de .xls (el banco no tiene API) ----
+
+    // POST /api/conciliacion/provincia/movimientos  (multipart: archivo=.xls) -> movimientos parseados
+    // (misma estructura que Credicoop/ICBC) para el modal.
+    [HttpPost("provincia/movimientos")]
+    public async Task<ActionResult> ProvinciaMovimientos([FromForm] IFormFile? archivo, CancellationToken ct = default)
+    {
+        var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
+        if (archivo is null || archivo.Length == 0) return BadRequest(new { mensaje = "Subí el archivo .xls del Banco Provincia." });
+        try
+        {
+            BancoProvinciaConciliacionService.Resultado res;
+            await using (var s = archivo.OpenReadStream()) res = _provincia.Parsear(s);
+            return Ok(new { cantidad = res.Movimientos.Count, cuenta = res.Cuenta, movimientos = res.Movimientos });
+        }
+        catch (Exception ex) { return StatusCode(422, new { mensaje = "No se pudo leer el .xls del Banco Provincia: " + ex.Message }); }
+    }
+
+    // POST /api/conciliacion/provincia/txt?base=  (multipart: archivo=.xls) -> genera CONC_<empresa>.txt + .info.
+    [HttpPost("provincia/txt")]
+    public async Task<ActionResult> ProvinciaTxt(
+        [FromQuery(Name = "base")] string? baseNombre, [FromForm] IFormFile? archivo, CancellationToken ct = default)
+    {
+        var noAcc = await SinAccesoAsync(ct); if (noAcc is not null) return noAcc;
+        var b = (baseNombre ?? "").Trim();
+        if (b.Length == 0) return BadRequest(new { mensaje = "Elegí una empresa." });
+        if (archivo is null || archivo.Length == 0) return BadRequest(new { mensaje = "Subí el archivo .xls del Banco Provincia." });
+        var cb = await _db.ConfiguracionesBase.AsNoTracking().FirstOrDefaultAsync(c => c.Nombre == b, ct);
+        if (cb is null) return StatusCode(409, new { mensaje = $"Empresa '{b}' desconocida." });
+        try
+        {
+            BancoProvinciaConciliacionService.Resultado res;
+            await using (var s = archivo.OpenReadStream()) res = _provincia.Parsear(s);
+            if (res.Movimientos.Count == 0) return Ok(new { cantidad = 0 });
+            static string Fmt(string ymd) => ymd.Length == 8 ? $"{ymd[6..8]}/{ymd[4..6]}/{ymd[0..4]}" : "";
+            var fechas = res.Movimientos.Select(m => m.Fecha).Where(f => f.Length == 8).OrderBy(f => f).ToList();
+            var ruta = await GuardarTxtInfoAsync(cb, "BANCOPROVINCIA", res.Cuenta, res.Movimientos,
                 fechas.Count > 0 ? Fmt(fechas[0]) : "", fechas.Count > 0 ? Fmt(fechas[^1]) : "", ct);
             return Ok(new { cantidad = res.Movimientos.Count, ruta, token = GenerarTokenDescarga(b) });
         }

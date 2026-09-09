@@ -444,9 +444,10 @@
         <div id="secConciliacion" class="card seccion hidden">
           <div class="vtafiltros">
             <label>Banco
-              <select id="concBanco" style="width:120px">
+              <select id="concBanco" style="width:130px">
                 <option value="credicoop">Credicoop</option>
                 <option value="icbc">ICBC</option>
+                <option value="provincia">Banco Provincia</option>
               </select>
             </label>
             <label>Empresa
@@ -457,7 +458,7 @@
             </label>
             <label id="concLblDesde">Desde <input id="concDesde" type="date"></label>
             <label id="concLblHasta">Hasta <input id="concHasta" type="date"></label>
-            <label id="concLblArchivo" class="hidden">Archivo CSV <input id="concArchivo" type="file" accept=".csv,text/csv"></label>
+            <label id="concLblArchivo" class="hidden"><span id="concLblArchivoTxt">Archivo</span> <input id="concArchivo" type="file" accept=".csv,text/csv"></label>
             <button id="btnConcPreparar">Preparar</button>
           </div>
           <div id="concMsg" class="msg"></div>
@@ -2374,21 +2375,33 @@
   // ================= Bco/Conciliación =================
   let concCuentas = [];   // cuentas de la empresa elegida
   let concQS = "";        // filtros de la última preparación (para el TXT)
-  let concBanco = "credicoop";  // banco elegido: "credicoop" (API) | "icbc" (import CSV)
-  let concIcbcFile = null;      // archivo CSV del ICBC cargado (para reusar en el TXT)
-  let concIcbcCuenta = "";      // cuenta leída del CSV del ICBC
+  let concBanco = "credicoop";  // banco elegido: "credicoop" (API) | "icbc" | "provincia" (import archivo)
+  let concImportFile = null;    // archivo importado (CSV ICBC / .xls Provincia) para reusar en el TXT
+  let concImportCuenta = "";    // cuenta leída del archivo importado
 
-  // Cambia la UI de filtros según el banco. Credicoop: Cuenta+fechas (API). ICBC: Archivo CSV.
+  // Bancos SIN API: se concilian subiendo un archivo (ICBC=CSV, Provincia=.xls).
+  const CONC_IMPORT = {
+    icbc:      { label: "Archivo CSV",  accept: ".csv,text/csv", ep: "icbc" },
+    provincia: { label: "Archivo .xls", accept: ".xls",          ep: "provincia" },
+  };
+  function concEsImport() { return !!CONC_IMPORT[concBanco]; }
+
+  // Cambia la UI de filtros según el banco. Credicoop: Cuenta+fechas (API). ICBC/Provincia: archivo.
   function onConcBancoChange() {
     concBanco = $("concBanco").value;
-    const icbc = concBanco === "icbc";
-    $("concLblCuenta").classList.toggle("hidden", icbc);
-    $("concLblDesde").classList.toggle("hidden", icbc);
-    $("concLblHasta").classList.toggle("hidden", icbc);
-    $("concLblArchivo").classList.toggle("hidden", !icbc);
+    const imp = CONC_IMPORT[concBanco];
+    $("concLblCuenta").classList.toggle("hidden", !!imp);
+    $("concLblDesde").classList.toggle("hidden", !!imp);
+    $("concLblHasta").classList.toggle("hidden", !!imp);
+    $("concLblArchivo").classList.toggle("hidden", !imp);
+    if (imp) {
+      $("concLblArchivoTxt").textContent = imp.label;
+      $("concArchivo").setAttribute("accept", imp.accept);
+      $("concArchivo").value = "";   // limpia el archivo al cambiar de banco
+    }
     limpiar($("concMsg"));
     $("btnConcPreparar").disabled = false;
-    if (!icbc && concCuentas.length === 0 && $("concBase").value) cargarCuentasConc();
+    if (!imp && concCuentas.length === 0 && $("concBase").value) cargarCuentasConc();
   }
 
   async function iniciarConciliacion() {
@@ -2418,7 +2431,7 @@
   }
 
   async function cargarCuentasConc() {
-    if (concBanco === "icbc") return;   // ICBC no usa cuentas del banco (vienen del CSV)
+    if (concEsImport()) return;   // ICBC/Provincia no usan cuentas del banco (vienen del archivo)
     const base = $("concBase").value;
     const selc = $("concCuenta");
     selc.innerHTML = '<option value="">(cargando…)</option>';
@@ -2456,7 +2469,7 @@
   }
 
   async function prepararConciliacion() {
-    if (concBanco === "icbc") return prepararIcbc();
+    if (concEsImport()) return prepararImport();
     const pr = paramsConc();
     if (pr.err) { mostrar($("concMsg"), pr.err, "err"); return; }
     limpiar($("concMsg"));
@@ -2477,24 +2490,25 @@
     abrirModalConc(d);
   }
 
-  // ICBC: sube el CSV, lo parsea el server y muestra los movimientos en el MISMO modal.
-  async function prepararIcbc() {
+  // ICBC/Provincia: sube el archivo, lo parsea el server y muestra los movimientos en el MISMO modal.
+  async function prepararImport() {
+    const imp = CONC_IMPORT[concBanco];
     const base = $("concBase").value;
     const file = $("concArchivo").files[0];
     if (!base) { mostrar($("concMsg"), "Elegí una empresa.", "err"); return; }
-    if (!file) { mostrar($("concMsg"), "Elegí el archivo CSV del ICBC.", "err"); return; }
-    concIcbcFile = file;
+    if (!file) { mostrar($("concMsg"), "Elegí el " + imp.label.toLowerCase() + ".", "err"); return; }
+    concImportFile = file;
     limpiar($("concMsg"));
     $("concCargando").classList.remove("hidden"); $("btnConcPreparar").disabled = true;
     const fd = new FormData(); fd.append("archivo", file);
     let r;
-    try { r = await fetch("/api/conciliacion/icbc/movimientos", { method: "POST", headers: { "Authorization": "Bearer " + token }, body: fd }); }
+    try { r = await fetch("/api/conciliacion/" + imp.ep + "/movimientos", { method: "POST", headers: { "Authorization": "Bearer " + token }, body: fd }); }
     catch (e) { $("concCargando").classList.add("hidden"); $("btnConcPreparar").disabled = false; mostrar($("concMsg"), "No se pudo conectar.", "err"); return; }
     $("concCargando").classList.add("hidden"); $("btnConcPreparar").disabled = false;
     if (r.status === 401) { salir(); return; }
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) { mostrar($("concMsg"), d.mensaje || "No se pudo leer el CSV.", "err"); return; }
-    concIcbcCuenta = d.cuenta || "";
+    if (!r.ok) { mostrar($("concMsg"), d.mensaje || "No se pudo leer el archivo.", "err"); return; }
+    concImportCuenta = d.cuenta || "";
     concQS = "";
     abrirModalConc(d);
   }
@@ -2506,7 +2520,7 @@
 
   function abrirModalConc(d) {
     const movs = d.movimientos || [];
-    const cuentaTit = concBanco === "icbc" ? (concIcbcCuenta || "ICBC") : $("concCuenta").value;
+    const cuentaTit = concEsImport() ? (concImportCuenta || $("concBanco").selectedOptions[0].textContent) : $("concCuenta").value;
     $("concModalTit").textContent = "Movimientos — " + cuentaTit;
     $("concModalInfo").textContent = movs.length + " movimiento" + (movs.length === 1 ? "" : "s") + " en el período.";
     limpiar($("concModalMsg"));
@@ -2536,7 +2550,7 @@
   // Genera y descarga el TXT posicional (fetch con auth -> blob -> anchor).
   // Genera el TXT y lo GUARDA en la carpeta del servidor (no descarga → no pregunta dónde).
   async function generarTxtConc() {
-    if (concBanco === "icbc") return generarTxtIcbc();
+    if (concEsImport()) return generarTxtImport();
     if (!concQS) return;
     limpiar($("concModalMsg"));
     const btn = $("concBtnTxt"); btn.disabled = true;
@@ -2554,15 +2568,16 @@
     pedirImportarBas($("concBase").value, d.token);
   }
 
-  // ICBC: re-manda el CSV al server, que genera CONC_<empresa>.txt + .info; luego dispara la macro.
-  async function generarTxtIcbc() {
-    if (!concIcbcFile) { mostrar($("concModalMsg"), "Volvé a elegir el archivo CSV.", "err"); return; }
+  // ICBC/Provincia: re-manda el archivo al server, que genera CONC_<empresa>.txt + .info; luego dispara la macro.
+  async function generarTxtImport() {
+    const imp = CONC_IMPORT[concBanco];
+    if (!concImportFile) { mostrar($("concModalMsg"), "Volvé a elegir el " + imp.label.toLowerCase() + ".", "err"); return; }
     const base = $("concBase").value;
     limpiar($("concModalMsg"));
     const btn = $("concBtnTxt"); btn.disabled = true;
-    const fd = new FormData(); fd.append("archivo", concIcbcFile);
+    const fd = new FormData(); fd.append("archivo", concImportFile);
     let r;
-    try { r = await fetch("/api/conciliacion/icbc/txt?base=" + encodeURIComponent(base), { method: "POST", headers: { "Authorization": "Bearer " + token }, body: fd }); }
+    try { r = await fetch("/api/conciliacion/" + imp.ep + "/txt?base=" + encodeURIComponent(base), { method: "POST", headers: { "Authorization": "Bearer " + token }, body: fd }); }
     catch (e) { mostrar($("concModalMsg"), "No se pudo conectar.", "err"); btn.disabled = false; return; }
     if (r.status === 401) { salir(); return; }
     const d = await r.json().catch(() => ({}));
