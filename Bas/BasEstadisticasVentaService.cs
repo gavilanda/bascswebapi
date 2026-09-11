@@ -240,8 +240,10 @@ public class BasEstadisticasVentaService
                 .Select(c => $"'{c}'"));
             if (ins.Length > 0) filtro = $" AND LTRIM(RTRIM(CodCliente)) IN ({ins})";
         }
+        // TOP 100000 OBLIGATORIO: sin TOP, CONSULTAGRAL/SQL corta en 100 filas EN SILENCIO
+        // (subcontaría si hay >100 clientes en el tramo). Ver memoria bas-webapi-consultas-sql.
         var sql =
-            "SELECT LTRIM(RTRIM(CodCliente)) AS Cod, SUM(Cantidad2) AS Kg FROM BI_VENTAS " +
+            "SELECT TOP 100000 LTRIM(RTRIM(CodCliente)) AS Cod, SUM(Cantidad2) AS Kg FROM BI_VENTAS " +
             $"WHERE Fecha >= '{d}' AND Fecha < '{hExcl}'{filtro} " +
             "GROUP BY LTRIM(RTRIM(CodCliente)) HAVING SUM(Cantidad2) <> 0";
 
