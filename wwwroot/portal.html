@@ -348,7 +348,7 @@
               <div id="vtaLeyendaBases" class="leyenda-bases hidden"></div>
               <label class="vta-unificar"><input type="checkbox" id="vtaUnificar" checked> Unificar por CUIT</label>
               <div class="vta-btn-stack">
-                <button id="btnVtaMetrica" title="Ordena el ranking y los gráficos por importe ($) o por kilos. Las dos columnas quedan siempre visibles.">Ordenar por: $</button>
+                <button id="btnVtaMetrica" title="Ordena el ranking y los gráficos por importe ($) o por kilos. Las dos columnas quedan siempre visibles.">Ordenar por: kg</button>
                 <button id="btnVtaVista">Gráfico</button>
                 <button id="btnVtaRefrescar" title="Vuelve a consultar el período ignorando lo guardado en caché (útil si en BAS se cargó o corrigió un comprobante de un mes ya consultado).">Refrescar</button>
               </div>
@@ -1876,8 +1876,9 @@
     $("kpiTotal").textContent = plata(total);
     $("kpiKg").textContent = kilos(totalKg);
     $("kpiCant").textContent = cant.toLocaleString("es-AR");
-    $("btnVtaMetrica").textContent = porKg ? "Ordenar por: kg" : "Ordenar por: $";
-    // Flecha en la columna por la que está ordenado (las dos columnas quedan visibles).
+    // El botón muestra la ACCIÓN (a qué orden cambia), no el orden actual.
+    $("btnVtaMetrica").textContent = porKg ? "Ordenar por: $" : "Ordenar por: kg";
+    // Flecha en la columna por la que está ordenado AHORA (las dos columnas quedan visibles).
     $("thVtaImporte").textContent = "Importe" + (porKg ? "" : " ▼");
     $("thVtaKg").textContent = "Kg" + (porKg ? " ▼" : "");
 
