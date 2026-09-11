@@ -349,7 +349,7 @@
               <label class="vta-unificar"><input type="checkbox" id="vtaUnificar" checked> Unificar por CUIT</label>
               <div class="vta-btn-stack">
                 <button id="btnVtaMetrica" title="Ordena el ranking y los gráficos por importe ($) o por kilos. Las dos columnas quedan siempre visibles.">Ordenar por: kg</button>
-                <button id="btnVtaVista">Gráfico</button>
+                <button id="btnVtaVista">Ver gráfico</button>
                 <button id="btnVtaRefrescar" title="Vuelve a consultar el período ignorando lo guardado en caché (útil si en BAS se cargó o corrigió un comprobante de un mes ya consultado).">Refrescar</button>
               </div>
             </div>
@@ -1930,7 +1930,8 @@
     $("tablaVtaMes").classList.toggle("hidden", esGrafico);
     $("chartClientes").classList.toggle("hidden", !esGrafico);
     $("tablaVtaCli").classList.toggle("hidden", esGrafico);
-    $("btnVtaVista").textContent = esGrafico ? "Gráfico" : "Listado";
+    // El botón muestra la ACCIÓN (a qué vista cambia), no la vista actual.
+    $("btnVtaVista").textContent = esGrafico ? "Ver listado" : "Ver gráfico";
     ajustarScrollVentas();
   }
 
