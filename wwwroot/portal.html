@@ -357,6 +357,10 @@
             <div id="vtaScroll">
               <h3 class="vta-sub" style="margin-top:0">Evolución por mes</h3>
               <div id="chartMes"></div>
+              <table id="tablaVtaMes" class="hidden">
+                <thead><tr><th>Mes</th><th class="num">Importe</th><th class="num">Kg</th></tr></thead>
+                <tbody id="cuerpoVtaMes"></tbody>
+              </table>
               <h3 class="vta-sub">Top clientes</h3>
               <div id="chartClientes"></div>
               <table id="tablaVtaCli" class="hidden">
@@ -1890,6 +1894,15 @@
     const porMesMet = porKg ? porMesKg : porMes;
     const meses = Object.keys(porMesMet).sort();
     $("chartMes").innerHTML = htmlBarras(meses.map(m => ({ label: mesLabel(m), valor: porMesMet[m] })), 0, fmt);
+    // Listado de meses: las dos columnas ($ y kg) juntas.
+    const cuerpoMes = $("cuerpoVtaMes"); cuerpoMes.innerHTML = "";
+    for (const m of meses) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td>' + esc(mesLabel(m)) + '</td>'
+        + '<td class="num">' + plata(porMes[m] || 0) + '</td>'
+        + '<td class="num">' + kilos(porMesKg[m] || 0) + '</td>';
+      cuerpoMes.appendChild(tr);
+    }
     // Gráfico de clientes: top 100, con el % respecto al total (todos los clientes) de la métrica activa.
     $("chartClientes").innerHTML = htmlBarras(
       clientes.slice(0, 100).map(c => ({ label: c.razon || [...c.codigos][0] || "", valor: val(c) })), totalMet, fmt);
@@ -1913,6 +1926,8 @@
   // (scroll para el resto, hasta el tope de 100).
   function aplicarVistaVentas() {
     const esGrafico = vtaVista === "grafico";
+    $("chartMes").classList.toggle("hidden", !esGrafico);
+    $("tablaVtaMes").classList.toggle("hidden", esGrafico);
     $("chartClientes").classList.toggle("hidden", !esGrafico);
     $("tablaVtaCli").classList.toggle("hidden", esGrafico);
     $("btnVtaVista").textContent = esGrafico ? "Gráfico" : "Listado";
