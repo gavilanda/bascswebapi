@@ -168,6 +168,165 @@ public class BasEstadisticasVentaService
         return lista;
     }
 
+    // ---- KILOS vendidos (desde la vista BI_VENTAS) ----
+    // Los kilos NO están en la cabecera del comprobante ni en ComprobanteCliente: viven en el
+    // renglón (Cantidad2 = segunda unidad de medida = kg). La vista BI_VENTAS los expone por
+    // línea de venta, con las notas de crédito YA en negativo, así que un SUM(Cantidad2) da el
+    // kg NETO sin aplicar signos. Agregamos por cliente y mes, con el MISMO esquema de tramos
+    // mensuales + caché que ComprobantesAsync (los meses cerrados no cambian).
+
+    public sealed record VentaKg(string Mes, string CodCliente, decimal Kilos);
+
+    public async Task<List<VentaKg>> KilosPorClienteMesAsync(
+        string baseNombre, DateOnly desde, DateOnly hasta,
+        IReadOnlyList<string>? codigos = null, bool forzar = false, CancellationToken ct = default)
+    {
+        var lista = new List<VentaKg>();
+        var hoy = DateOnly.FromDateTime(DateTime.Today);
+        var filtraCliente = codigos is { Count: > 0 };
+
+        var tramoDesde = desde;
+        while (tramoDesde <= hasta)
+        {
+            var finMes = new DateOnly(tramoDesde.Year, tramoDesde.Month, 1).AddMonths(1).AddDays(-1);
+            var tramoHasta = finMes < hasta ? finMes : hasta;
+            var mesCompleto = tramoDesde.Day == 1 && tramoHasta == finMes;
+            var mesCerrado = finMes < hoy;
+            var mesStr = tramoDesde.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+            var key = $"estKgMes|{baseNombre}|{mesStr}";
+
+            Dictionary<string, decimal>? delTramo = null;
+
+            // Mes cerrado y COMPLETO, sin filtro de cliente: se cachea (igual que el importe).
+            if (mesCerrado && mesCompleto && !filtraCliente && !forzar)
+            {
+                if (!_cache.TryGetValue(key, out delTramo) || delTramo is null)
+                {
+                    delTramo = LeerKgDisco(baseNombre, tramoDesde);
+                    if (delTramo is not null) _cache.Set(key, delTramo, TimeSpan.FromHours(12));
+                }
+            }
+
+            if (delTramo is null)
+            {
+                delTramo = await TraerKgTramoAsync(baseNombre, tramoDesde, tramoHasta, codigos, ct);
+                if (mesCerrado && mesCompleto && !filtraCliente)
+                {
+                    _cache.Set(key, delTramo, TimeSpan.FromHours(12));
+                    EscribirKgDisco(baseNombre, tramoDesde, delTramo);
+                }
+            }
+
+            foreach (var kv in delTramo)
+                lista.Add(new VentaKg(mesStr, kv.Key, kv.Value));
+
+            tramoDesde = tramoHasta.AddDays(1);
+        }
+        return lista;
+    }
+
+    // Un tramo de kilos: SUM(Cantidad2) por cliente en [desde, hasta] desde BI_VENTAS.
+    private async Task<Dictionary<string, decimal>> TraerKgTramoAsync(
+        string baseNombre, DateOnly desde, DateOnly hasta, IReadOnlyList<string>? codigos, CancellationToken ct)
+    {
+        var d = desde.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var hExcl = hasta.AddDays(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);   // < día siguiente = inclusive
+        var filtro = "";
+        if (codigos is { Count: > 0 })
+        {
+            var ins = string.Join(",", codigos
+                .Select(c => (c ?? "").Trim().Replace("'", "''"))
+                .Where(c => c.Length > 0)
+                .Select(c => $"'{c}'"));
+            if (ins.Length > 0) filtro = $" AND LTRIM(RTRIM(CodCliente)) IN ({ins})";
+        }
+        var sql =
+            "SELECT LTRIM(RTRIM(CodCliente)) AS Cod, SUM(Cantidad2) AS Kg FROM BI_VENTAS " +
+            $"WHERE Fecha >= '{d}' AND Fecha < '{hExcl}'{filtro} " +
+            "GROUP BY LTRIM(RTRIM(CodCliente)) HAVING SUM(Cantidad2) <> 0";
+
+        var xml = await ConsultarSqlAsync(baseNombre, sql, ct);
+        var res = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var fila in LeerFilasSql(xml))
+        {
+            var cod = fila.TryGetValue("Cod", out var c) ? c.Trim() : "";
+            if (cod.Length == 0) continue;
+            var kg = fila.TryGetValue("Kg", out var k) &&
+                     decimal.TryParse(k, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0m;
+            res[cod] = res.TryGetValue(cod, out var x) ? x + kg : kg;
+        }
+        return res;
+    }
+
+    // POST a CONSULTAGRAL/SQL -> devuelve el XML de "Cuerpo" ("" si no hubo filas).
+    private async Task<string> ConsultarSqlAsync(string baseNombre, string sql, CancellationToken ct)
+    {
+        var cfg = _destinos.Config(baseNombre)
+            ?? throw new InvalidOperationException($"Destino BAS desconocido: {baseNombre}");
+        var body = JsonSerializer.Serialize(new
+        {
+            HEADER = new
+            {
+                ETIQUETA = "CONSULTAGRAL",
+                CODEMP = cfg.Empresa,
+                CODSUC = cfg.Sucursal,
+                FECHA = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture)
+            },
+            ConsultaGral = new { SQL = sql, Timeout = 120 }
+        });
+        var respuesta = await _destinos.PostAsync(baseNombre, "/api/CONSULTAGRAL/SQL", body, ct);
+        if (string.IsNullOrWhiteSpace(respuesta)) return "";
+        using var doc = JsonDocument.Parse(respuesta);
+        if (!doc.RootElement.TryGetProperty("Cuerpo", out var cuerpoEl)) return "";
+        var cuerpo = cuerpoEl.GetString() ?? "";
+        if (cuerpo.Length == 0 || !cuerpo.Contains('<')) return "";   // "Data is Null" u otro texto = sin filas
+        return cuerpo;
+    }
+
+    // El XML es <ConsultaGral><fila><CAMPO>valor</CAMPO>...</fila>...</ConsultaGral>.
+    private static IEnumerable<Dictionary<string, string>> LeerFilasSql(string xml)
+    {
+        if (string.IsNullOrWhiteSpace(xml)) yield break;
+        System.Xml.Linq.XDocument doc;
+        try { doc = System.Xml.Linq.XDocument.Parse(xml); }
+        catch { yield break; }
+        var root = doc.Root;
+        if (root is null) yield break;
+        foreach (var fila in root.Elements())
+        {
+            var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var campo in fila.Elements())
+                d[campo.Name.LocalName] = campo.Value;
+            if (d.Count > 0) yield return d;
+        }
+    }
+
+    // Caché en disco de los kilos por mes (cod cliente -> kg), meses cerrados.
+    private string RutaMesKg(string baseNombre, DateOnly mes)
+        => Path.Combine(_env.ContentRootPath, "cache-ventas", $"{baseNombre}-{mes:yyyy-MM}-kg.json");
+
+    private Dictionary<string, decimal>? LeerKgDisco(string baseNombre, DateOnly mes)
+    {
+        try
+        {
+            var ruta = RutaMesKg(baseNombre, mes);
+            if (!File.Exists(ruta)) return null;
+            return JsonSerializer.Deserialize<Dictionary<string, decimal>>(File.ReadAllText(ruta), DiscoOpts);
+        }
+        catch { return null; }
+    }
+
+    private void EscribirKgDisco(string baseNombre, DateOnly mes, Dictionary<string, decimal> datos)
+    {
+        try
+        {
+            var dir = Path.Combine(_env.ContentRootPath, "cache-ventas");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(RutaMesKg(baseNombre, mes), JsonSerializer.Serialize(datos, DiscoOpts));
+        }
+        catch { /* best-effort */ }
+    }
+
     // Trae (paginando por cliente) los comprobantes de un tramo acotado y los agrega a
     // 'lista'. CONSULTAGRAL/ComprobanteCliente pagina por cliente: iteramos hasta que
     // una página traiga menos clientes que el pageSize.

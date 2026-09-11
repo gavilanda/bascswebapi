@@ -334,6 +334,7 @@
             <label class="vta-unificar" title="Excluye las cuentas del grupo (Xardo y Bark) de la estadística, en todas las bases."><input type="checkbox" id="vtaModoGrupo"> Modo Grupo</label>
             <div class="vta-totales">
               <div class="vt-stat"><span class="vt-lbl">Total vendido</span><span class="vt-val" id="kpiTotal">—</span></div>
+              <div class="vt-stat"><span class="vt-lbl">Total kg</span><span class="vt-val" id="kpiKg">—</span></div>
               <div class="vt-stat"><span class="vt-lbl">Comprobantes</span><span class="vt-val" id="kpiCant">—</span></div>
             </div>
           </div>
@@ -347,6 +348,7 @@
               <div id="vtaLeyendaBases" class="leyenda-bases hidden"></div>
               <label class="vta-unificar"><input type="checkbox" id="vtaUnificar" checked> Unificar por CUIT</label>
               <div class="vta-btn-stack">
+                <button id="btnVtaMetrica" title="Cambia entre importe ($) y kilos en los gráficos y el ranking.">Ver: $</button>
                 <button id="btnVtaVista">Gráfico</button>
                 <button id="btnVtaRefrescar" title="Vuelve a consultar el período ignorando lo guardado en caché (útil si en BAS se cargó o corrigió un comprobante de un mes ya consultado).">Refrescar</button>
               </div>
@@ -358,7 +360,7 @@
               <h3 class="vta-sub">Top clientes</h3>
               <div id="chartClientes"></div>
               <table id="tablaVtaCli" class="hidden">
-                <thead><tr><th>Bases</th><th>Cód. cliente</th><th>Cliente</th><th class="num">Importe</th><th class="num">%</th></tr></thead>
+                <thead><tr><th>Bases</th><th>Cód. cliente</th><th>Cliente</th><th class="num">Importe</th><th class="num">Kg</th><th class="num">%</th></tr></thead>
                 <tbody id="cuerpoVtaCli"></tbody>
               </table>
             </div>
@@ -622,6 +624,10 @@
   function num(n) {
     const x = Number(n) || 0;
     return x.toLocaleString("es-AR", { maximumFractionDigits: 2 });
+  }
+  function kilos(n) {
+    const x = Number(n) || 0;
+    return x.toLocaleString("es-AR", { maximumFractionDigits: 0 }) + " kg";
   }
   function fecha(s) {
     if (!s) return "—";
@@ -1773,6 +1779,7 @@
   let vtaClienteRazon = "";
   let vtaBuscarTimer = null;
   let vtaVista = "grafico";     // "grafico" | "listado" (toggle del botón)
+  let vtaMetrica = "importe";   // "importe" | "kilos" (toggle $ / kg de gráficos y ranking)
   let vtaAbort = null;          // AbortController de la consulta en curso (para Cancelar)
 
   async function cargarVentas(forzar) {
@@ -1836,38 +1843,52 @@
     // "Unificar por CUIT": tildado agrupa un cliente real (varios códigos/bases) en una
     // fila; destildado muestra cada código por separado.
     const unificar = $("vtaUnificar").checked;
-    let total = 0, cant = 0;
-    const porMes = {};
+    let total = 0, totalKg = 0, cant = 0;
+    const porMes = {}, porMesKg = {};
     const map = {};
     for (const b of bases) {
       total += Number(b.total) || 0;
+      totalKg += Number(b.totalKilos) || 0;
       cant += Number(b.cantidad) || 0;
-      for (const m of (b.porMes || [])) porMes[m.mes] = (porMes[m.mes] || 0) + (Number(m.importe) || 0);
+      for (const m of (b.porMes || [])) {
+        porMes[m.mes] = (porMes[m.mes] || 0) + (Number(m.importe) || 0);
+        porMesKg[m.mes] = (porMesKg[m.mes] || 0) + (Number(m.kilos) || 0);
+      }
       for (const c of (b.porCliente || [])) {
         const key = unificar ? (c.cuit || ("cod:" + b.baseNombre + ":" + c.codigo)) : (b.baseNombre + "|" + c.codigo);
         let e = map[key];
-        if (!e) e = map[key] = { razon: "", codigos: new Set(), basesSet: new Set(), importe: 0 };
+        if (!e) e = map[key] = { razon: "", codigos: new Set(), basesSet: new Set(), importe: 0, kilos: 0 };
         e.importe += Number(c.importe) || 0;
+        e.kilos += Number(c.kilos) || 0;
         if (c.codigo) e.codigos.add(c.codigo);
         e.basesSet.add(b.baseNombre);
         if (!e.razon && c.razonSocial) e.razon = c.razonSocial;
       }
     }
-    const clientes = Object.values(map).sort((a, b) => b.importe - a.importe);
+
+    // Métrica activa: importe ($) o kilos. Cambia gráficos, orden del ranking y % .
+    const porKg = vtaMetrica === "kilos";
+    const val = c => porKg ? c.kilos : c.importe;
+    const fmt = porKg ? kilos : plata;
+    const totalMet = porKg ? totalKg : total;
+    const clientes = Object.values(map).sort((a, b) => val(b) - val(a));
 
     $("kpiTotal").textContent = plata(total);
+    $("kpiKg").textContent = kilos(totalKg);
     $("kpiCant").textContent = cant.toLocaleString("es-AR");
+    $("btnVtaMetrica").textContent = porKg ? "Ver: kg" : "Ver: $";
 
     if (fallidas.length) {
       $("vtaAviso").textContent = "No se pudo consultar: " + fallidas.map(b => b.baseNombre).join(", ") + ".";
       $("vtaAviso").classList.remove("hidden");
     } else { $("vtaAviso").classList.add("hidden"); }
 
-    const meses = Object.keys(porMes).sort();
-    $("chartMes").innerHTML = htmlBarras(meses.map(m => ({ label: mesLabel(m), valor: porMes[m] })));
-    // Gráfico de clientes: top 100, con el % respecto al total (todos los clientes).
+    const porMesMet = porKg ? porMesKg : porMes;
+    const meses = Object.keys(porMesMet).sort();
+    $("chartMes").innerHTML = htmlBarras(meses.map(m => ({ label: mesLabel(m), valor: porMesMet[m] })), 0, fmt);
+    // Gráfico de clientes: top 100, con el % respecto al total (todos los clientes) de la métrica activa.
     $("chartClientes").innerHTML = htmlBarras(
-      clientes.slice(0, 100).map(c => ({ label: c.razon || [...c.codigos][0] || "", valor: c.importe })), total);
+      clientes.slice(0, 100).map(c => ({ label: c.razon || [...c.codigos][0] || "", valor: val(c) })), totalMet, fmt);
 
     const cuerpo = $("cuerpoVtaCli"); cuerpo.innerHTML = "";
     for (const c of clientes.slice(0, 100)) {
@@ -1877,7 +1898,8 @@
         + '<td class="cod-cli">' + esc([...c.codigos].join(", ")) + '</td>'
         + '<td>' + esc(c.razon || [...c.codigos][0] || "") + '</td>'
         + '<td class="num">' + plata(c.importe) + '</td>'
-        + '<td class="num">' + (total ? (c.importe / total * 100).toFixed(1) : "0.0") + '%</td>';
+        + '<td class="num">' + kilos(c.kilos) + '</td>'
+        + '<td class="num">' + (totalMet ? (val(c) / totalMet * 100).toFixed(1) : "0.0") + '%</td>';
       cuerpo.appendChild(tr);
     }
     aplicarVistaVentas();
@@ -1912,8 +1934,9 @@
 
   // Gráfico de barras horizontales en HTML (sin dependencias). datos: [{label, valor}].
   // Si 'total' > 0, agrega el % de cada barra respecto al total, entre paréntesis.
-  function htmlBarras(datos, total) {
+  function htmlBarras(datos, total, fmt) {
     if (!datos || datos.length === 0) return '<div class="vacio">Sin datos en el período.</div>';
+    const fmtVal = fmt || plata;
     const max = Math.max(1, ...datos.map(d => Math.abs(d.valor)));
     return '<div class="hbars">' + datos.map(d => {
       const w = Math.max(1, Math.abs(d.valor) / max * 100);
@@ -1921,7 +1944,7 @@
       return '<div class="hbar-row">'
         + '<div class="hbar-label" title="' + esc(d.label) + '">' + esc(d.label) + '</div>'
         + '<div class="hbar-track"><div class="hbar-fill' + (d.valor < 0 ? ' neg' : '') + '" style="width:' + w.toFixed(1) + '%"></div></div>'
-        + '<div class="hbar-val">' + plata(d.valor) + pct + '</div>'
+        + '<div class="hbar-val">' + fmtVal(d.valor) + pct + '</div>'
         + '</div>';
     }).join('') + '</div>';
   }
@@ -2642,6 +2665,10 @@
   $("btnVtaVista").addEventListener("click", () => {
     vtaVista = vtaVista === "grafico" ? "listado" : "grafico";
     aplicarVistaVentas();
+  });
+  $("btnVtaMetrica").addEventListener("click", () => {
+    vtaMetrica = vtaMetrica === "importe" ? "kilos" : "importe";
+    renderVentas();
   });
   $("btnIngresar").addEventListener("click", ingresar);
   $("btnSalir").addEventListener("click", salir);
