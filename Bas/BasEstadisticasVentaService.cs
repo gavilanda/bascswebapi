@@ -225,6 +225,49 @@ public class BasEstadisticasVentaService
         return lista;
     }
 
+    // ---- Estadística COMPLETA desde BI_VENTAS (fuente única: importe + kg + comprobantes) ----
+    // Una sola consulta por rango, agrupada por mes+cliente. Reconciliado al centavo contra
+    // ComprobanteCliente (SUM(ImporteNeto+Impuestos) neteado = Total×signo). Si la base no tiene
+    // la vista BI_VENTAS, ConsultarSqlAsync lanza y el controller cae al camino ComprobanteCliente.
+    public sealed record VentaBiFila(string Mes, string CodCliente, decimal Importe, decimal Kilos, int Comprobantes);
+
+    public async Task<List<VentaBiFila>> VentasBiAsync(
+        string baseNombre, DateOnly desde, DateOnly hasta,
+        IReadOnlyList<string>? codigos = null, CancellationToken ct = default)
+    {
+        var d = desde.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var hExcl = hasta.AddDays(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var filtro = "";
+        if (codigos is { Count: > 0 })
+        {
+            var ins = string.Join(",", codigos
+                .Select(c => (c ?? "").Trim().Replace("'", "''"))
+                .Where(c => c.Length > 0).Select(c => $"'{c}'"));
+            if (ins.Length > 0) filtro = $" AND LTRIM(RTRIM(CodCliente)) IN ({ins})";
+        }
+        // TOP 100000 OBLIGATORIO (sin TOP corta en 100 filas en silencio). ImporteNeto+Impuestos
+        // = Total con IVA; las NC ya vienen negativas, así que SUM netea sola.
+        var sql =
+            "SELECT TOP 100000 CONVERT(char(7), Fecha, 120) AS Mes, LTRIM(RTRIM(CodCliente)) AS Cod, " +
+            "SUM(ImporteNeto + Impuestos) AS Imp, SUM(Cantidad2) AS Kg, COUNT(DISTINCT NroTransaccion) AS NComp " +
+            $"FROM BI_VENTAS WHERE Fecha >= '{d}' AND Fecha < '{hExcl}'{filtro} " +
+            "GROUP BY CONVERT(char(7), Fecha, 120), LTRIM(RTRIM(CodCliente))";
+
+        var xml = await ConsultarSqlAsync(baseNombre, sql, ct);
+        var res = new List<VentaBiFila>();
+        foreach (var f in LeerFilasSql(xml))
+        {
+            var mes = f.TryGetValue("Mes", out var m) ? m.Trim() : "";
+            var cod = f.TryGetValue("Cod", out var c) ? c.Trim() : "";
+            if (mes.Length != 7 || cod.Length == 0) continue;
+            decimal imp = f.TryGetValue("Imp", out var i) && decimal.TryParse(i, NumberStyles.Any, CultureInfo.InvariantCulture, out var vi) ? vi : 0m;
+            decimal kg = f.TryGetValue("Kg", out var k) && decimal.TryParse(k, NumberStyles.Any, CultureInfo.InvariantCulture, out var vk) ? vk : 0m;
+            int nc = f.TryGetValue("NComp", out var n) && int.TryParse(n, NumberStyles.Any, CultureInfo.InvariantCulture, out var vn) ? vn : 0;
+            res.Add(new VentaBiFila(mes, cod, imp, kg, nc));
+        }
+        return res;
+    }
+
     // Un tramo de kilos: SUM(Cantidad2) por cliente en [desde, hasta] desde BI_VENTAS.
     private async Task<Dictionary<string, decimal>> TraerKgTramoAsync(
         string baseNombre, DateOnly desde, DateOnly hasta, IReadOnlyList<string>? codigos, CancellationToken ct)
@@ -281,7 +324,14 @@ public class BasEstadisticasVentaService
         using var doc = JsonDocument.Parse(respuesta);
         if (!doc.RootElement.TryGetProperty("Cuerpo", out var cuerpoEl)) return "";
         var cuerpo = cuerpoEl.GetString() ?? "";
-        if (cuerpo.Length == 0 || !cuerpo.Contains('<')) return "";   // "Data is Null" u otro texto = sin filas
+        if (cuerpo.Length == 0) return "";
+        if (!cuerpo.Contains('<'))
+        {
+            // "Data is Null" = sin filas (válido). Cualquier otro texto = error de BAS
+            // (p.ej. la base no tiene la vista BI_VENTAS) -> lanza para que el caller haga fallback.
+            if (cuerpo.Contains("Data is Null", StringComparison.OrdinalIgnoreCase)) return "";
+            throw new InvalidOperationException("BAS rechazó la consulta: " + cuerpo);
+        }
         return cuerpo;
     }
 

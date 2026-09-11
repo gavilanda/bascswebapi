@@ -148,9 +148,40 @@ public class EstadisticasController : ControllerBase
     {
         try
         {
+            var padron = _cache.Obtener(baseNombre).Clientes;
+
+            // FUENTE PRIMARIA: BI_VENTAS trae importe + kg + comprobantes en UNA consulta
+            // (reconciliado al centavo con ComprobanteCliente). Si la base no tiene la vista,
+            // VentasBiAsync lanza y caemos al camino ComprobanteCliente de más abajo.
+            try
+            {
+                var bi = await _ventas.VentasBiAsync(baseNombre, desde, hasta, codigos, ct);
+                decimal totalBi = 0m, totalKgBi = 0m;
+                int cantBi = 0;
+                var pmBi = new Dictionary<string, decimal>();
+                var pmKgBi = new Dictionary<string, decimal>();
+                var pcBi = new Dictionary<string, ClienteImp>();
+                foreach (var f in bi)
+                {
+                    padron.TryGetValue(f.CodCliente, out var cliB);
+                    var cuitB = cliB?.Cuit ?? "";
+                    if (excluirGrupo && CuitsGrupo.Contains(SoloDigitos(cuitB))) continue;
+                    var razonB = !string.IsNullOrWhiteSpace(cliB?.RazonSocial) ? cliB!.RazonSocial : f.CodCliente;
+
+                    totalBi += f.Importe; totalKgBi += f.Kilos; cantBi += f.Comprobantes;
+                    pmBi[f.Mes] = (pmBi.TryGetValue(f.Mes, out var xb) ? xb : 0m) + f.Importe;
+                    pmKgBi[f.Mes] = (pmKgBi.TryGetValue(f.Mes, out var xkb) ? xkb : 0m) + f.Kilos;
+                    pcBi[f.CodCliente] = pcBi.TryGetValue(f.CodCliente, out var eB)
+                        ? eB with { Imp = eB.Imp + f.Importe, Kg = eB.Kg + f.Kilos }
+                        : new ClienteImp(f.CodCliente, cuitB, razonB, f.Importe, f.Kilos);
+                }
+                return new BaseResultado(baseNombre, true, null, totalBi, totalKgBi, cantBi, pmBi, pmKgBi, pcBi);
+            }
+            catch (Exception) when (!ct.IsCancellationRequested) { /* sin BI_VENTAS -> fallback */ }
+
+            // FALLBACK (bases sin BI_VENTAS): importe desde ComprobanteCliente + kg aparte.
             var signos = await _ventas.SignosPorTipoAsync(baseNombre, ct);
             var comps = await _ventas.ComprobantesAsync(baseNombre, desde, hasta, codigos, forzar, ct);
-            var padron = _cache.Obtener(baseNombre).Clientes;
 
             decimal total = 0m;
             int cantidad = 0;
