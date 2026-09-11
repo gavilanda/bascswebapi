@@ -66,16 +66,20 @@ public class IcbcConciliacionService
         return new Resultado(cuenta, movs);
     }
 
-    // Una fila de datos empieza con una fecha dd/MM/yyyy.
+    // El export del ICBC trae la fecha SIN cero adelante ("31/8/2026", "1/8/2026") y a veces
+    // con dos dígitos ("31/08/2026") -> aceptamos ambos con "d/M/yyyy".
+    private static readonly string[] FormatosFecha = { "d/M/yyyy", "dd/MM/yyyy" };
+
+    // Una fila de datos empieza con una fecha d/M/yyyy.
     private static bool EsFilaDato(string l)
     {
         var p = l.Split(';');
-        return p.Length > 0 && DateTime.TryParseExact(p[0].Trim(), "dd/MM/yyyy",
+        return p.Length > 0 && DateTime.TryParseExact(p[0].Trim(), FormatosFecha,
             CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
     }
 
-    private static string FechaYmd(string ddMMyyyy)
-        => DateTime.TryParseExact(ddMMyyyy.Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture,
+    private static string FechaYmd(string dmy)
+        => DateTime.TryParseExact(dmy.Trim(), FormatosFecha, CultureInfo.InvariantCulture,
                DateTimeStyles.None, out var f)
             ? f.ToString("yyyyMMdd", CultureInfo.InvariantCulture) : "";
 
