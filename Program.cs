@@ -548,7 +548,18 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseStaticFiles();
+// Los .html (portal/intranet) son el "shell" de la app y cambian seguido. Sin Cache-Control
+// el navegador los cachea heurísticamente y NO revalida -> el usuario sigue viendo la versión
+// vieja tras publicar (había que forzar Ctrl+F5). Con "no-cache" revalida siempre (barato por
+// ETag: 304 si no cambió). El resto de los estáticos mantiene el comportamiento por defecto.
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        if (ctx.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+    }
+});
 
 app.UseAuthentication();
 app.UseAuthorization();
