@@ -126,6 +126,11 @@
   .hbar-pct { color:var(--txt2); font-weight:400; }
   #tablaVtaCli thead th { position:sticky; top:0; background:#fff; z-index:1; }
   #tablaVtaCli th, #tablaVtaCli td { padding:5px 8px; }
+  /* Mismo layout fijo y anchos en ambas tablas del listado, para que las columnas
+     Importe/Kg de "Evolución por mes" coincidan con las del "detalle por cliente". */
+  #tablaVtaMes, #tablaVtaCli { table-layout:fixed; }
+  #tablaVtaMes th, #tablaVtaMes td { padding:5px 8px; }
+  #tablaVtaMes td, #tablaVtaCli td, #tablaVtaMes th, #tablaVtaCli th { overflow:hidden; text-overflow:ellipsis; }
   #vtaClienteSel { margin:2px 0 10px; font-size:14px; }
   #vtaClienteSel .chip { background:var(--activo); color:var(--activotxt); padding:4px 10px; border-radius:6px; font-weight:600; }
   #vtaClienteSel a { color:var(--azul); cursor:pointer; margin-left:10px; font-size:13px; }
@@ -349,7 +354,7 @@
               <label class="vta-unificar"><input type="checkbox" id="vtaUnificar" checked> Unificar por CUIT</label>
               <div class="vta-btn-stack">
                 <button id="btnVtaMetrica" title="Ordena el ranking y los gráficos por importe ($) o por kilos. Las dos columnas quedan siempre visibles.">Ordenar por: kg</button>
-                <button id="btnVtaVista">Ver gráfico</button>
+                <button id="btnVtaVista">Ver listado</button>
                 <button id="btnVtaRefrescar" title="Vuelve a consultar el período ignorando lo guardado en caché (útil si en BAS se cargó o corrigió un comprobante de un mes ya consultado).">Refrescar</button>
               </div>
             </div>
@@ -358,12 +363,14 @@
               <h3 class="vta-sub" style="margin-top:0">Evolución por mes</h3>
               <div id="chartMes"></div>
               <table id="tablaVtaMes" class="hidden">
-                <thead><tr><th>Mes</th><th class="num">Importe</th><th class="num">Kg</th></tr></thead>
+                <colgroup><col style="width:12%"><col style="width:12%"><col style="width:34%"><col style="width:17%"><col style="width:15%"><col style="width:10%"></colgroup>
+                <thead><tr><th colspan="3">Mes</th><th class="num">Importe</th><th class="num">Kg</th><th></th></tr></thead>
                 <tbody id="cuerpoVtaMes"></tbody>
               </table>
               <h3 class="vta-sub">Top clientes</h3>
               <div id="chartClientes"></div>
               <table id="tablaVtaCli" class="hidden">
+                <colgroup><col style="width:12%"><col style="width:12%"><col style="width:34%"><col style="width:17%"><col style="width:15%"><col style="width:10%"></colgroup>
                 <thead><tr><th>Bases</th><th>Cód. cliente</th><th>Cliente</th><th class="num" id="thVtaImporte">Importe</th><th class="num" id="thVtaKg">Kg</th><th class="num">%</th></tr></thead>
                 <tbody id="cuerpoVtaCli"></tbody>
               </table>
@@ -1782,7 +1789,7 @@
   let vtaCuit = "";             // CUIT del cliente elegido en el buscador (vacío = todos)
   let vtaClienteRazon = "";
   let vtaBuscarTimer = null;
-  let vtaVista = "listado";     // "grafico" | "listado" — arranca en Listado para ver SIEMPRE las dos columnas ($ y kg); el gráfico queda a un clic
+  let vtaVista = "grafico";     // "grafico" | "listado" (toggle del botón)
   let vtaMetrica = "importe";   // "importe" | "kilos" (toggle $ / kg de gráficos y ranking)
   let vtaAbort = null;          // AbortController de la consulta en curso (para Cancelar)
 
@@ -1893,19 +1900,27 @@
 
     const porMesMet = porKg ? porMesKg : porMes;
     const meses = Object.keys(porMesMet).sort();
-    $("chartMes").innerHTML = htmlBarras(meses.map(m => ({ label: mesLabel(m), valor: porMesMet[m] })), 0, fmt);
+    // La barra mide por la métrica de orden; el texto muestra SIEMPRE $ y kg.
+    $("chartMes").innerHTML = htmlBarras(meses.map(m => ({
+      label: mesLabel(m), valor: porMesMet[m],
+      texto: plata(porMes[m] || 0) + " · " + kilos(porMesKg[m] || 0)
+    })), 0, fmt);
     // Listado de meses: las dos columnas ($ y kg) juntas.
     const cuerpoMes = $("cuerpoVtaMes"); cuerpoMes.innerHTML = "";
     for (const m of meses) {
       const tr = document.createElement("tr");
-      tr.innerHTML = '<td>' + esc(mesLabel(m)) + '</td>'
+      tr.innerHTML = '<td colspan="3">' + esc(mesLabel(m)) + '</td>'
         + '<td class="num">' + plata(porMes[m] || 0) + '</td>'
-        + '<td class="num">' + kilos(porMesKg[m] || 0) + '</td>';
+        + '<td class="num">' + kilos(porMesKg[m] || 0) + '</td>'
+        + '<td></td>';
       cuerpoMes.appendChild(tr);
     }
-    // Gráfico de clientes: top 100, con el % respecto al total (todos los clientes) de la métrica activa.
+    // Gráfico de clientes: top 100, % respecto al total de la métrica de orden; texto con $ y kg.
     $("chartClientes").innerHTML = htmlBarras(
-      clientes.slice(0, 100).map(c => ({ label: c.razon || [...c.codigos][0] || "", valor: val(c) })), totalMet, fmt);
+      clientes.slice(0, 100).map(c => ({
+        label: c.razon || [...c.codigos][0] || "", valor: val(c),
+        texto: plata(c.importe) + " · " + kilos(c.kilos)
+      })), totalMet, fmt);
 
     const cuerpo = $("cuerpoVtaCli"); cuerpo.innerHTML = "";
     for (const c of clientes.slice(0, 100)) {
@@ -1961,10 +1976,11 @@
     return '<div class="hbars">' + datos.map(d => {
       const w = Math.max(1, Math.abs(d.valor) / max * 100);
       const pct = total ? ' <span class="hbar-pct">(' + (d.valor / total * 100).toFixed(1) + '%)</span>' : '';
+      // d.texto: etiqueta ya formateada (ej. "$… · … kg"); si no viene, usa fmtVal(valor).
       return '<div class="hbar-row">'
         + '<div class="hbar-label" title="' + esc(d.label) + '">' + esc(d.label) + '</div>'
         + '<div class="hbar-track"><div class="hbar-fill' + (d.valor < 0 ? ' neg' : '') + '" style="width:' + w.toFixed(1) + '%"></div></div>'
-        + '<div class="hbar-val">' + fmtVal(d.valor) + pct + '</div>'
+        + '<div class="hbar-val">' + (d.texto != null ? esc(d.texto) : fmtVal(d.valor)) + pct + '</div>'
         + '</div>';
     }).join('') + '</div>';
   }
