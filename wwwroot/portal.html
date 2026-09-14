@@ -348,7 +348,8 @@
               <div id="vtaLeyendaBases" class="leyenda-bases hidden"></div>
               <label class="vta-unificar"><input type="checkbox" id="vtaUnificar" checked> Unificar por CUIT</label>
               <div class="vta-btn-stack">
-                <button id="btnVtaVista">Gráfico</button>
+                <button id="btnVtaMetrica" title="Ordena el ranking y los gráficos por importe ($) o por kilos. Las dos columnas quedan siempre visibles.">Ordenar por: kg</button>
+                <button id="btnVtaVista">Ver listado</button>
                 <button id="btnVtaRefrescar" title="Vuelve a consultar el período ignorando lo guardado en caché (útil si en BAS se cargó o corrigió un comprobante de un mes ya consultado).">Refrescar</button>
               </div>
             </div>
@@ -1779,6 +1780,7 @@
   let vtaClienteRazon = "";
   let vtaBuscarTimer = null;
   let vtaVista = "grafico";     // "grafico" | "listado" (toggle del botón)
+  let vtaMetrica = "importe";   // "importe" | "kilos" — ordena ranking/gráficos por $ o kg
   let vtaAbort = null;          // AbortController de la consulta en curso (para Cancelar)
 
   async function cargarVentas(forzar) {
@@ -1843,13 +1845,16 @@
     // fila; destildado muestra cada código por separado.
     const unificar = $("vtaUnificar").checked;
     let total = 0, totalKg = 0, cant = 0;
-    const porMes = {};
+    const porMes = {}, porMesKg = {};
     const map = {};
     for (const b of bases) {
       total += Number(b.total) || 0;
       totalKg += Number(b.totalKilos) || 0;
       cant += Number(b.cantidad) || 0;
-      for (const m of (b.porMes || [])) porMes[m.mes] = (porMes[m.mes] || 0) + (Number(m.importe) || 0);
+      for (const m of (b.porMes || [])) {
+        porMes[m.mes] = (porMes[m.mes] || 0) + (Number(m.importe) || 0);
+        porMesKg[m.mes] = (porMesKg[m.mes] || 0) + (Number(m.kilos) || 0);
+      }
       for (const c of (b.porCliente || [])) {
         const key = unificar ? (c.cuit || ("cod:" + b.baseNombre + ":" + c.codigo)) : (b.baseNombre + "|" + c.codigo);
         let e = map[key];
@@ -1861,22 +1866,35 @@
         if (!e.razon && c.razonSocial) e.razon = c.razonSocial;
       }
     }
-    const clientes = Object.values(map).sort((a, b) => b.importe - a.importe);
+    // Métrica de orden: importe ($) o kilos. El botón la cambia; las dos columnas quedan visibles.
+    const porKg = vtaMetrica === "kilos";
+    const val = c => porKg ? c.kilos : c.importe;
+    const totalMet = porKg ? totalKg : total;
+    const clientes = Object.values(map).sort((a, b) => val(b) - val(a));
 
     $("kpiTotal").textContent = plata(total);
     $("kpiKg").textContent = kilos(totalKg);
     $("kpiCant").textContent = cant.toLocaleString("es-AR");
+    // El botón muestra la ACCIÓN (a qué orden cambia).
+    $("btnVtaMetrica").textContent = porKg ? "Ordenar por: $" : "Ordenar por: kg";
 
     if (fallidas.length) {
       $("vtaAviso").textContent = "No se pudo consultar: " + fallidas.map(b => b.baseNombre).join(", ") + ".";
       $("vtaAviso").classList.remove("hidden");
     } else { $("vtaAviso").classList.add("hidden"); }
 
+    // Evolución por mes: barra por la métrica de orden; el texto muestra SIEMPRE $ y kg.
     const meses = Object.keys(porMes).sort();
-    $("chartMes").innerHTML = htmlBarras(meses.map(m => ({ label: mesLabel(m), valor: porMes[m] })));
-    // Gráfico de clientes: top 100, con el % respecto al total (todos los clientes).
+    $("chartMes").innerHTML = htmlBarras(meses.map(m => ({
+      label: mesLabel(m), valor: porKg ? (porMesKg[m] || 0) : porMes[m],
+      texto: plata(porMes[m] || 0) + " · " + kilos(porMesKg[m] || 0)
+    })));
+    // Top clientes: top 100, % respecto al total de la métrica activa; texto con $ y kg.
     $("chartClientes").innerHTML = htmlBarras(
-      clientes.slice(0, 100).map(c => ({ label: c.razon || [...c.codigos][0] || "", valor: c.importe })), total);
+      clientes.slice(0, 100).map(c => ({
+        label: c.razon || [...c.codigos][0] || "", valor: val(c),
+        texto: plata(c.importe) + " · " + kilos(c.kilos)
+      })), totalMet);
 
     const cuerpo = $("cuerpoVtaCli"); cuerpo.innerHTML = "";
     for (const c of clientes.slice(0, 100)) {
@@ -1887,7 +1905,7 @@
         + '<td>' + esc(c.razon || [...c.codigos][0] || "") + '</td>'
         + '<td class="num">' + plata(c.importe) + '</td>'
         + '<td class="num">' + kilos(c.kilos) + '</td>'
-        + '<td class="num">' + (total ? (c.importe / total * 100).toFixed(1) : "0.0") + '%</td>';
+        + '<td class="num">' + (totalMet ? (val(c) / totalMet * 100).toFixed(1) : "0.0") + '%</td>';
       cuerpo.appendChild(tr);
     }
     aplicarVistaVentas();
@@ -1899,7 +1917,7 @@
     const esGrafico = vtaVista === "grafico";
     $("chartClientes").classList.toggle("hidden", !esGrafico);
     $("tablaVtaCli").classList.toggle("hidden", esGrafico);
-    $("btnVtaVista").textContent = esGrafico ? "Gráfico" : "Listado";
+    $("btnVtaVista").textContent = esGrafico ? "Ver listado" : "Ver gráfico";
     ajustarScrollVentas();
   }
 
@@ -1928,10 +1946,11 @@
     return '<div class="hbars">' + datos.map(d => {
       const w = Math.max(1, Math.abs(d.valor) / max * 100);
       const pct = total ? ' <span class="hbar-pct">(' + (d.valor / total * 100).toFixed(1) + '%)</span>' : '';
+      // d.texto: etiqueta ya formateada (ej. "$… · … kg"); si no viene, usa plata(valor).
       return '<div class="hbar-row">'
         + '<div class="hbar-label" title="' + esc(d.label) + '">' + esc(d.label) + '</div>'
         + '<div class="hbar-track"><div class="hbar-fill' + (d.valor < 0 ? ' neg' : '') + '" style="width:' + w.toFixed(1) + '%"></div></div>'
-        + '<div class="hbar-val">' + plata(d.valor) + pct + '</div>'
+        + '<div class="hbar-val">' + (d.texto != null ? esc(d.texto) : plata(d.valor)) + pct + '</div>'
         + '</div>';
     }).join('') + '</div>';
   }
@@ -2652,6 +2671,10 @@
   $("btnVtaVista").addEventListener("click", () => {
     vtaVista = vtaVista === "grafico" ? "listado" : "grafico";
     aplicarVistaVentas();
+  });
+  $("btnVtaMetrica").addEventListener("click", () => {
+    vtaMetrica = vtaMetrica === "importe" ? "kilos" : "importe";
+    renderVentas();
   });
   $("btnIngresar").addEventListener("click", ingresar);
   $("btnSalir").addEventListener("click", salir);
