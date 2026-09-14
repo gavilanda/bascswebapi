@@ -147,27 +147,65 @@ public class BasCacheRefresher
         }
         try
         {
-            var datos = await CargarConsultaGralAsync<ClienteCache>(b, "/api/CONSULTAGRAL/Cliente", CamposCliente, ct, el =>
-            {
-                var cod = BienInfo.Prop(el, "Codigo");
-                if (string.IsNullOrEmpty(cod)) return ((string, ClienteCache)?)null;
-                // Traemos a TODOS (incluidas las sucursales) con su AdministradaPor. Después,
-                // GuardarClientes arma el mapa DEDUPLICADO (sin sucursales, para la cuenta
-                // corriente) y el COMPLETO (todos, para la estadística de ventas).
-                return (cod, new ClienteCache
-                {
-                    Codigo = cod,
-                    RazonSocial = BienInfo.Prop(el, "RazonSocial") ?? "",
-                    Cuit = BienInfo.Prop(el, "NumeroImpositivo1") ?? "",
-                    AdministradaPor = BienInfo.Prop(el, "AdministradaPor") ?? ""
-                });
-            });
+            // Carga por UNA consulta SQL (no paginar CONSULTAGRAL/Cliente: 25 páginas × ~15s de
+            // throttle = varios minutos y se cancelaba). Trae TODOS los códigos, incluidas las
+            // sucursales: la estadística de ventas los necesita (las ventas se registran bajo el
+            // código de la sucursal) y la cuenta corriente igual agrupa por CUIT.
+            var datos = await CargarClientesSqlAsync(b, ct);
             var ahora = DateTimeOffset.Now;
             GuardarClientes(b, datos, ahora);
             EscribirArchivo(b, "clientes", datos, ahora);
-            _log.LogInformation("Caché BAS '{Base}': {N} clientes (actualizado desde BAS).", b, datos.Count);
+            _log.LogInformation("Caché BAS '{Base}': {N} clientes (SQL, incluye sucursales).", b, datos.Count);
         }
         catch (Exception ex) { MarcarError(b, "clientes", ex); }
+    }
+
+    // Padrón de clientes de una base en UNA consulta: CTACTES (CODCTACTE, NOMBRE, NRODOC1=CUIT),
+    // sólo cuentas de cliente (CUEPREFI='C'). TOP 100000 obligatorio (sin TOP corta en 100).
+    private async Task<Dictionary<string, ClienteCache>> CargarClientesSqlAsync(string b, CancellationToken ct)
+    {
+        var cfg = _destinos.Config(b) ?? new DestinoBas();
+        var sql =
+            "SELECT TOP 100000 LTRIM(RTRIM(CODCTACTE)) AS Cod, LTRIM(RTRIM(NOMBRE)) AS Nombre, " +
+            "LTRIM(RTRIM(ISNULL(NRODOC1,''))) AS Cuit FROM CTACTES WHERE CUEPREFI='C'";
+        var cuerpo = JsonSerializer.Serialize(new
+        {
+            HEADER = new
+            {
+                ETIQUETA = "CONSULTAGRAL",
+                CODEMP = cfg.Empresa,
+                CODSUC = cfg.Sucursal,
+                FECHA = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture)
+            },
+            ConsultaGral = new { SQL = sql, Timeout = 120 }
+        });
+
+        var json = await _destinos.PostAsync(b, "/api/CONSULTAGRAL/SQL", cuerpo, ct);
+        var dict = new Dictionary<string, ClienteCache>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(json)) return dict;
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("Cuerpo", out var cuerpoEl)) return dict;
+        var xml = cuerpoEl.GetString() ?? "";
+        if (xml.Length == 0 || !xml.Contains('<')) return dict;   // "Data is Null" u otro texto = vacío
+
+        var xdoc = System.Xml.Linq.XDocument.Parse(xml);
+        if (xdoc.Root is null) return dict;
+        foreach (var fila in xdoc.Root.Elements())
+        {
+            string cod = "", nombre = "", cuit = "";
+            foreach (var campo in fila.Elements())
+            {
+                switch (campo.Name.LocalName)
+                {
+                    case "Cod": cod = campo.Value.Trim(); break;
+                    case "Nombre": nombre = campo.Value.Trim(); break;
+                    case "Cuit": cuit = campo.Value.Trim(); break;
+                }
+            }
+            if (cod.Length == 0) continue;
+            dict[cod] = new ClienteCache { Codigo = cod, RazonSocial = nombre, Cuit = cuit };
+        }
+        return dict;
     }
 
     // Carga la tabla de impuestos de la base (GET /api/Impuestos/{empresa}) y
@@ -272,22 +310,18 @@ public class BasCacheRefresher
 
     private void GuardarClientes(string b, IReadOnlyDictionary<string, ClienteCache> datos, DateTimeOffset cuando)
     {
-        // COMPLETO: todos los códigos (incluidas sucursales) -> estadística de ventas.
-        var todos = new Dictionary<string, ClienteCache>(StringComparer.OrdinalIgnoreCase);
-        foreach (var kv in datos) todos[kv.Key] = kv.Value;
-
-        // DEDUPLICADO: sin sucursales (AdministradaPor con valor) -> cuenta corriente,
-        // así no se duplica el CUIT entre casa central y sus sucursales.
-        var dedup = new Dictionary<string, ClienteCache>(StringComparer.OrdinalIgnoreCase);
-        foreach (var kv in datos)
-            if (string.IsNullOrWhiteSpace(kv.Value.AdministradaPor)) dedup[kv.Key] = kv.Value;
+        // Un único mapa completo (todos los códigos, con sucursales). La cuenta corriente
+        // (MiCuentaController) agrupa por CUIT por su cuenta, así que las sucursales no molestan;
+        // la estadística usa este mismo mapa para resolver nombre/CUIT de cualquier código.
+        var dict = new Dictionary<string, ClienteCache>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in datos) dict[kv.Key] = kv.Value;
 
         _cache.Actualizar(b, s => new SnapshotMaestro
         {
             Bienes = s.Bienes,
             Proveedores = s.Proveedores,
-            Clientes = dedup,
-            ClientesTodos = todos,
+            Clientes = dict,
+            ClientesTodos = dict,
             BienesListo = s.BienesListo,
             ProveedoresListo = s.ProveedoresListo,
             ClientesListo = true,
