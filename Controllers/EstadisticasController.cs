@@ -105,8 +105,9 @@ public class EstadisticasController : ControllerBase
                 catch { codigos = new List<string>(); }
                 // El cliente no está en esta base: no aporta ventas (no consultamos).
                 if (codigos.Count == 0)
-                    return new BaseResultado(b, true, null, 0m, 0,
-                        new Dictionary<string, decimal>(), new Dictionary<string, ClienteImp>());
+                    return new BaseResultado(b, true, null, 0m, 0m, 0,
+                        new Dictionary<string, decimal>(), new Dictionary<string, decimal>(),
+                        new Dictionary<string, ClienteImp>());
             }
             return await PorBaseAsync(b, d, h, codigos, refrescar, excluirGrupo, ct);
         }));
@@ -118,11 +119,20 @@ public class EstadisticasController : ControllerBase
             ok = r.Ok,
             error = r.Error,
             total = r.Total,
+            totalKilos = r.TotalKilos,
             cantidad = r.Cantidad,
-            porMes = r.PorMes.OrderBy(kv => kv.Key, StringComparer.Ordinal)
-                .Select(kv => new { mes = kv.Key, importe = kv.Value }),
+            porMes = r.PorMes.Keys.Union(r.PorMesKg.Keys).OrderBy(mm => mm, StringComparer.Ordinal)
+                .Select(mm => new
+                {
+                    mes = mm,
+                    importe = r.PorMes.TryGetValue(mm, out var im) ? im : 0m,
+                    kilos = r.PorMesKg.TryGetValue(mm, out var kg) ? kg : 0m
+                }),
+            // Top 150 por importe unido con top 150 por kilos (para no perder clientes que venden
+            // mucho peso pero poco $).
             porCliente = r.PorCliente.Values.OrderByDescending(v => v.Imp).Take(150)
-                .Select(v => new { codigo = v.Cod, cuit = v.Cuit, razonSocial = v.Razon, importe = v.Imp })
+                .Union(r.PorCliente.Values.OrderByDescending(v => v.Kg).Take(150))
+                .Select(v => new { codigo = v.Cod, cuit = v.Cuit, razonSocial = v.Razon, importe = v.Imp, kilos = v.Kg })
         });
 
         return Ok(new
@@ -148,8 +158,9 @@ public class EstadisticasController : ControllerBase
             try
             {
                 var bi = await _ventas.VentasBiAsync(baseNombre, desde, hasta, codigos, ct);
-                decimal totalBi = 0m; int cantBi = 0;
+                decimal totalBi = 0m, totalKgBi = 0m; int cantBi = 0;
                 var pmBi = new Dictionary<string, decimal>();
+                var pmKgBi = new Dictionary<string, decimal>();
                 var pcBi = new Dictionary<string, ClienteImp>();
                 foreach (var f in bi)
                 {
@@ -158,13 +169,14 @@ public class EstadisticasController : ControllerBase
                     if (excluirGrupo && CuitsGrupo.Contains(SoloDigitos(cuitB))) continue;
                     var razonB = !string.IsNullOrWhiteSpace(cliB?.RazonSocial) ? cliB!.RazonSocial : f.CodCliente;
 
-                    totalBi += f.Importe; cantBi += f.Comprobantes;
+                    totalBi += f.Importe; totalKgBi += f.Kilos; cantBi += f.Comprobantes;
                     pmBi[f.Mes] = (pmBi.TryGetValue(f.Mes, out var xb) ? xb : 0m) + f.Importe;
+                    pmKgBi[f.Mes] = (pmKgBi.TryGetValue(f.Mes, out var xkb) ? xkb : 0m) + f.Kilos;
                     pcBi[f.CodCliente] = pcBi.TryGetValue(f.CodCliente, out var eB)
-                        ? eB with { Imp = eB.Imp + f.Importe }
-                        : new ClienteImp(f.CodCliente, cuitB, razonB, f.Importe);
+                        ? eB with { Imp = eB.Imp + f.Importe, Kg = eB.Kg + f.Kilos }
+                        : new ClienteImp(f.CodCliente, cuitB, razonB, f.Importe, f.Kilos);
                 }
-                return new BaseResultado(baseNombre, true, null, totalBi, cantBi, pmBi, pcBi);
+                return new BaseResultado(baseNombre, true, null, totalBi, totalKgBi, cantBi, pmBi, pmKgBi, pcBi);
             }
             catch (Exception) when (!ct.IsCancellationRequested) { /* sin BI_VENTAS -> fallback */ }
 
@@ -201,22 +213,25 @@ public class EstadisticasController : ControllerBase
                 // por CUIT según el checkbox "Unificar por CUIT".
                 porCliente[c.CodCliente] = porCliente.TryGetValue(c.CodCliente, out var e)
                     ? e with { Imp = e.Imp + neto }
-                    : new ClienteImp(c.CodCliente, cuit, razon, neto);
+                    : new ClienteImp(c.CodCliente, cuit, razon, neto, 0m);
             }
 
-            return new BaseResultado(baseNombre, true, null, total, cantidad, porMes, porCliente);
+            return new BaseResultado(baseNombre, true, null, total, 0m, cantidad, porMes,
+                new Dictionary<string, decimal>(), porCliente);
         }
         catch (Exception ex)
         {
-            return new BaseResultado(baseNombre, false, ex.Message, 0m, 0,
-                new Dictionary<string, decimal>(), new Dictionary<string, ClienteImp>());
+            return new BaseResultado(baseNombre, false, ex.Message, 0m, 0m, 0,
+                new Dictionary<string, decimal>(), new Dictionary<string, decimal>(),
+                new Dictionary<string, ClienteImp>());
         }
     }
 
     // Acumulador por cliente (por código) dentro de una base; lleva el CUIT adjunto.
-    private sealed record ClienteImp(string Cod, string Cuit, string Razon, decimal Imp);
+    private sealed record ClienteImp(string Cod, string Cuit, string Razon, decimal Imp, decimal Kg);
 
     private sealed record BaseResultado(
-        string Base, bool Ok, string? Error, decimal Total, int Cantidad,
-        Dictionary<string, decimal> PorMes, Dictionary<string, ClienteImp> PorCliente);
+        string Base, bool Ok, string? Error, decimal Total, decimal TotalKilos, int Cantidad,
+        Dictionary<string, decimal> PorMes, Dictionary<string, decimal> PorMesKg,
+        Dictionary<string, ClienteImp> PorCliente);
 }

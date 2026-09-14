@@ -168,13 +168,20 @@ public class BasEstadisticasVentaService
         return lista;
     }
 
-    // ---- Importe desde la vista BI_VENTAS (fuente correcta, SIN recibos) ----
-    // La estadística por ComprobanteCliente contaba de más porque el tipo Recibo (RC) tiene
-    // EstadisticaVta=1 en BAS, así que las cobranzas de contado sumaban como venta (mostrador
-    // daba el doble). BI_VENTAS es la vista de ventas de BAS: solo facturas + notas de crédito
-    // (las NC ya negativas). La estadística usa el importe NETO (sin IVA) = SUM(ImporteNeto).
-    // Una consulta por rango, agrupada por mes+cliente.
-    public sealed record VentaBiFila(string Mes, string CodCliente, decimal Importe, int Comprobantes);
+    // ---- Estadística desde MVSITEMS (renglones), replicando la "Estadística de ventas" de BAS ----
+    // Reproduce EXACTO la vista VISTAESTVTAS de BAS: mvsitems + cmpasociados + tiposcmp (× signo
+    // EstadisticaVta) + subdiarios tipo 'V' + transac (no eliminadas). Da al centavo:
+    //   - Importe NETO (sin IVA) = SUM(impgravado × signo). NO cuenta recibos (el subdiario 'V' +
+    //     EstadisticaVta dejan solo facturas/NC), por eso el mostrador ya no da el doble.
+    //   - Kilos (columna "kilos" de BAS) = SUM(cantidad2 × signo) SOLO de renglones con importe
+    //     (impgravado <> 0). Los COMPONENTES de los combos se explotan en mvsitems con impgravado=0
+    //     (el precio va en la línea del conjunto); al excluirlos queda la venta directa exacta.
+    //   - Comprobantes = COUNT(DISTINCT nrotrans).
+    // Cliente = codsuccli (sucursal) o codctacte. Una consulta por rango, agrupada por mes+cliente.
+    public sealed record VentaBiFila(string Mes, string CodCliente, decimal Importe, decimal Kilos, int Comprobantes);
+
+    // Expresión del código de cliente (sucursal o cuenta), igual que VISTAESTVTAS.
+    private const string SqlCliente = "case when tr.codsuccli is not null then tr.codsuccli else tr.codctacte end";
 
     public async Task<List<VentaBiFila>> VentasBiAsync(
         string baseNombre, DateOnly desde, DateOnly hasta,
@@ -188,15 +195,22 @@ public class BasEstadisticasVentaService
             var ins = string.Join(",", codigos
                 .Select(c => (c ?? "").Trim().Replace("'", "''"))
                 .Where(c => c.Length > 0).Select(c => $"'{c}'"));
-            if (ins.Length > 0) filtro = $" AND LTRIM(RTRIM(CodCliente)) IN ({ins})";
+            if (ins.Length > 0) filtro = $" AND LTRIM(RTRIM({SqlCliente})) IN ({ins})";
         }
-        // Importe NETO (sin IVA): SUM(ImporteNeto). Las NC ya vienen negativas -> netea sola.
-        // (Con IVA sería SUM(ImporteNeto + Impuestos).) TOP 100000 OBLIGATORIO (sin TOP corta a 100).
+        // TOP 100000 OBLIGATORIO (sin TOP, CONSULTAGRAL/SQL corta en 100 filas en silencio).
         var sql =
-            "SELECT TOP 100000 CONVERT(char(7), Fecha, 120) AS Mes, LTRIM(RTRIM(CodCliente)) AS Cod, " +
-            "SUM(ImporteNeto) AS Imp, COUNT(DISTINCT NroTransaccion) AS NComp " +
-            $"FROM BI_VENTAS WHERE Fecha >= '{d}' AND Fecha < '{hExcl}'{filtro} " +
-            "GROUP BY CONVERT(char(7), Fecha, 120), LTRIM(RTRIM(CodCliente))";
+            "SELECT TOP 100000 CONVERT(char(7), tr.fecha, 120) AS Mes, " +
+            $"LTRIM(RTRIM({SqlCliente})) AS Cod, " +
+            "SUM(m.impgravado * t.estadisticavta) AS Imp, " +
+            "SUM(CASE WHEN m.impgravado <> 0 THEN m.cantidad2 ELSE 0 END * t.estadisticavta) AS Kg, " +
+            "COUNT(DISTINCT m.nrotrans) AS NComp " +
+            "FROM mvsitems m " +
+            "JOIN cmpasociados c ON m.nrotrans = c.nrotrans " +
+            "JOIN tiposcmp t ON c.codcmp = t.codcmp " +
+            "JOIN subdiarios s ON c.nrosdb = s.nrosdb AND s.tipo = 'V' " +
+            "JOIN transac tr ON m.nrotrans = tr.nrotrans " +
+            $"WHERE tr.nrotranselim IS NULL AND tr.fecha >= '{d}' AND tr.fecha < '{hExcl}'{filtro} " +
+            $"GROUP BY CONVERT(char(7), tr.fecha, 120), LTRIM(RTRIM({SqlCliente}))";
 
         var xml = await ConsultarSqlAsync(baseNombre, sql, ct);
         var res = new List<VentaBiFila>();
@@ -206,8 +220,9 @@ public class BasEstadisticasVentaService
             var cod = f.TryGetValue("Cod", out var c) ? c.Trim() : "";
             if (mes.Length != 7 || cod.Length == 0) continue;
             decimal imp = f.TryGetValue("Imp", out var i) && decimal.TryParse(i, NumberStyles.Any, CultureInfo.InvariantCulture, out var vi) ? vi : 0m;
+            decimal kg = f.TryGetValue("Kg", out var k) && decimal.TryParse(k, NumberStyles.Any, CultureInfo.InvariantCulture, out var vk) ? vk : 0m;
             int nc = f.TryGetValue("NComp", out var n) && int.TryParse(n, NumberStyles.Any, CultureInfo.InvariantCulture, out var vn) ? vn : 0;
-            res.Add(new VentaBiFila(mes, cod, imp, nc));
+            res.Add(new VentaBiFila(mes, cod, imp, kg, nc));
         }
         return res;
     }
