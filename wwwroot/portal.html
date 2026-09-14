@@ -334,6 +334,7 @@
             <label class="vta-unificar" title="Excluye las cuentas del grupo (Xardo y Bark) de la estadística, en todas las bases."><input type="checkbox" id="vtaModoGrupo"> Modo Grupo</label>
             <div class="vta-totales">
               <div class="vt-stat"><span class="vt-lbl">Total vendido</span><span class="vt-val" id="kpiTotal">—</span></div>
+              <div class="vt-stat"><span class="vt-lbl">Total kg</span><span class="vt-val" id="kpiKg">—</span></div>
               <div class="vt-stat"><span class="vt-lbl">Comprobantes</span><span class="vt-val" id="kpiCant">—</span></div>
             </div>
           </div>
@@ -358,7 +359,7 @@
               <h3 class="vta-sub">Top clientes</h3>
               <div id="chartClientes"></div>
               <table id="tablaVtaCli" class="hidden">
-                <thead><tr><th>Bases</th><th>Cód. cliente</th><th>Cliente</th><th class="num">Importe</th><th class="num">%</th></tr></thead>
+                <thead><tr><th>Bases</th><th>Cód. cliente</th><th>Cliente</th><th class="num">Importe</th><th class="num">Kg</th><th class="num">%</th></tr></thead>
                 <tbody id="cuerpoVtaCli"></tbody>
               </table>
             </div>
@@ -622,6 +623,10 @@
   function num(n) {
     const x = Number(n) || 0;
     return x.toLocaleString("es-AR", { maximumFractionDigits: 2 });
+  }
+  function kilos(n) {
+    const x = Number(n) || 0;
+    return x.toLocaleString("es-AR", { maximumFractionDigits: 0 }) + " kg";
   }
   function fecha(s) {
     if (!s) return "—";
@@ -1759,6 +1764,7 @@
       $("vtaResultado").classList.remove("hidden");
       $("vtaAviso").classList.add("hidden");
       $("kpiTotal").textContent = "—";
+      $("kpiKg").textContent = "—";
       $("kpiCant").textContent = "—";
       construirControlesBasesVta();
       $("chartMes").innerHTML = "";
@@ -1836,18 +1842,20 @@
     // "Unificar por CUIT": tildado agrupa un cliente real (varios códigos/bases) en una
     // fila; destildado muestra cada código por separado.
     const unificar = $("vtaUnificar").checked;
-    let total = 0, cant = 0;
+    let total = 0, totalKg = 0, cant = 0;
     const porMes = {};
     const map = {};
     for (const b of bases) {
       total += Number(b.total) || 0;
+      totalKg += Number(b.totalKilos) || 0;
       cant += Number(b.cantidad) || 0;
       for (const m of (b.porMes || [])) porMes[m.mes] = (porMes[m.mes] || 0) + (Number(m.importe) || 0);
       for (const c of (b.porCliente || [])) {
         const key = unificar ? (c.cuit || ("cod:" + b.baseNombre + ":" + c.codigo)) : (b.baseNombre + "|" + c.codigo);
         let e = map[key];
-        if (!e) e = map[key] = { razon: "", codigos: new Set(), basesSet: new Set(), importe: 0 };
+        if (!e) e = map[key] = { razon: "", codigos: new Set(), basesSet: new Set(), importe: 0, kilos: 0 };
         e.importe += Number(c.importe) || 0;
+        e.kilos += Number(c.kilos) || 0;
         if (c.codigo) e.codigos.add(c.codigo);
         e.basesSet.add(b.baseNombre);
         if (!e.razon && c.razonSocial) e.razon = c.razonSocial;
@@ -1856,6 +1864,7 @@
     const clientes = Object.values(map).sort((a, b) => b.importe - a.importe);
 
     $("kpiTotal").textContent = plata(total);
+    $("kpiKg").textContent = kilos(totalKg);
     $("kpiCant").textContent = cant.toLocaleString("es-AR");
 
     if (fallidas.length) {
@@ -1877,6 +1886,7 @@
         + '<td class="cod-cli">' + esc([...c.codigos].join(", ")) + '</td>'
         + '<td>' + esc(c.razon || [...c.codigos][0] || "") + '</td>'
         + '<td class="num">' + plata(c.importe) + '</td>'
+        + '<td class="num">' + kilos(c.kilos) + '</td>'
         + '<td class="num">' + (total ? (c.importe / total * 100).toFixed(1) : "0.0") + '%</td>';
       cuerpo.appendChild(tr);
     }

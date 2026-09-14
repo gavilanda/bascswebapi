@@ -173,9 +173,11 @@ public class BasEstadisticasVentaService
     // EstadisticaVta) + subdiarios tipo 'V' + transac (no eliminadas). Da al centavo:
     //   - Importe NETO (sin IVA) = SUM(impgravado × signo). NO cuenta recibos (el subdiario 'V' +
     //     EstadisticaVta dejan solo facturas/NC), por eso el mostrador ya no da el doble.
-    //   - Kilos (columna "kilos" de BAS) = SUM(cantidad2 × signo) SOLO de renglones con importe
-    //     (impgravado <> 0). Los COMPONENTES de los combos se explotan en mvsitems con impgravado=0
-    //     (el precio va en la línea del conjunto); al excluirlos queda la venta directa exacta.
+    //   - Kilos = DIRECTOS + COMBOS. Directos (columna "kilos" de BAS) = SUM(cantidad2 × signo) de
+    //     renglones con importe (impgravado<>0): así se excluyen los COMPONENTES de combo, que se
+    //     explotan en mvsitems con impgravado=0 (el precio va en la línea del conjunto). Combos
+    //     (ADMSTOCK='C') = SUM(cantidad × peso × signo). Verificado: cli0 ago = 34.850,931 +
+    //     19.817,184 = 54.668,115.
     //   - Comprobantes = COUNT(DISTINCT nrotrans).
     // Cliente = codsuccli (sucursal) o codctacte. Una consulta por rango, agrupada por mes+cliente.
     public sealed record VentaBiFila(string Mes, string CodCliente, decimal Importe, decimal Kilos, int Comprobantes);
@@ -202,13 +204,17 @@ public class BasEstadisticasVentaService
             "SELECT TOP 100000 CONVERT(char(7), tr.fecha, 120) AS Mes, " +
             $"LTRIM(RTRIM({SqlCliente})) AS Cod, " +
             "SUM(m.impgravado * t.estadisticavta) AS Imp, " +
-            "SUM(CASE WHEN m.impgravado <> 0 THEN m.cantidad2 ELSE 0 END * t.estadisticavta) AS Kg, " +
+            // Kilos = combos (ADMSTOCK='C' -> cantidad × peso) + directos (con importe -> cantidad2).
+            // Los componentes de combo (impgravado=0, no 'C') quedan en 0.
+            "SUM(CASE WHEN LTRIM(RTRIM(i.ADMSTOCK)) = 'C' THEN m.cantidad * ISNULL(i.PESO, 0) " +
+            "         WHEN m.impgravado <> 0 THEN m.cantidad2 ELSE 0 END * t.estadisticavta) AS Kg, " +
             "COUNT(DISTINCT m.nrotrans) AS NComp " +
             "FROM mvsitems m " +
             "JOIN cmpasociados c ON m.nrotrans = c.nrotrans " +
             "JOIN tiposcmp t ON c.codcmp = t.codcmp " +
             "JOIN subdiarios s ON c.nrosdb = s.nrosdb AND s.tipo = 'V' " +
             "JOIN transac tr ON m.nrotrans = tr.nrotrans " +
+            "JOIN items i ON m.coditm = i.coditm " +
             $"WHERE tr.nrotranselim IS NULL AND tr.fecha >= '{d}' AND tr.fecha < '{hExcl}'{filtro} " +
             $"GROUP BY CONVERT(char(7), tr.fecha, 120), LTRIM(RTRIM({SqlCliente}))";
 
