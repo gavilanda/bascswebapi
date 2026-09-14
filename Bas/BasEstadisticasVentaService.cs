@@ -172,8 +172,8 @@ public class BasEstadisticasVentaService
     // La estadística por ComprobanteCliente contaba de más porque el tipo Recibo (RC) tiene
     // EstadisticaVta=1 en BAS, así que las cobranzas de contado sumaban como venta (mostrador
     // daba el doble). BI_VENTAS es la vista de ventas de BAS: solo facturas + notas de crédito
-    // (las NC ya negativas), así que SUM(ImporteNeto+Impuestos) = Total con IVA neteado, y
-    // reconcilia AL CENTAVO con BAS. Una consulta por rango, agrupada por mes+cliente.
+    // (las NC ya negativas). La estadística usa el importe NETO (sin IVA) = SUM(ImporteNeto).
+    // Una consulta por rango, agrupada por mes+cliente.
     public sealed record VentaBiFila(string Mes, string CodCliente, decimal Importe, int Comprobantes);
 
     public async Task<List<VentaBiFila>> VentasBiAsync(
@@ -190,10 +190,11 @@ public class BasEstadisticasVentaService
                 .Where(c => c.Length > 0).Select(c => $"'{c}'"));
             if (ins.Length > 0) filtro = $" AND LTRIM(RTRIM(CodCliente)) IN ({ins})";
         }
-        // TOP 100000 OBLIGATORIO (sin TOP, CONSULTAGRAL/SQL corta en 100 filas en silencio).
+        // Importe NETO (sin IVA): SUM(ImporteNeto). Las NC ya vienen negativas -> netea sola.
+        // (Con IVA sería SUM(ImporteNeto + Impuestos).) TOP 100000 OBLIGATORIO (sin TOP corta a 100).
         var sql =
             "SELECT TOP 100000 CONVERT(char(7), Fecha, 120) AS Mes, LTRIM(RTRIM(CodCliente)) AS Cod, " +
-            "SUM(ImporteNeto + Impuestos) AS Imp, COUNT(DISTINCT NroTransaccion) AS NComp " +
+            "SUM(ImporteNeto) AS Imp, COUNT(DISTINCT NroTransaccion) AS NComp " +
             $"FROM BI_VENTAS WHERE Fecha >= '{d}' AND Fecha < '{hExcl}'{filtro} " +
             "GROUP BY CONVERT(char(7), Fecha, 120), LTRIM(RTRIM(CodCliente))";
 
