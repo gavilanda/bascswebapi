@@ -151,15 +151,15 @@ public class BasCacheRefresher
             {
                 var cod = BienInfo.Prop(el, "Codigo");
                 if (string.IsNullOrEmpty(cod)) return ((string, ClienteCache)?)null;
-                // Salteamos las sucursales (AdministradaPor con valor): la cuenta
-                // corriente vive en la casa central, y así evitamos duplicar el CUIT.
-                var admin = BienInfo.Prop(el, "AdministradaPor");
-                if (!string.IsNullOrWhiteSpace(admin)) return null;
+                // Traemos a TODOS (incluidas las sucursales) con su AdministradaPor. Después,
+                // GuardarClientes arma el mapa DEDUPLICADO (sin sucursales, para la cuenta
+                // corriente) y el COMPLETO (todos, para la estadística de ventas).
                 return (cod, new ClienteCache
                 {
                     Codigo = cod,
                     RazonSocial = BienInfo.Prop(el, "RazonSocial") ?? "",
-                    Cuit = BienInfo.Prop(el, "NumeroImpositivo1") ?? ""
+                    Cuit = BienInfo.Prop(el, "NumeroImpositivo1") ?? "",
+                    AdministradaPor = BienInfo.Prop(el, "AdministradaPor") ?? ""
                 });
             });
             var ahora = DateTimeOffset.Now;
@@ -272,14 +272,22 @@ public class BasCacheRefresher
 
     private void GuardarClientes(string b, IReadOnlyDictionary<string, ClienteCache> datos, DateTimeOffset cuando)
     {
-        var dict = new Dictionary<string, ClienteCache>(StringComparer.OrdinalIgnoreCase);
-        foreach (var kv in datos) dict[kv.Key] = kv.Value;
+        // COMPLETO: todos los códigos (incluidas sucursales) -> estadística de ventas.
+        var todos = new Dictionary<string, ClienteCache>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in datos) todos[kv.Key] = kv.Value;
+
+        // DEDUPLICADO: sin sucursales (AdministradaPor con valor) -> cuenta corriente,
+        // así no se duplica el CUIT entre casa central y sus sucursales.
+        var dedup = new Dictionary<string, ClienteCache>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in datos)
+            if (string.IsNullOrWhiteSpace(kv.Value.AdministradaPor)) dedup[kv.Key] = kv.Value;
 
         _cache.Actualizar(b, s => new SnapshotMaestro
         {
             Bienes = s.Bienes,
             Proveedores = s.Proveedores,
-            Clientes = dict,
+            Clientes = dedup,
+            ClientesTodos = todos,
             BienesListo = s.BienesListo,
             ProveedoresListo = s.ProveedoresListo,
             ClientesListo = true,

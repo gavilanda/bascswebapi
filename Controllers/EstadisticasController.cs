@@ -137,9 +137,40 @@ public class EstadisticasController : ControllerBase
     {
         try
         {
+            // Padrón COMPLETO (incluye sucursales): las ventas se registran bajo el código de
+            // la sucursal, así que hay que resolver nombre/CUIT también para ellas (si no,
+            // salían como código y no unificaban por CUIT).
+            var padron = _cache.Obtener(baseNombre).ClientesTodos;
+
+            // FUENTE PRIMARIA del importe: BI_VENTAS (solo facturas + NC, SIN recibos ->
+            // no duplica el contado/mostrador). Reconcilia al centavo con BAS. Si la base no
+            // tiene la vista, VentasBiAsync lanza y caemos al camino ComprobanteCliente.
+            try
+            {
+                var bi = await _ventas.VentasBiAsync(baseNombre, desde, hasta, codigos, ct);
+                decimal totalBi = 0m; int cantBi = 0;
+                var pmBi = new Dictionary<string, decimal>();
+                var pcBi = new Dictionary<string, ClienteImp>();
+                foreach (var f in bi)
+                {
+                    padron.TryGetValue(f.CodCliente, out var cliB);
+                    var cuitB = cliB?.Cuit ?? "";
+                    if (excluirGrupo && CuitsGrupo.Contains(SoloDigitos(cuitB))) continue;
+                    var razonB = !string.IsNullOrWhiteSpace(cliB?.RazonSocial) ? cliB!.RazonSocial : f.CodCliente;
+
+                    totalBi += f.Importe; cantBi += f.Comprobantes;
+                    pmBi[f.Mes] = (pmBi.TryGetValue(f.Mes, out var xb) ? xb : 0m) + f.Importe;
+                    pcBi[f.CodCliente] = pcBi.TryGetValue(f.CodCliente, out var eB)
+                        ? eB with { Imp = eB.Imp + f.Importe }
+                        : new ClienteImp(f.CodCliente, cuitB, razonB, f.Importe);
+                }
+                return new BaseResultado(baseNombre, true, null, totalBi, cantBi, pmBi, pcBi);
+            }
+            catch (Exception) when (!ct.IsCancellationRequested) { /* sin BI_VENTAS -> fallback */ }
+
+            // FALLBACK (bases sin BI_VENTAS): ComprobanteCliente + signo por tipo.
             var signos = await _ventas.SignosPorTipoAsync(baseNombre, ct);
             var comps = await _ventas.ComprobantesAsync(baseNombre, desde, hasta, codigos, forzar, ct);
-            var padron = _cache.Obtener(baseNombre).Clientes;
 
             decimal total = 0m;
             int cantidad = 0;

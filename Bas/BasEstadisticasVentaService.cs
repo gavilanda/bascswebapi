@@ -168,6 +168,98 @@ public class BasEstadisticasVentaService
         return lista;
     }
 
+    // ---- Importe desde la vista BI_VENTAS (fuente correcta, SIN recibos) ----
+    // La estadística por ComprobanteCliente contaba de más porque el tipo Recibo (RC) tiene
+    // EstadisticaVta=1 en BAS, así que las cobranzas de contado sumaban como venta (mostrador
+    // daba el doble). BI_VENTAS es la vista de ventas de BAS: solo facturas + notas de crédito
+    // (las NC ya negativas), así que SUM(ImporteNeto+Impuestos) = Total con IVA neteado, y
+    // reconcilia AL CENTAVO con BAS. Una consulta por rango, agrupada por mes+cliente.
+    public sealed record VentaBiFila(string Mes, string CodCliente, decimal Importe, int Comprobantes);
+
+    public async Task<List<VentaBiFila>> VentasBiAsync(
+        string baseNombre, DateOnly desde, DateOnly hasta,
+        IReadOnlyList<string>? codigos = null, CancellationToken ct = default)
+    {
+        var d = desde.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var hExcl = hasta.AddDays(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var filtro = "";
+        if (codigos is { Count: > 0 })
+        {
+            var ins = string.Join(",", codigos
+                .Select(c => (c ?? "").Trim().Replace("'", "''"))
+                .Where(c => c.Length > 0).Select(c => $"'{c}'"));
+            if (ins.Length > 0) filtro = $" AND LTRIM(RTRIM(CodCliente)) IN ({ins})";
+        }
+        // TOP 100000 OBLIGATORIO (sin TOP, CONSULTAGRAL/SQL corta en 100 filas en silencio).
+        var sql =
+            "SELECT TOP 100000 CONVERT(char(7), Fecha, 120) AS Mes, LTRIM(RTRIM(CodCliente)) AS Cod, " +
+            "SUM(ImporteNeto + Impuestos) AS Imp, COUNT(DISTINCT NroTransaccion) AS NComp " +
+            $"FROM BI_VENTAS WHERE Fecha >= '{d}' AND Fecha < '{hExcl}'{filtro} " +
+            "GROUP BY CONVERT(char(7), Fecha, 120), LTRIM(RTRIM(CodCliente))";
+
+        var xml = await ConsultarSqlAsync(baseNombre, sql, ct);
+        var res = new List<VentaBiFila>();
+        foreach (var f in LeerFilasSql(xml))
+        {
+            var mes = f.TryGetValue("Mes", out var m) ? m.Trim() : "";
+            var cod = f.TryGetValue("Cod", out var c) ? c.Trim() : "";
+            if (mes.Length != 7 || cod.Length == 0) continue;
+            decimal imp = f.TryGetValue("Imp", out var i) && decimal.TryParse(i, NumberStyles.Any, CultureInfo.InvariantCulture, out var vi) ? vi : 0m;
+            int nc = f.TryGetValue("NComp", out var n) && int.TryParse(n, NumberStyles.Any, CultureInfo.InvariantCulture, out var vn) ? vn : 0;
+            res.Add(new VentaBiFila(mes, cod, imp, nc));
+        }
+        return res;
+    }
+
+    // POST a CONSULTAGRAL/SQL -> XML de "Cuerpo" ("" si no hay filas). Lanza si BAS devuelve
+    // un error (p.ej. la base no tiene la vista BI_VENTAS) -> el controller hace fallback.
+    private async Task<string> ConsultarSqlAsync(string baseNombre, string sql, CancellationToken ct)
+    {
+        var cfg = _destinos.Config(baseNombre)
+            ?? throw new InvalidOperationException($"Destino BAS desconocido: {baseNombre}");
+        var body = JsonSerializer.Serialize(new
+        {
+            HEADER = new
+            {
+                ETIQUETA = "CONSULTAGRAL",
+                CODEMP = cfg.Empresa,
+                CODSUC = cfg.Sucursal,
+                FECHA = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture)
+            },
+            ConsultaGral = new { SQL = sql, Timeout = 120 }
+        });
+        var respuesta = await _destinos.PostAsync(baseNombre, "/api/CONSULTAGRAL/SQL", body, ct);
+        if (string.IsNullOrWhiteSpace(respuesta)) return "";
+        using var doc = JsonDocument.Parse(respuesta);
+        if (!doc.RootElement.TryGetProperty("Cuerpo", out var cuerpoEl)) return "";
+        var cuerpo = cuerpoEl.GetString() ?? "";
+        if (cuerpo.Length == 0) return "";
+        if (!cuerpo.Contains('<'))
+        {
+            if (cuerpo.Contains("Data is Null", StringComparison.OrdinalIgnoreCase)) return "";
+            throw new InvalidOperationException("BAS rechazó la consulta: " + cuerpo);
+        }
+        return cuerpo;
+    }
+
+    // XML <ConsultaGral><fila><CAMPO>valor</CAMPO>...</fila>...</ConsultaGral>.
+    private static IEnumerable<Dictionary<string, string>> LeerFilasSql(string xml)
+    {
+        if (string.IsNullOrWhiteSpace(xml)) yield break;
+        System.Xml.Linq.XDocument doc;
+        try { doc = System.Xml.Linq.XDocument.Parse(xml); }
+        catch { yield break; }
+        var root = doc.Root;
+        if (root is null) yield break;
+        foreach (var fila in root.Elements())
+        {
+            var dd = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var campo in fila.Elements())
+                dd[campo.Name.LocalName] = campo.Value;
+            if (dd.Count > 0) yield return dd;
+        }
+    }
+
     // Trae (paginando por cliente) los comprobantes de un tramo acotado y los agrega a
     // 'lista'. CONSULTAGRAL/ComprobanteCliente pagina por cliente: iteramos hasta que
     // una página traiga menos clientes que el pageSize.

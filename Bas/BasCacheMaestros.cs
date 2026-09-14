@@ -14,7 +14,11 @@ public sealed class SnapshotMaestro
 {
     public IReadOnlyDictionary<string, BienInfo> Bienes { get; init; } = VacioBienes;
     public IReadOnlyDictionary<string, string> Proveedores { get; init; } = VacioProv;
+    // Clientes: SIN sucursales (deduplicado por CUIT) — lo usa la cuenta corriente.
     public IReadOnlyDictionary<string, ClienteCache> Clientes { get; init; } = VacioCli;
+    // ClientesTodos: TODOS los códigos, incluidas las sucursales (con su CUIT) — lo usa la
+    // estadística de ventas, porque las ventas se registran bajo el código de la sucursal.
+    public IReadOnlyDictionary<string, ClienteCache> ClientesTodos { get; init; } = VacioCli;
     public bool BienesListo { get; init; }
     public bool ProveedoresListo { get; init; }
     public bool ClientesListo { get; init; }
@@ -35,6 +39,9 @@ public sealed class ClienteCache
     public string Codigo { get; set; } = "";
     public string RazonSocial { get; set; } = "";
     public string Cuit { get; set; } = "";
+    // Código de la casa central si esta cuenta es una SUCURSAL (vacío si es central).
+    // Se usa para armar el mapa deduplicado (cuenta corriente) vs el completo (estadística).
+    public string AdministradaPor { get; set; } = "";
 }
 
 // Caché en memoria del padrón de productos y proveedores por base.
