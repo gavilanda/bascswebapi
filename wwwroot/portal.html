@@ -1936,8 +1936,8 @@
   // (scroll para el resto, hasta el tope de 100).
   function aplicarVistaVentas() {
     const esGrafico = vtaVista === "grafico";
-    $("chartMes").classList.toggle("hidden", !esGrafico);
-    $("tablaVtaMes").classList.toggle("hidden", esGrafico);
+    // "Evolución por mes" queda SIEMPRE como barras (con $ · kg). El toggle solo cambia el
+    // "Top clientes" entre gráfico y listado.
     $("chartClientes").classList.toggle("hidden", !esGrafico);
     $("tablaVtaCli").classList.toggle("hidden", esGrafico);
     $("btnVtaVista").textContent = esGrafico ? "Ver listado" : "Ver gráfico";
