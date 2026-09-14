@@ -126,6 +126,11 @@
   .hbar-pct { color:var(--txt2); font-weight:400; }
   #tablaVtaCli thead th { position:sticky; top:0; background:#fff; z-index:1; }
   #tablaVtaCli th, #tablaVtaCli td { padding:5px 8px; }
+  /* Mismo layout fijo y anchos en las dos tablas del listado, para que las columnas
+     Importe/Kg de "Evolución por mes" coincidan con las del detalle por cliente. */
+  #tablaVtaMes, #tablaVtaCli { table-layout:fixed; }
+  #tablaVtaMes th, #tablaVtaMes td { padding:5px 8px; overflow:hidden; text-overflow:ellipsis; }
+  #tablaVtaCli td, #tablaVtaCli th { overflow:hidden; text-overflow:ellipsis; }
   #vtaClienteSel { margin:2px 0 10px; font-size:14px; }
   #vtaClienteSel .chip { background:var(--activo); color:var(--activotxt); padding:4px 10px; border-radius:6px; font-weight:600; }
   #vtaClienteSel a { color:var(--azul); cursor:pointer; margin-left:10px; font-size:13px; }
@@ -357,9 +362,15 @@
             <div id="vtaScroll">
               <h3 class="vta-sub" style="margin-top:0">Evolución por mes</h3>
               <div id="chartMes"></div>
+              <table id="tablaVtaMes" class="hidden">
+                <colgroup><col style="width:12%"><col style="width:12%"><col style="width:34%"><col style="width:17%"><col style="width:15%"><col style="width:10%"></colgroup>
+                <thead><tr><th colspan="3">Mes</th><th class="num">Importe</th><th class="num">Kg</th><th></th></tr></thead>
+                <tbody id="cuerpoVtaMes"></tbody>
+              </table>
               <h3 class="vta-sub">Top clientes</h3>
               <div id="chartClientes"></div>
               <table id="tablaVtaCli" class="hidden">
+                <colgroup><col style="width:12%"><col style="width:12%"><col style="width:34%"><col style="width:17%"><col style="width:15%"><col style="width:10%"></colgroup>
                 <thead><tr><th>Bases</th><th>Cód. cliente</th><th>Cliente</th><th class="num">Importe</th><th class="num">Kg</th><th class="num">%</th></tr></thead>
                 <tbody id="cuerpoVtaCli"></tbody>
               </table>
@@ -1889,6 +1900,16 @@
       label: mesLabel(m), valor: porKg ? (porMesKg[m] || 0) : porMes[m],
       texto: plata(porMes[m] || 0) + " · " + kilos(porMesKg[m] || 0)
     })));
+    // Listado de meses: columnas $ y kg alineadas con el detalle por cliente.
+    const cuerpoMes = $("cuerpoVtaMes"); cuerpoMes.innerHTML = "";
+    for (const m of meses) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td colspan="3">' + esc(mesLabel(m)) + '</td>'
+        + '<td class="num">' + plata(porMes[m] || 0) + '</td>'
+        + '<td class="num">' + kilos(porMesKg[m] || 0) + '</td>'
+        + '<td></td>';
+      cuerpoMes.appendChild(tr);
+    }
     // Top clientes: top 100, % respecto al total de la métrica activa; texto con $ y kg.
     $("chartClientes").innerHTML = htmlBarras(
       clientes.slice(0, 100).map(c => ({
@@ -1915,6 +1936,8 @@
   // (scroll para el resto, hasta el tope de 100).
   function aplicarVistaVentas() {
     const esGrafico = vtaVista === "grafico";
+    $("chartMes").classList.toggle("hidden", !esGrafico);
+    $("tablaVtaMes").classList.toggle("hidden", esGrafico);
     $("chartClientes").classList.toggle("hidden", !esGrafico);
     $("tablaVtaCli").classList.toggle("hidden", esGrafico);
     $("btnVtaVista").textContent = esGrafico ? "Ver listado" : "Ver gráfico";
