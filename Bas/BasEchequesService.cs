@@ -36,13 +36,15 @@ public class BasEchequesService
         FROM dbo.CHEQUES c
         INNER JOIN dbo.VISTACHEQUES v ON c.NUMEROEXT = v.NumeroExt
         INNER JOIN dbo.CTACTES ct ON (v.cueprefi = ct.CUEPREFI) AND (v.codctacte = ct.CODCTACTE)
-        INNER JOIN dbo.CTACTESCONT cc ON (ct.CUEPREFI = cc.CUEPREFI) AND (ct.CODCTACTE = cc.CODCTACTE)
-        WHERE cc.EMAIL <> @emailPropio
+        -- LEFT (no INNER): si el proveedor NO tiene ficha de contacto en CTACTESCONT (sin email),
+        -- el cheque igual aparece (marcado 'sin e-mail'), en vez de desaparecer silenciosamente.
+        LEFT JOIN dbo.CTACTESCONT cc ON (ct.CUEPREFI = cc.CUEPREFI) AND (ct.CODCTACTE = cc.CODCTACTE)
+        WHERE (cc.EMAIL IS NULL OR cc.EMAIL <> @emailPropio)
           AND CAST(c.FECHA AS DATE) >= @desde
           AND CAST(c.FECHA AS DATE) <= @hasta
           AND LTRIM(RTRIM(CAST(c.CODCTABCO AS VARCHAR))) = @banco
           AND LTRIM(RTRIM(CAST(c.CHEQUERA AS VARCHAR))) = @chequera
-          AND cc.COBPAG = 1
+          AND (cc.COBPAG = 1 OR cc.CUEPREFI IS NULL)   -- COBPAG=1 (pago) o sin ficha de contacto
           -- Excluir cheques de una orden de pago ANULADA/ELIMINADA: la OP (egreso) vive en TRANSAC
           -- apuntada por CHEQUES.NROTRANSEGR; al anularla queda ELIMINACION<>'N' ('S'=elim, 'A'=anul).
           -- El cheque sigue en CHEQUES, por eso hay que filtrarlo acá. NROTRANSEGR sin transacción
