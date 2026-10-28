@@ -121,6 +121,9 @@ public class MiCuentaController : ControllerBase
                 if (string.IsNullOrEmpty(acc.RazonSocial) && !string.IsNullOrEmpty(cli.RazonSocial))
                     acc.RazonSocial = cli.RazonSocial;
                 acc.Bases.Add(b);
+                var cod = (cli.Codigo ?? "").Trim();
+                if (cod.Length > 0 && !acc.Codigos.Any(c => c.Base == b && c.Codigo == cod))
+                    acc.Codigos.Add(new CodigoEnBase(b, cod));
             }
         }
 
@@ -136,7 +139,12 @@ public class MiCuentaController : ControllerBase
         {
             cuit = kv.Key,
             razonSocial = kv.Value.RazonSocial,
-            bases = kv.Value.Bases.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList()
+            bases = kv.Value.Bases.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList(),
+            // Código del cliente EN CADA base (un mismo CUIT puede tener distinto código por base).
+            codigos = kv.Value.Codigos
+                .OrderBy(c => c.Base, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(c => c.Codigo, StringComparer.OrdinalIgnoreCase)
+                .Select(c => new { baseNombre = c.Base, codigo = c.Codigo }).ToList()
         }).ToList();
 
         return Ok(new { total, mostrando = items.Count, hayMas = total > items.Count, items });
@@ -146,7 +154,10 @@ public class MiCuentaController : ControllerBase
     {
         public string RazonSocial = "";
         public HashSet<string> Bases = new(StringComparer.OrdinalIgnoreCase);
+        public List<CodigoEnBase> Codigos = new();
     }
+
+    private sealed record CodigoEnBase(string Base, string Codigo);
 
     // GET /api/mi-cuenta/perfil  -> datos del token.
     [HttpGet("perfil")]
