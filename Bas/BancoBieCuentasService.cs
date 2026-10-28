@@ -29,7 +29,7 @@ public class BancoBieCuentasService
 
     public async Task<IReadOnlyList<CuentaInfo>> ListarCuentasAsync(BieCredenciales cred, CancellationToken ct = default)
     {
-        var (status, doc) = await GetAsync(cred, "/api/cuentas/v1/listaCuentas", ct);
+        var (status, doc) = await GetAsync(cred, "/api/cuentas/v2/listaCuentas", ct);
         var list = new List<CuentaInfo>();
         if (status is >= 200 and < 300 && doc is not null
             && doc.RootElement.TryGetProperty("clarifCuentas", out var arr) && arr.ValueKind == JsonValueKind.Array)
@@ -52,7 +52,7 @@ public class BancoBieCuentasService
         {
             var fin = ini.AddDays(30);
             if (fin > hasta) fin = hasta;
-            var url = $"/api/cuentas/v1/{nroCuenta}/movimientos"
+            var url = $"/api/cuentas/v2/{nroCuenta}/movimientos"
                 + $"?fechaDesde={ini.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}"
                 + $"&fechaHasta={fin.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}&topeMovimientos=1000";
             var (status, doc) = await GetAsync(cred, url, ct);
