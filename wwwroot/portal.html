@@ -2420,6 +2420,29 @@
     doc.save(nombre);
   }
 
+  // Bloquear el scroll del fondo mientras haya un modal (.ech-ov) abierto. Si no, quedan DOS
+  // barras de scroll pegadas (la del modal y la de la página) y es fácil agarrar la de la
+  // página —que está atrás, atenuada— creyendo que es la del listado: "no reacciona". Al
+  // bloquear el fondo queda una sola barra, la del modal. Compensamos el ancho de la barra
+  // para que el contenido no salte. Genérico: cubre todos los .ech-ov (ver, emisión, concil…).
+  (function () {
+    function sincFondo() {
+      const hayModal = !!document.querySelector(".ech-ov:not(.hidden)");
+      if (hayModal) {
+        const sw = window.innerWidth - document.documentElement.clientWidth;
+        document.body.style.paddingRight = sw > 0 ? sw + "px" : "";
+        document.body.style.overflow = "hidden";
+      } else {
+        document.body.style.overflow = "";
+        document.body.style.paddingRight = "";
+      }
+    }
+    const mo = new MutationObserver(sincFondo);
+    document.querySelectorAll(".ech-ov").forEach(ov =>
+      mo.observe(ov, { attributes: true, attributeFilter: ["class"] }));
+    sincFondo();
+  })();
+
   $("btnEchPreparar").addEventListener("click", prepararEmision);
   $("btnEchVer").addEventListener("click", verEcheques);
   $("echVerPdf").addEventListener("click", pdfEcheques);
